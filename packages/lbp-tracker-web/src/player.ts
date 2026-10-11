@@ -43,10 +43,15 @@ import MIXER_WORKLET_URL from '@lbptracker/lib/audio/mixer-worklet.ts?worker&url
 import { DropoutCounter } from '@lbptracker/lib/audio/dropouts.ts';
 import { type VoiceSpec } from '@lbptracker/lib/audio/mixer.ts';
 import { channelVolume, type Sequencer, type Track } from '@lbptracker/cwlib/project.ts';
-import { LiveVoicePool, VOICES_UNLIMITED, VOICE_POOL_SIZE } from '@lbptracker/lib/polyphony.ts';
+import {
+  LiveVoicePool,
+  VOICES_UNLIMITED,
+  VOICE_POOL_SIZE,
+  type PoolWalks,
+} from '@lbptracker/lib/polyphony.ts';
 import { stepLength, swungFrame } from '@lbptracker/lib/swing.ts';
 import { samplesPerStep } from '@lbptracker/lib/voice.ts';
-import type { MasterSettings } from '@lbptracker/lib/audio/master.ts';
+import type { MasterChoice } from '@lbptracker/lib/audio/master-stage.ts';
 import { RATE, renderSequencer, type InstrumentLoader } from '@lbptracker/lib/render.ts';
 
 /**
@@ -98,6 +103,8 @@ export interface Planned {
    * by a mix nobody is listening to.
    */
   readonly baseScore: number;
+  /** The score after each walk (`PooledNote.walks`), without the channel factor too. */
+  readonly baseWalks: PoolWalks;
   /**
    * The note this voice is.
    *
@@ -185,10 +192,11 @@ export interface EffectSettings {
   readonly echoOn: boolean;
   readonly reverbOn: boolean;
   readonly clip: boolean;
-  /** The game's own compressor, `SMS WaveHammer`. Off by default; see `RenderOptions`. */
-  readonly compressor?: boolean;
-  /** **Ours, past the fold**: a glue compressor and a limiter, or null for off. */
-  readonly master?: MasterSettings | null;
+  /**
+   * Which master bus ends the chain: the game's -- `SMS WaveHammer` and the
+   * 7.1 fold -- when absent, or ours. See `master-stage.ts`.
+   */
+  readonly master?: MasterChoice;
 }
 
 export interface PlayerEvents {
@@ -558,6 +566,10 @@ export class Player {
           // made the voice silent in the render too.
           baseGain: where.channelGain === 0 ? rest.gain : rest.gain / where.channelGain,
           baseScore: where.channelGain === 0 ? where.score : where.score / where.channelGain,
+          baseWalks: where.channelGain === 0 ? where.walks : {
+            from: where.walks.from,
+            scores: where.walks.scores.map((score) => score / where.channelGain),
+          },
           pointSteps: where.pointSteps,
           sampleId,
           voice: rest,
@@ -718,6 +730,15 @@ export class Player {
     return p.baseScore * channelVolume(this.mixerNow(), { gridY: p.row });
   }
 
+  /** `scoreOf` for every walk, on the pass's own steps. */
+  private walksOf(p: Planned, passSteps: number): PoolWalks {
+    const channel = channelVolume(this.mixerNow(), { gridY: p.row });
+    return {
+      from: p.baseWalks.from + passSteps,
+      scores: p.baseWalks.scores.map((score) => score * channel),
+    };
+  }
+
   /**
    * Whether the engine would give this note a record at all.
    *
@@ -852,7 +873,7 @@ export class Player {
       const p = this.plan[i];
       if (!this.audible(p)) continue;
       const { end } = this.pool.add(p.note, {
-        start: p.poolStart, end: p.poolEnd, score: this.scoreOf(p),
+        start: p.poolStart, end: p.poolEnd, score: this.scoreOf(p), walks: this.walksOf(p, 0),
       });
       this.noteEnd.set(p.note, end);
     }
@@ -1156,6 +1177,7 @@ export class Player {
         start: p.poolStart + passSteps,
         end: poolEnd,
         score: this.scoreOf(p),
+        walks: this.walksOf(p, passSteps),
       });
       this.noteEnd.set(tag, end);
       if (!this.noteStart.has(tag)) this.noteStart.set(tag, this.passStep(p));

@@ -109,9 +109,11 @@ the 2, which is already here in the track's law.** Written into both, every trac
 over the game, and the owner heard the tracks too loud and the master clipping (2026-09-29); a
 test now holds Sampler × fader × Live's pan to the renderer's `level × channelVolume × 2 × P24`
 times `1 − p` and `p`. That test could not see the other 22.8 dB, which were Live's own (*Vel → Vol*
-in *The instruments* below). The 7.1 fold's narrowing of the image is not applied here either, for the
-same reason as in the renderer — the file's own pans — *39* in
-[open-questions.md](open-questions.md), and neither is its gain: the master stays at 0 dB (*53*).
+in *The instruments* below). The set's master is the engine's own sum, at 0 dB: nothing of the
+game's master bus is in it — no `SMS WaveHammer`, which Live does not have, and neither half of
+the 7.1 fold, so the file's own pans and not the fold's gain (*53* in
+[open-questions.md](open-questions.md); the bus itself is in
+[lbp-audio-engine.md](lbp-audio-engine.md)).
 
 ## The colours — Live's palette, measured
 
@@ -217,7 +219,8 @@ page's "our master bus on the master" at the engine's glue knob, `LBP_ALS_MASTER
   peak detector with a knee in decibels treats a signal `G` dB quieter the same way if its
   threshold is `G` dB lower. So the Threshold comes down by the fold's gain and the Gain goes up by
   it, and the Limiter hears what the tracker's limiter hears. With the bus on, the set plays at
-  the tracker's level; off, it stays 4.65 dB under it (*53*).
+  the level the tracker does on ours; off, it is the sum before any master bus, 4.65 dB under
+  the tracker's `'none'` and uncompressed where the game's bus would compress (*53*).
 - **The Compressor, not the Glue Compressor.** The Glue has ratios of 2, 4 and 10 and its times in
   steps; the Compressor takes our numbers as they are, and every edition of Live has it.
 - **Units and menus**, read off Live's presets and checked on the device: the Compressor's

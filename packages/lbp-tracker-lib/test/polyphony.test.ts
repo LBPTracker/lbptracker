@@ -6,6 +6,8 @@ import {
   VOICE_POOL_SIZE,
   allocateVoices,
   LiveVoicePool,
+  scoreAt,
+  walkVelocities,
   type PooledNote,
 } from '../src/polyphony.ts';
 
@@ -80,8 +82,16 @@ test('the incremental pool decides exactly what the offline one decides', () => 
         // Coarse starts and lengths, so ties and exact abutments are common.
         const start = Math.floor(rand() * 24);
         const end = start + Math.floor(rand() * 8);
-        // Scores off a short ladder, so ties on score happen constantly.
-        notes.push({ start, end, score: Math.floor(rand() * 4) / 4 });
+        // Scores off a short ladder, so ties on score happen constantly --
+        // and on most notes a few walks off the same ladder, so a held note's
+        // score moves under the notes that arrive while it plays.
+        const walked = Array.from({ length: Math.floor(rand() * 4) }, () => Math.floor(rand() * 4) / 4);
+        notes.push({
+          start,
+          end,
+          score: Math.floor(rand() * 4) / 4,
+          ...(walked.length > 0 ? { walks: { from: start + 1, scores: walked } } : {}),
+        });
       }
 
       const offline = allocateVoices(notes, poolSize);
@@ -108,4 +118,86 @@ test('the incremental pool decides exactly what the offline one decides', () => 
       }
     }
   }
+});
+
+test('notes starting together are taken in rank order, then input order', () => {
+  // On the engine's clock the walk spawns a step's notes from the last clip to
+  // the first (`0x0300`), so the render ranks them by negated track index.
+  const notes: PooledNote[] = Array.from({ length: 31 }, () => note(0, 100, 0.9));
+  notes.push({ start: 10, end: 100, score: 0.2, rank: 0 });
+  notes.push({ start: 10, end: 100, score: 0.2, rank: -1 });
+  const out = allocateVoices(notes);
+  // The rank -1 note goes first and takes the last free record; the rank 0
+  // note then steals the quietest, which is that one.
+  assert.equal(out[32].end, 10, 'stolen by the note ranked after it');
+  assert.equal(out[31].end, 100);
+});
+
+// ---------------------------------------------------------------- the walk
+
+/** A record as `walkVelocities` reads it: a position in thirds and a velocity. */
+const point = (step: number, third: number, velocity: number) => ({ thirds: 3 * step + third, gain: velocity / 127 });
+const near = (actual: readonly number[], expected: readonly number[]) => {
+  assert.equal(actual.length, expected.length, `${actual} against ${expected}`);
+  actual.forEach((a, i) => assert.ok(Math.abs(a - expected[i]) < 1e-12, `walk ${i}: ${a} against ${expected[i]}`));
+};
+
+test('the walk reads the volume ramp at each whole step and stops at the gate', () => {
+  // 127 to 0 over four steps from step 10: the walks at 11..14 read the ramp,
+  // and the walk at 15 closes the gate (`0x3a4b`) still writing the end's 0.
+  near(walkVelocities([point(10, 0, 127), point(14, 0, 0)]), [0.75, 0.5, 0.25, 0, 0]);
+  // A one-record note: the walk after the claim closes it.
+  near(walkVelocities([point(3, 0, 64)]), [64 / 127]);
+});
+
+test('a sub-step record is taken at its whole step’s walk, at its own velocity', () => {
+  // 127 at 10, 63.5 at 12⅓, held to 14. At the walk of 12 the record at 12⅓ is
+  // already current (`0x3c14`: the playhead is not below its STEP), so +0x0c is
+  // its own velocity, not the ramp's 1 - 2/7 · 0.5 between the two.
+  const out = walkVelocities([point(10, 0, 127), point(12, 1, 63.5), point(14, 0, 63.5)]);
+  assert.ok(Math.abs(out[0] - (1 - 0.5 / (7 / 3))) < 1e-12, 'walk 11 is on the ramp');
+  assert.ok(Math.abs(out[1] - 0.5) < 1e-12, 'walk 12 is the sub-step record’s own velocity');
+});
+
+test('the cursor moves one record per walk, so three records in a step trail by a walk', () => {
+  // Records at 10, 10⅓, 10⅔ and 13. At the walk of 11 the cursor has moved only
+  // to 10⅓ (`0x3a66`), whose slide runs to 10⅔ -- already past, so no catch-up
+  // (`0x3ea9`) -- and +0x0c is 10⅓'s own 0.5; a sampled ramp would read 1/7.
+  near(
+    walkVelocities([point(10, 0, 127), point(10, 1, 63.5), point(10, 2, 0), point(13, 0, 127)]),
+    [0.5, 4 / 7, 1, 1],
+  );
+});
+
+test('a held note scores its claim until its first walk, and its last walk after its gate', () => {
+  const held: PooledNote = { start: 4, end: 20, score: 0.9, walks: { from: 5, scores: [0.6, 0.3, 0.1] } };
+  assert.equal(scoreAt(held, 4), 0.9, 'a note arriving with it meets the claim');
+  assert.equal(scoreAt(held, 4 + 2 / 3), 0.9);
+  // ❗ The walk at 5 runs before the step's notes are spawned (`0x0eef`, then `0x0f1c`).
+  assert.equal(scoreAt(held, 5), 0.6);
+  assert.equal(scoreAt(held, 5 - 1e-9), 0.6, 'an ulp under the walk is the walk');
+  assert.equal(scoreAt(held, 6 + 1 / 3), 0.3);
+  assert.equal(scoreAt(held, 15), 0.1, 'frozen once the gate has closed (`0x395f` → `0x3f06`)');
+  assert.equal(scoreAt({ start: 0, end: 9, score: 0.4 }, 7), 0.4, 'no walks, the claim holds');
+});
+
+test('a note whose volume falls is stolen as it falls, not at the score it opened with', () => {
+  // The shape of C4K3 S0NG at 25.85 s (*29* in steering/open-questions.md):
+  // the pool is full of notes at 0.15, one `mime_artist` note claimed at
+  // 0.3396 has faded to 0.0266 by the walk, and a note arrives. Scored at its
+  // claim the fading note is the dearest thing held and a 0.15 goes instead.
+  const notes: PooledNote[] = Array.from({ length: 31 }, () => ({ start: 206, end: 230, score: 0.15 }));
+  notes.push({ start: 220, end: 224.5, score: 0.3396, walks: { from: 221, scores: [0.2, 0.1, 0.0266, 0.0266] } });
+  notes.push({ start: 224, end: 228, score: 0.375 });
+  const out = allocateVoices(notes);
+  assert.equal(out[31].end, 224, 'the fading note goes');
+  assert.ok(out.slice(0, 31).every((r) => r.end === 230), 'every held note at 0.15 survives');
+  const claimed = allocateVoices(notes.map(({ walks: _, ...n }) => n));
+  assert.equal(claimed[0].end, 224, 'without its walks the pool steals a 0.15 note');
+
+  const pool = new LiveVoicePool();
+  notes.forEach((n, i) => {
+    const { stole } = pool.add(i, n);
+    if (i === 32) assert.deepEqual(stole, { index: 31, at: 224 });
+  });
 });

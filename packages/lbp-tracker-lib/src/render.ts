@@ -25,15 +25,13 @@
  * the pipeline is deterministic and depends on its seed and nothing else.
  */
 
-import { WaveHammer } from './audio/compressor.ts';
 import {
   Echo,
-  FOLD_GAIN,
   Reverb,
   clipToUnit,
   reverbPreset,
 } from './audio/effects.ts';
-import { MasterBus, type MasterSettings } from './audio/master.ts';
+import { MasterStage, type MasterChoice } from './audio/master-stage.ts';
 import {
   BLOCK_FRAMES,
   DECLICK_SECONDS,
@@ -52,11 +50,29 @@ import {
 } from './envelope.ts';
 import { resolveSlot } from './instrument.ts';
 import { LFO_PARAMS, OUTPUT_PARAMS, STACK_PARAMS, echoSendLevel } from './params.ts';
-import { VOICE_POOL_SIZE, allocateVoices } from './polyphony.ts';
+import {
+  VOICE_POOL_SIZE,
+  allocateVoices,
+  walkVelocities,
+  type PooledNote,
+  type PoolWalks,
+} from './polyphony.ts';
 import { channelVolume, schedule, type Sequencer } from '@lbptracker/cwlib/project.ts';
 import { type RInstrument } from './rinstrument.ts';
 import { blockRoot, notePitch } from './scale.ts';
 import { swungFrame } from './swing.ts';
+import { engineClock } from './engine-clock.ts';
+import {
+  THIRD32,
+  closingWalk,
+  detune32,
+  engineWalks,
+  modulation32,
+  param32,
+  phase32,
+  unit32,
+} from './engine-record.ts';
+import { clipStepsFor } from './song.ts';
 import { pitchRatio, samplesPerStep, velocityGain } from './voice.ts';
 
 /** The output rate. The engine's own is hard-coded to this too. */
@@ -103,28 +119,21 @@ export interface RenderOptions {
   readonly voiceLimit?: number;
   /** Whether the plugin's own hard clip to +-1 runs. Defaults to on. */
   readonly clip?: boolean;
-  /**
-   * Run `SMS WaveHammer`, the compressor the game's chain ends in.
-   *
-   * ⚠️ **Default OFF, and that is a deviation from the measured chain.** The DSP
-   * itself is not in doubt: `tools/runhammer.py` loads `fmodsmswavehammer.prx`
-   * and executes it, and `packages/lbp-tracker-lib/test/compressor.test.ts` pins
-   * `packages/lbp-tracker-lib/src/audio/compressor.ts` against vectors from that run to better than 2e-5.
-   * It is switched off because the listener judged it wrong on 2026-09-06, and
-   * a listening report outranks a reading of the binary here.
-   *
-   * ❗ **The likeliest reason it sounds wrong is not the compressor.** It costs a
-   * real render 6.94 dB of RMS, and it only takes that much if the signal
-   * reaching it is well above the -21 dBFS knee. If our absolute level into the
-   * chain is too hot, a faithful compressor will squash a signal the game's own
-   * one would barely touch — so this switch is masking a level question, not
-   * settling one. See question 38 in `steering/open-questions.md`.
-   */
-  readonly compressor?: boolean;
   /** GUID -> playback-rate factor, for octave A/Bs. */
   readonly pitchShift?: ReadonlyMap<number, number>;
   /** The PRNG seed. Fixed by default, so a render is reproducible. */
   readonly seed?: number;
+  /**
+   * Replaces the seeded PRNG outright: every draw a note makes -- the stack
+   * layers' start, detune and spread, the three LFO phases -- comes from this.
+   *
+   * ⚠️ **For differential tests only.** `tools/prxrun.py` runs the game's own
+   * `fmodextinput.prx`, whose `rand` is stubbed to a constant there, and a
+   * constant here draws the same numbers whatever order the two take them in;
+   * the engine's order is not this file's (`0x1a70` draws per layer first and
+   * the phases last).
+   */
+  readonly random?: () => number;
   readonly onProgress?: RenderProgress;
   /**
    * How long a **one-shot** -- a slot whose sample has no loop -- ignores the
@@ -180,13 +189,30 @@ export interface RenderOptions {
   /** Run the echo. Default true. Same reasoning as `reverb`. */
   readonly echo?: boolean;
   /**
-   * **Our own master bus**, after the fold: a glue compressor and a limiter.
+   * Place onsets, gates and steals where the engine's step clock puts them:
+   * on its 256-frame blocks, a chunk after the step (`engine-clock.ts`).
    *
-   * ❗ Nothing in the game does this, so it is off unless asked for. Passing
-   * settings turns it on; see `audio/master.ts` and the deliberate deviation
-   * in steering/open-questions.md.
+   * ⚠️ **Default off, which is not the engine's.** The tracker starts a note on
+   * its own frame -- *3* in steering/open-questions.md, a decision with the
+   * capture that would settle it -- and this is the engine as measured, for
+   * a differential test against the module and for an A/B.
    */
-  readonly master?: MasterSettings | null;
+  readonly engineClock?: boolean;
+  /**
+   * The master bus: what follows `SMS Reverb`, where the sequencer's chain ends
+   * (`audio/master-stage.ts`).
+   *
+   * ✔ **Default `'game'`, the game's**: `SMS WaveHammer` as the game ships it,
+   * then the 7.1 fold a stereo listener hears, its gain and its narrowing.
+   * Settings put **ours** there instead -- the fold's gain, then the glue and
+   * the limiter of `audio/master.ts`, nothing the game does (question 42 in
+   * steering/open-questions.md). `'none'` is the fold's gain alone, the
+   * file's own image and no compressor: this renderer's default until 0.2.43.
+   *
+   * ⚠️ The game's bus compresses whatever crest factor reaches it, and whether
+   * ours is the game's is question 38 in steering/open-questions.md.
+   */
+  readonly master?: MasterChoice;
   /**
    * Called with every voice as it is handed to the mixer, and with the identity
    * of the sample it plays.
@@ -212,13 +238,19 @@ export interface RenderOptions {
        * What the voice pool sees: the note's occupancy in STEPS, and its score.
        *
        * A live scheduler that wants to run the pool itself needs exactly these
-       * three -- `allocateVoices` uses nothing else -- and it needs them in the
+       * four -- `allocateVoices` uses nothing else -- and it needs them in the
        * allocator's own units, which are steps rather than frames because that
        * is what the engine counts.
        */
       poolStart: number;
       poolEnd: number;
       score: number;
+      /**
+       * The score after each walk the note sees, in the same steps as
+       * `poolStart` -- `PooledNote.walks`, which a live pool needs beside
+       * `score` to steal the note the engine would once its volume falls.
+       */
+      walks: PoolWalks;
       /**
        * The note this voice is.
        *
@@ -295,7 +327,10 @@ export interface RenderResult {
   readonly echoRel: number;
   readonly reverbRel: number;
   readonly clippedFrames: number;
-  /** The deepest gain reduction `SMS WaveHammer` applied, or 1 when it is off. */
+  /**
+   * The deepest gain `SMS WaveHammer` applied, its constant −1.84 dB included,
+   * or 1 when the master bus is not the game's.
+   */
   readonly compressorGain: number;
   readonly peak: number;
   readonly rms: number;
@@ -309,6 +344,22 @@ export interface RenderResult {
    * or it lies, and these are where `packages/lbp-tracker-web/src/render-app.ts`'s weights come from.
    */
   readonly timings: { readonly voicesMs: number; readonly mixMs: number; readonly effectsMs: number };
+}
+
+/**
+ * A note's length to its gate as the walk closes it (`closingWalk`): the
+ * file's `endPosition − startPosition + 1`, plus the walks the cursor lost to
+ * records bunched inside a step. Only those notes change, by whole steps, so
+ * every other note keeps its duration to the bit.
+ */
+function walkedDuration(e: {
+  readonly step: number;
+  readonly durationSteps: number;
+  readonly points: readonly { readonly step: number }[];
+}): number {
+  const steps = e.points.map((point) => Math.floor(Math.round((e.step + point.step) * 3) / 3));
+  const late = closingWalk(steps) - (steps[steps.length - 1] + 1);
+  return late > 0 ? e.durationSteps + late : e.durationSteps;
 }
 
 /** Render one sequencer end to end. */
@@ -327,18 +378,21 @@ export async function renderSequencer(
     noKeyTrack = false,
     voiceLimit = VOICE_POOL_SIZE,
     clip = true,
-    compressor: withCompressor = false,
     pitchShift = new Map<number, number>(),
     oneShot = 'gate',
     releaseTail: withReleaseTail = false,
     declick: withDeclick = true,
     reverb: withReverb = true,
     echo: withEcho = true,
-    master: masterSettings = null,
+    engineClock: withEngineClock = false,
+    master: masterChoice = 'game',
     onVoice,
     planOnly = false,
     onProgress,
   } = options;
+  // The two A/Bs that play a slot at its own rate, whatever its `pitched`.
+  const forcedUnpitched = (wav: SampleBuffer, guid: number): boolean =>
+    (unpitchedPercussion && wav.loop === undefined) || unpitchedGuids.includes(guid);
   const now = () => (typeof performance === 'undefined' ? Date.now() : performance.now());
   const voicesStarted = now();
   // ⚠️ That claim used to be false: `VoiceSpec.random` was never set, so the LFO
@@ -346,12 +400,12 @@ export async function renderSequencer(
   // different files. It surfaced when a hash was used to check that an
   // optimisation had not changed the output -- the hash changed on every run.
   let seed = options.seed ?? 0x2545f491;
-  const rand = () => {
+  const rand = options.random ?? (() => {
     seed ^= seed << 13;
     seed ^= seed >>> 17;
     seed ^= seed << 5;
     return ((seed >>> 0) % 0x100000) / 0x100000;
-  };
+  });
 
   const framesPerStep = samplesPerStep(RATE, seq.tempo);
   // End to end means the last step plus whatever tail the effects still have
@@ -368,8 +422,61 @@ export async function renderSequencer(
   const mixer = new Mixer(RATE);
 
   const fromFrame = Math.round(fromArg * RATE);
+  const fromStep = fromFrame / framesPerStep;
+  // Frames for a position in steps, on the render's clock: the tracker's own
+  // (swung, to the frame) unless the engine's was asked for.
+  const clock = withEngineClock
+    ? engineClock(seq.tempo, seq.swing, frames, fromStep)
+    : undefined;
+  const onsetAt = (step: number): number =>
+    clock ? clock.onsetFrame(step + fromStep) : Math.round(swungFrame(step, framesPerStep, seq.swing));
+  const gateAt = (step: number): number =>
+    clock ? clock.gateFrame(step + fromStep) : Math.round(swungFrame(step, framesPerStep, seq.swing));
+  const walkAt = (step: number): number =>
+    clock ? clock.walkFrame(step + fromStep) : Math.round(swungFrame(step, framesPerStep, seq.swing));
+  // ❗ **Which clips the walk lets spawn** (`0x0280`). It scans the clip
+  // headers from the LAST to the first with a mask of the rows already taken,
+  // starting empty (`0x0f15`): a clip on a taken row is skipped (`0x035d`),
+  // as is one not yet started or past its length (`0x036e`, `0x0393`), and an
+  // active one takes its row (`0x05d9`) -- one clip per row, the later header
+  // winning. ❗ And the scan **stops once rows 0..7 are all taken**
+  // (`0x05dc`, `cmp esi, 0xff`), so with every one of the first eight rows
+  // busy a clip on row 8 or below that the scan has not reached yet never
+  // spawns: measured on song 179190, whose row 8 the module drops from step
+  // 128, where rows 0, 1, 5 and 7 come in. The length is `PInstrument+0x60`,
+  // which nothing reads yet (steering/open-questions.md); the editor's rule
+  // from the highest record stands in for it.
+  const clipSpan = seq.tracks.map((track) => {
+    let highest = 0;
+    for (let i = 0; i + 4 <= track.records.length; i += 4) {
+      highest = Math.max(highest, track.records[i] & 0x7f);
+    }
+    return { start: Math.max(0, track.gridX) * 16, length: clipStepsFor(highest), row: track.gridY };
+  });
+  const activeAt = new Map<number, Set<number>>();
+  const spawns = (trackIndex: number, step: number): boolean => {
+    let active = activeAt.get(step);
+    if (active === undefined) {
+      active = new Set<number>();
+      let mask = 0;
+      for (let k = clipSpan.length - 1; k >= 0; k -= 1) {
+        const { start, length, row } = clipSpan[k];
+        const bit = 1 << (row & 31);
+        if ((mask & bit) !== 0) continue;
+        const rel = step - start;
+        if (rel < 0 || rel >= length) continue;
+        active.add(k);
+        mask = (mask | bit) >>> 0;
+        if (mask === 0xff) break;
+      }
+      activeAt.set(step, active);
+    }
+    return active.has(trackIndex);
+  };
   const events = schedule(seq)
+    .filter((e) => spawns(e.track, Math.floor(e.step)))
     .filter((e) => e.step * framesPerStep < fromFrame + frames)
+    .map((e) => ({ ...e, durationSteps: walkedDuration(e) }))
     .map((e) => ({ ...e, step: e.step - fromFrame / framesPerStep }))
     .filter((e) => (e.step + e.durationSteps) * framesPerStep > 0)
     .filter((e) => (onlyGuids.length === 0 || onlyGuids.includes(e.guid)))
@@ -485,10 +592,7 @@ export async function renderSequencer(
     // `sampleRate / RATE` until 2026-09-08 and played them in tune, which the
     // game does not; *43* in steering/answered-questions.md.
     const playbackRate =
-      ((unpitchedPercussion && slot.wav.loop === undefined) ||
-      unpitchedGuids.includes(event.guid)
-        ? 1
-        : pitchRatio(definition, note, seq.tempo)) *
+      (forcedUnpitched(slot.wav, event.guid) ? 1 : pitchRatio(definition, note, seq.tempo)) *
       (pitchShift.get(event.guid) ?? 1);
     const hold = holdFramesFor(slot.wav);
     const stretched =
@@ -509,7 +613,15 @@ export async function renderSequencer(
     // 0.2 s does not hold a record for its 1 s release, and this renderer had
     // it doing exactly that -- which squeezed the quietest instrument in the
     // song out of the pool. `stretched` is that length, in output frames.
-    const runsOut = slot.wav.loop === undefined ? stretched / framesPerStep : Infinity;
+    // ❗ The test runs once the chunk is out (`0x3035`), so the record goes at
+    // the end of the chunk it runs out in, and a step's walk finds it free when
+    // that chunk began before the step: `freedBy`, on the engine's clock.
+    const runsOut =
+      slot.wav.loop !== undefined
+        ? Infinity
+        : clock
+          ? clock.freedBy(onsetAt(event.step) + stretched) - fromStep - event.step
+          : stretched / framesPerStep;
     // ❗ **And a volume ramp that reaches zero gives the record back too.**
     // `0x209a`/`0x20de`: the renderer frees a record after the chunk whose
     // end-of-chunk volume -- the velocity ramp -- is not positive. That is a
@@ -518,12 +630,20 @@ export async function renderSequencer(
     // An opening zero that holds costs one block: 3,132 corpus notes are
     // written that way and never sound in the game. `Voice.silentAfter` is the
     // mixer's half of the same rule.
-    let silentAt = Infinity;
+    // ❗ **And so does an envelope that decays to nothing with the gate open**:
+    // `0x20e0` reads the envelope's end-of-chunk value whatever its stage, so a
+    // sustain of 0 frees the record once the attack and the decay have run --
+    // 18 of the 68 instruments are struck, sustain 0. Freed after that chunk.
+    const decayed =
+      amp.sustain <= 0 && amp.attack + amp.decay < gateSeconds
+        ? ((amp.attack + amp.decay) * RATE + BLOCK_FRAMES) / framesPerStep
+        : Infinity;
+    let silentAt = decayed;
     for (let k = 0; k < event.points.length; k += 1) {
       const point = event.points[k];
       const next = event.points[k + 1];
       if (point.volume === 0 && (next === undefined || next.volume === 0)) {
-        silentAt = point.step + BLOCK_FRAMES / framesPerStep;
+        silentAt = Math.min(silentAt, point.step + BLOCK_FRAMES / framesPerStep);
         break;
       }
     }
@@ -578,18 +698,43 @@ export async function renderSequencer(
     const track = seq.tracks[e.track];
     return channelVolume(seq, track) * track.level > 0;
   };
+  // ❗ **The score after every walk, as well as at the claim.** `0x3930`
+  // rewrites both factors at each step's walk, and `[+0x0c]` from whichever
+  // control point is current, caught up along the volume slide -- so a note
+  // fading out becomes the cheapest victim while it fades, and is scored at its
+  // last point once its gate has closed. On `C4K3 S0NG` at 25.85 s that is
+  // `mime_artist`'s note written 115 → 9, scoring 0.0266 at the walk that
+  // steals it where the claim scored it 0.3396 (*29* in
+  // steering/open-questions.md). The walks are on the song's whole steps, on
+  // either clock: they are where the engine runs them.
+  const walksOf = events.map((e): PoolWalks => {
+    const track = seq.tracks[e.track];
+    const at = e.step + fromStep;
+    const records = e.points.map((point) => ({
+      thirds: Math.round((at + point.step) * 3),
+      gain: velocityGain(point.volume),
+    }));
+    const factor = channelVolume(seq, track) * track.level;
+    return {
+      from: Math.floor(records[0].thirds / 3) + 1 - fromStep,
+      scores: walkVelocities(records).map((gain) => factor * gain),
+    };
+  });
   const entries: { eventIndex: number }[] = [];
   const pooled = allocateVoices(
     events.flatMap((e, i) => {
       if (!audible(e)) return [];
       const track = seq.tracks[e.track];
       const prep = prepared[i];
-      const note = {
-        start: e.step,
+      const note: PooledNote = {
+        // On the engine's clock a note takes its record at the walk of its
+        // whole step, sub-step or not, and the walk spawns the last clip first.
+        start: clock ? Math.floor(e.step + fromStep) - fromStep : e.step,
+        ...(clock ? { rank: -e.track } : {}),
         end: e.step + (prep ? prep.occupancySteps : e.durationSteps),
         // ❗ **`voice[+0x04] * voice[+0x0c]`, and the first factor carries the
         // clip's own `Level`.** Measured in `sub_0x3930`, which rewrites both
-        // once per block:
+        // at every walk (`walksOf`, above):
         //
         // ```
         // 0x3afc  xmm0 = [state + 0x1a68 + 4*chan]   ; the channel's volume
@@ -605,13 +750,10 @@ export async function renderSequencer(
         // the allocator steals the wrong voices — a quiet instrument is meant to
         // be the cheap one, and was as expensive as the loudest.
         //
-        // ⚠️ The envelope is still not in it, and neither is the note's volume
-        // **automation**: the engine re-reads `[record + 0x0c]` from whichever
-        // control point is current, so a note fading out really does become the
-        // cheapest victim. `allocateVoices` scores a note once, at its opening
-        // velocity. That one is a real divergence; see question 29 in
-        // steering/answered-questions.md.
+        // The envelope is not in it: the engine ranks by what the note asks
+        // for, not by how loud it happens to be.
         score: channelVolume(seq, track) * track.level * velocityGain(e.volume),
+        walks: walksOf[i],
       };
       entries.push({ eventIndex: i });
       return [note];
@@ -649,6 +791,11 @@ export async function renderSequencer(
     const slot = loaded.slots[Math.min(zone, loaded.slots.length - 1)];
     const definition = loaded.inst.slots[Math.min(zone, loaded.inst.slots.length - 1)];
     const p = loaded.inst.params;
+    // ❗ An unpitched slot ignores the note's pitch at both ends of every chunk:
+    // `0x1d79` and `0x1e27` test `slot+0x90` and skip both `exp2f` calls,
+    // leaving the ratio at 1, so a glide moves nothing. Ramping it anyway put
+    // `baiyon_bass_01`'s pitch glide +6.8 dB off the module.
+    const glides = definition.pitched && !forcedUnpitched(slot.wav, event.guid);
     // The note's own modulation picks a point inside EVERY parameter's `x..y`
     // range -- `voice+0x28` in the engine, `(byte3 & 0x0f) / 15`. Reading `.x`
     // instead, as this did, pins every note to the low end of every range: 19% of
@@ -687,7 +834,7 @@ export async function renderSequencer(
     const ramp = (() => {
       const raw = event.points.map((point) => ({
         step: point.step,
-        semis: notePitch(point.pitch, track.scale, blockRoot(track.key)) - note,
+        semis: glides ? notePitch(point.pitch, track.scale, blockRoot(track.key)) - note : 0,
         gain: velocityGain(point.volume),
         mod: point.modulation,
       }));
@@ -714,26 +861,71 @@ export async function renderSequencer(
     })();
     // One clock for the three ramps: frames of the note's own sounding time,
     // swung, measured from its start.
+    // On the engine's clock a slide is linear in the playhead, which passes a
+    // position inside the chunk it falls in, and the voice starts at a chunk's
+    // top -- so a point's frame is measured from the onset, the first one may
+    // sit before it, and it stays fractional: rounded, a two-octave glide
+    // (`Vision`, 27 to 51 in a step) started 0.45 frames early and drifted to
+    // -27 dB against the module.
+    const onset = onsetAt(event.step);
+    // The walk that makes a point the record's, on the engine's clock:
+    // `AutomationPoint.from`. The first is the spawn, at or before the onset.
+    const walkOf = (offset: number): { from?: number } =>
+      clock ? { from: offset <= 0 ? 0 : walkAt(event.step + offset) - onset } : {};
     const frameOf = (offset: number): number =>
-      Math.round(
-        swungFrame(event.step + offset, framesPerStep, seq.swing) -
-          swungFrame(event.step, framesPerStep, seq.swing),
-      );
+      clock
+        ? clock.frameAt(event.step + offset + fromStep) - onset
+        : Math.round(
+            swungFrame(event.step + offset, framesPerStep, seq.swing) -
+              swungFrame(event.step, framesPerStep, seq.swing),
+          );
     // The modulation ramp, only when the note moves it: 96.4% of notes get
     // `undefined` and take the plain path.
     const morph = (() => {
       if (ramp.every((point) => point.mod === ramp[0].mod)) return undefined;
+      // The walk's view of the modulation, for the drive and the echo send
+      // (`held` on the mixer's morph): at every whole step past the spawn,
+      // `0x3930` takes the value the previous call stored and stores this
+      // step's. Ticks run to the one after the last point, where the walk
+      // closes the gate (`0x3a4b`) and still evaluates once; past it the
+      // modulation is flat, so the last value holds.
+      const modAtStep = (offset: number): number => {
+        let i = 0;
+        while (i + 1 < ramp.length && ramp[i + 1].step <= offset) i += 1;
+        const a = ramp[i];
+        const b = ramp[i + 1];
+        if (b === undefined || offset <= a.step) return a.mod;
+        return a.mod + ((b.mod - a.mod) * (offset - a.step)) / (b.step - a.step);
+      };
+      const last = ramp[ramp.length - 1].step;
+      const held = [{ frame: 0, value: ramp[0].mod }];
+      let stored = ramp[0].mod;
+      for (let step = Math.floor(event.step) + 1; step - event.step <= last + 1; step += 1) {
+        const offset = step - event.step;
+        if (stored !== held[held.length - 1].value) {
+          // The walk's own frame: the value holds from the chunk after it.
+          held.push({ frame: clock ? walkAt(step) - onset : frameOf(offset), value: stored });
+        }
+        stored = modAtStep(offset);
+      }
       return {
+        held,
         params: p,
         opening: P(OUTPUT_PARAMS.level),
         echoOffset: 2 * track.echoSend - 1,
-        points: ramp.map((point) => ({ frame: frameOf(point.step), value: point.mod })),
+        points: ramp.map((point) => ({
+          frame: frameOf(point.step),
+          value: point.mod,
+          ...walkOf(point.step),
+        })),
+        ...(noKeyTrack ? { noKeyTrack } : {}),
       };
     })();
     const automation = ramp.map((point) => ({
       frame: frameOf(point.step),
       pitch: point.semis,
       gain: point.gain,
+      ...walkOf(point.step),
     }));
     const lfo = (n: 0 | 1 | 2) => ({
       rate: P(LFO_PARAMS[n].rate),
@@ -747,13 +939,65 @@ export async function renderSequencer(
     // three-layer patch like `synth/ghost.rinst` came out as one thin copy.
     const layers = prep.layers;
     const stackGain = Math.sqrt(1 / layers);
-    const sampleFrames = slot.wav.channels[0].length;
+    // ❗ The sample's own length, the slot's `+0x78` that `0x1ad1` reads -- not
+    // the buffer's, which a loop ending near the end has made 16 frames longer
+    // (`patchLoop`). The buffer's put `electric_piano`'s second layer up to 16
+    // frames late on a full random start: -8.6 dB against the module.
+    const sampleFrames = slot.wav.loop?.frames ?? slot.wav.channels[0].length;
     const bipolar = () => rand() * 2 - 1;
     // ❗ **One draw per NOTE, not per layer.** `0x1bed`-`0x1c3e` writes the three
     // phases to `voice+0x98`/`+0x9c`/`+0xa0` -- fixed offsets, no layer index --
     // after the stack loop has run, so a stacked voice's layers share a base and
     // differ only by the fan below.
-    const basePhase = [0, 1, 2].map(() => rand() * 2 * Math.PI);
+    // Float32, as `0x1bf6`-`0x1bfa` scale the draw.
+    const basePhase = [phase32(rand()), phase32(rand()), phase32(rand())] as const;
+    // ❗ **On the engine's clock, the record's own float32 arithmetic.** The
+    // walk's values and slides at every step (`engineWalks`), read off the
+    // clock's float32 playhead per chunk, and every layer's rate formed in
+    // float32 and only stepped in double (`EngineRecord` in `audio/mixer.ts`).
+    // In double, `mosquito` held at 240 bpm drifted 0.0056 frames in four
+    // seconds and `Vision`'s two-octave glides 0.05 frames in one step, where
+    // the module is matched to 1e-5 (`engine-record.ts`).
+    const engine = (() => {
+      if (!clock) return undefined;
+      // The walk counts steps inside the clip (`0x3a31`), and its catch-up
+      // rounds by the step's size, so the records go in the clip's own steps.
+      const clipThirds = Math.round((event.step + fromStep - track.stepOffset) * 3);
+      const points = event.points.map((point) => {
+        const thirds = clipThirds + Math.round(point.step * 3);
+        const step = Math.floor(thirds / 3);
+        return {
+          step,
+          subStep: thirds - 3 * step,
+          pitch: notePitch(point.pitch, track.scale, blockRoot(track.key)),
+          velocity: point.volume,
+          nibble: point.timbre & 0x0f,
+        };
+      });
+      // The spawn's walk on the song's grid; the k-th walk after it holds from
+      // the end of the chunk that runs it.
+      const spawn = Math.floor(Math.round((event.step + fromStep) * 3) / 3);
+      const walks = engineWalks(points, points[0].step + 1).map((walk, k) => ({
+        ...walk,
+        frame: k === 0 ? 0 : clock.walkFrame(spawn + k) - onset,
+      }));
+      return {
+        walks,
+        startThird: Math.fround(points[0].subStep * THIRD32),
+        slot: {
+          fineTune: definition.fineTune,
+          root: definition.baseNote,
+          pitched: glides,
+          ...(definition.fitBpm && definition.baseBpm > 0
+            ? { tempoRatio: Math.fround(Math.fround(seq.tempo) / Math.fround(definition.baseBpm)) }
+            : {}),
+        },
+        shift: pitchShift.get(event.guid) ?? 1,
+        params: p,
+        ...(noKeyTrack ? { noKeyTrack } : {}),
+        lfoPhases: basePhase,
+      };
+    })();
 
     const spec: VoiceSpec = {
       sample: slot.wav,
@@ -773,16 +1017,16 @@ export async function renderSequencer(
       // (`0x3cd8`-`0x3cf3`) and again to 0.95 in the block; `driveCoefficient`
       // does the second, so only the first belongs here.
       drive: Math.min(1, Math.max(0, P(OUTPUT_PARAMS.drive))),
-      // The file's own pan. See {@link PAN_WIDTH} for the narrowing this
-      // renderer deliberately does not apply.
+      // The file's own pan, as the plugin takes it. The narrowing a stereo
+      // listener hears ({@link PAN_WIDTH}) is FMOD's, after the clip and the
+      // compressor, so it belongs to the master bus and not here.
       pan: track.pan,
       // Swing bends the step clock, so every frame position goes through it.
-      startFrame: Math.round(swungFrame(event.step, framesPerStep, seq.swing)),
+      startFrame: onset,
+      ...(clock ? { engineGrid: { origin: onset, splits: clock.splits, chunks: clock.chunks }, engine } : {}),
       // The note's own end -- what closes the gate. A one-shot ignores it; see
       // `cutFrame` below, which nothing ignores.
-      endFrame: Math.round(
-        swungFrame(event.step + event.durationSteps, framesPerStep, seq.swing),
-      ),
+      endFrame: gateAt(event.step + event.durationSteps),
       envelope: evaluateAdsr(p, ADSR_PARAMS, mod),
       filter: {
         settings: {
@@ -836,7 +1080,10 @@ export async function renderSequencer(
       //
       // ⚠️ The three draws stay in this order: moving one changes every later
       // value in the seeded stream.
-      const detune = 1 + 0.05 * P(STACK_PARAMS.detune) * bipolar();
+      // The detune in float32, `+0x68 + 4i` as `0x1b0e`-`0x1b61` form it, from
+      // `Params[0]` at the first record's `+0x28`: the rate the voice forms on
+      // the engine's clock is the module's to the ulp only if this is.
+      const detune = detune32(param32(p[STACK_PARAMS.detune], modulation32(event.timbre & 0x0f)), unit32(rand()));
       // ⚠️ **The offset is summed with the pan and folded, not clamped.** The
       // engine adds them inside the DSP -- `0x25ab` loads `voice+0x18` and
       // `0x25b2` adds `voice + layer*4 + 0x7c` -- and the sum goes through
@@ -854,7 +1101,11 @@ export async function renderSequencer(
       // starts every drum hit at a uniformly random point inside its own
       // sample -- half a kick, no transient, a click at the discontinuity --
       // which is what a listener reported and what cost 11.6 dB of drum kit.
-      const offset = P(STACK_PARAMS.startOffset) * sampleFrames * rand();
+      // In float32 throughout, as `0x1ad8`-`0x1aff` multiply it, and only then
+      // widened into the record's double (`0x1b03`).
+      const offset = Math.fround(
+        Math.fround(Math.fround(P(STACK_PARAMS.startOffset)) * sampleFrames) * Math.fround(rand()),
+      );
       stack.push({
         detune,
         pan,
@@ -873,7 +1124,8 @@ export async function renderSequencer(
       // The allocator handing this record to a later note. Undefined when the
       // pool never came for it, which is the usual case.
       cutFrame:
-        cut === undefined ? undefined : Math.round(swungFrame(cut, framesPerStep, seq.swing)),
+        // The walk that hands the record over, on the engine's clock.
+        cut === undefined ? undefined : clock ? walkAt(cut) : onsetAt(cut),
       layers: stack,
     };
     // Offered to whoever asked and then mixed. A realtime player schedules
@@ -887,6 +1139,7 @@ export async function renderSequencer(
       poolEnd: event.step + (prep.occupancySteps ?? event.durationSteps),
       // The same two factors as the pool above, and for the same reason.
       score: channelVolume(seq, track) * track.level * velocityGain(event.volume),
+      walks: walksOf[eventIndex],
       note: eventIndex,
       startStep: event.step,
       // ❗ The note's own end, not the pool's occupancy: a voice may hold a
@@ -960,10 +1213,8 @@ export async function renderSequencer(
   let echoEnergy = 0;
   let reverbEnergy = 0;
   let clipped = 0;
-  const hammer = new WaveHammer();
-  // Ours, off unless the caller asked: see `RenderOptions.master`.
-  const master = masterSettings ? new MasterBus(RATE, masterSettings) : null;
-  let compressorGain = 1;
+  // The game's unless the caller asked otherwise: see `RenderOptions.master`.
+  const master = new MasterStage(RATE, masterChoice);
   const effectsStarted = now();
   for (let i = 0; i < frames; i += 1) {
     if (onProgress && (i & 0x3ffff) === 0) void onProgress('effects', i, frames);
@@ -1001,30 +1252,16 @@ export async function renderSequencer(
     reverbEnergy += r.left ** 2 + r.right ** 2;
     left[i] = dryL + r.left;
     right[i] = dryR + r.right;
-    // `Channel::addDSP` put the WaveHammer after the reverb, so it sees the sum.
-    // Its detector is causal, so applying the gain as it is computed is the same
-    // thing the engine does in three passes over a 256-frame block.
-    if (withCompressor) {
-      const g = hammer.gainFor(left[i], right[i]);
-      left[i] *= g;
-      right[i] *= g;
-      compressorGain = Math.min(compressorGain, g);
-    }
-    // ❗ **The fold's gain, and it belongs HERE.** FMOD's speaker matrix folds
-    // 7.1 to stereo after the whole DSP chain -- after the plugin's own clip,
-    // after the reverb, after the WaveHammer. It used to be folded into each
-    // voice instead, which put it 4.645 dB upstream of all three: our clip saw a
-    // signal the game's clip never sees at that level. See {@link FOLD_GAIN}.
-    left[i] *= FOLD_GAIN;
-    right[i] *= FOLD_GAIN;
-    // Ours, and last: past the fold there is nothing of the game's left to be
-    // faithful to. Off unless the caller asked for it.
-    if (master) {
-      const out = master.process(left[i], right[i]);
-      left[i] = out.left;
-      right[i] = out.right;
-    }
   }
+  // ❗ **The master bus, and it belongs HERE**: after the plugin's own clip and
+  // after the reverb, where `Channel::addDSP` put the WaveHammer and where
+  // FMOD's speaker matrix folds 7.1 to stereo. The fold's gain used to be
+  // folded into each voice instead, which put it 4.645 dB upstream of all
+  // three: our clip saw a signal the game's clip never sees at that level. One
+  // pass after the loop is the same as one per frame -- nothing in the bus
+  // feeds back -- and the WaveHammer's detector is causal, so a gain applied
+  // as it is computed is what the engine does in three passes over a block.
+  master.run(left, right, 0, frames);
 
   let peak = 0;
   let energy = 0;
@@ -1046,7 +1283,7 @@ export async function renderSequencer(
     echoRel: Math.sqrt(echoEnergy / dryEnergy),
     reverbRel: Math.sqrt(reverbEnergy / dryEnergy),
     clippedFrames: clipped,
-    compressorGain,
+    compressorGain: master.deepest,
     peak,
     rms: Math.sqrt(energy / (2 * frames)),
     echo,

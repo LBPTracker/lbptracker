@@ -106,13 +106,12 @@ updates each over 183 frames in three seconds, against the tick's ~30.
 
 
 
-The **G** beside the volume is `optMaster` from the bar, reading and writing the same switch as
-
-the Song/Mixer card, so the two cannot disagree; ⚠️ it is deliberately **not** given the accent
-
-colour the loop button takes, because the accent in that bar means the song's own state and this
-
-is the tracker's own doing (question 42).
+The **G** beside the volume is the engine card's `master` choice from the bar — unlit the game's
+master bus, lit ours — reading and writing the same choice as the Song/Mixer card, so the two
+cannot disagree; ⚠️ it is deliberately **not** given the accent colour the loop button takes,
+because the accent in that bar means the song's own state and ours is the tracker's own doing
+(question 42). The Keyboard view's worklet follows the same choice (`masterChoice` in
+`daw/session.ts`); the Render view has its own, which renders ours at its default glue.
 
 song travels with the render request.
 
@@ -378,7 +377,7 @@ calls it three ways:
 | a chip added, drawn, duplicated, removed, muted or soloed | the plan's voices carry the chip's id (`Planned.track`, the keys `load` is given), so `session.ts` sorts a change into chips gone (`Player.dropTracks`, one pass over the plan, any number) and chips to put in or swap (`Player.retrack`, one each); measured 2026-09-07 on Ascetic: a chip added while playing is one 3.5 ms retrack and no whole-plan pass, a row of 97 chips muted is one drop. More than eight chips to plan at once (a row of many unmuted, an undo across the board) is the whole plan again. ⚠️ **Every voice of a chip gone goes, handed over or not.** Keeping its voices up to the frontier, so that the plan "still held what the worklet had been given", kept them for good and the plan was no longer the audible song: a solo pressed while the song played held from the frontier on, and a seek back played the muted rows again up to it — measured 2026-09-09 on Ascetic, solo at step 32, 70 stale voices kept and 53 of them posted after a seek to 0; a looped section did the same every time round. Not posting twice is `repoint`'s job, by the frontier, not the filters'; the voices already in the worklet finish as they were going to, and the pool's replay forgets them with the plan | one track each |
 | the whole plan, when it comes to that | `Player.load(sequencerFromSong(song), restart = false)` — the plan is rebuilt through `renderSequencer`'s voice pass and swapped in under the running transport, debounced 180 ms; `nextIndex` lands after the furthest step already handed over (`handedUntilStep`), never at the playhead, so nothing in the look-ahead window is posted twice | yes |
 | tempo, swing, channel count, a fader, the board's rows | `Player.setSettings` — the plan holds musical positions and a gain with the channel factor divided out | no |
-| echo, reverb | `Player.setEffects` — one message to the worklet | no |
+| echo, reverb | `Player.setEffects` — one message to the worklet, sent on every whole-plan load and every `setSettings` too. The worklet builds a new echo on each one and keeps the reverb, re-applying the preset as the game does, a changed setting included; only switching the reverb on builds a new one (*A preset change on a running reverb* in [open-questions.md](open-questions.md)) | no |
 | a loop: the song's own, or a chip's section from the note panel | neither is a seek at the end (the pump ticks every 100 ms and posts 350 ms ahead, so that restarted late and spilt the next bars at every turn): the clock runs on unwrapped, `position()` folds it into the section, and each pass posts its voices at frame + pass × length, pool step + pass × steps, tag + pass × 2²⁴. Measured 2026-09-07 on Ascetic: every voice at its expected frame to the sample, passes exactly 96,000 frames apart, none outside the section. A section is whole cells, so its step count is even and the swing lines up between passes | no |
 
 ❗ **`boardRows` travels with the mixer settings.** `channelVolume` bands rows into channels only

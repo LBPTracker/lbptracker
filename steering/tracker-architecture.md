@@ -362,7 +362,9 @@ ones applied the way the page does, against a render of a sequencer that had the
   measured by `test/instrument.test.ts`. One that did would need the rebuild after all.
 - The pool is live for the same reason: the plan carries no cuts and `LiveVoicePool` applies the
   size per note. Its score is not immune — `channelVolume * velocityGain` means a fader changes
-  which voice is stolen — so the plan carries `baseScore` as it carries `baseGain`.
+  which voice is stolen — so the plan carries `baseScore` as it carries `baseGain`, and
+  `baseWalks`, the score at each later walk, the same way (*The voice pool* in
+  [synth-engine.md](synth-engine.md)).
 - ❗ **The pass belongs to the section being gone round, and the section can change under the
   clock.** A loop is not a seek: the clock runs on unwrapped and voices are posted with `pass ×
   length` added. Switch the song's loop off during the second pass, clear or move a chip's region,
@@ -511,7 +513,7 @@ the quietest (`polyphony.ts`).
 | where | what |
 |---|---|
 | `packages/cwlib-ts/src/` | `stream.ts` (big-endian reader, varints, `Revision` gates), `serializer.ts`, `resource.ts` (container, dependency table), `thing.ts` + `parts.ts` (the walk, 50 readers), `level.ts` (worlds, plans, chunks, `boardCell`), `project.ts` + `notes.ts` (the sequencer as data), `savearchive.ts`, `psf.ts`, `zip.ts`, `backup.ts`, `platform/` |
-| `packages/lbp-tracker-lib/src/` | `render.ts` (the pipeline), `audio/mixer.ts` (voices, resampling, panning, looping, per-chunk re-derivation), `audio/interpolate.ts` + `mipmap.ts` (default `linear`; `sinc8` kept for A/B), `audio/moog.ts`, `audio/lfo.ts`, `audio/effects.ts` (echo, reverb, fold constants), `audio/compressor.ts`, `audio/mixer-worklet.ts`, `rinstrument.ts` + `instrument.ts` + `voice.ts`, `envelope.ts`, `params.ts`, `polyphony.ts`, `scale.ts`, `swing.ts`, `fsb.ts` + `ima.ts` + `wav.ts`, `midi.ts` + `smf.ts`, `als.ts` + `als-xml.ts` + `als-sampler.ts` (the Ableton Live set and its Samplers), `song.ts` (the editable song and its boundary with the records) |
+| `packages/lbp-tracker-lib/src/` | `render.ts` (the pipeline), `audio/mixer.ts` (voices, resampling, panning, looping, per-chunk re-derivation), `audio/interpolate.ts` + `mipmap.ts` (default `linear`; `sinc8` kept for A/B), `audio/moog.ts`, `audio/lfo.ts`, `audio/effects.ts` (echo, reverb, fold constants), `audio/compressor.ts`, `audio/master-stage.ts` (the master bus: the game's, or ours in `audio/master.ts`), `audio/mixer-worklet.ts`, `rinstrument.ts` + `instrument.ts` + `voice.ts`, `envelope.ts`, `params.ts`, `polyphony.ts`, `scale.ts`, `swing.ts`, `fsb.ts` + `ima.ts` + `wav.ts`, `midi.ts` + `smf.ts`, `als.ts` + `als-xml.ts` + `als-sampler.ts` (the Ableton Live set and its Samplers), `song.ts` (the editable song and its boundary with the records) |
 | `packages/lbp-tracker-web/` | `index.html` the app; `src/daw.ts` the shell (tabs, transport, files); `src/daw/session.ts` the one song, player and plan; `src/daw/arrange.ts`, `mixer.ts`, `render-view.ts`, `convert-view.ts` (with `als-export.ts` and `plan-export.ts`), `keyboard-view.ts` the views; `src/render-worker.ts`; `src/player.ts` the scheduler; `src/editor/` the board, the roll, the state and the panels; `src/controls/`, `src/widgets/`, `src/assets.ts`, `src/lbparchive.ts`, `src/footer.ts` |
 
 ## Testing against the corpus

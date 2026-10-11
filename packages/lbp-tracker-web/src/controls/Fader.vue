@@ -26,7 +26,7 @@ const fader = controls.fader(props.id);
       :min="fader.min"
       :max="fader.max"
       :step="fader.step ?? 1"
-      :disabled="!!fader.disabledBy && controls.checked[fader.disabledBy]"
+      :disabled="controls.disabled(id)"
       autocomplete="off"
       @dblclick="controls.reset(id)"
     >

@@ -193,19 +193,19 @@ loopButton.addEventListener('click', () => {
 volSlider.addEventListener('input', () => player.setVolume(Number(volSlider.value)));
 
 /**
- * The G in the bar is the master bus's own switch, not a second setting: it
- * reads and writes `optMaster`, so the Song/Mixer card and this button can
- * never disagree. What it turns on is ours and not the game's, which is what
- * the title says and why it is off to begin with.
+ * The G in the bar is the master bus's own choice, not a second setting: it
+ * reads and writes the engine card's `master`, so the Song/Mixer card and this
+ * button can never disagree. Lit, it is ours, the glue and the limiter; unlit,
+ * the game's own, `SMS WaveHammer` and the 7.1 fold, which is where it starts.
  */
 const glueButton = $<HTMLButtonElement>('glue');
 const paintGlue = () => {
-  const on = engine.on('optMaster');
+  const on = engine.picked('master') === 'ours';
   glueButton.setAttribute('aria-pressed', String(on));
   glueButton.classList.toggle('on', on);
 };
 glueButton.addEventListener('click', () => {
-  engine.set('optMaster', !engine.on('optMaster'));
+  engine.choose('master', engine.picked('master') === 'ours' ? 'game' : 'ours');
   paintGlue();
 });
 // The card under Song/Mixer moves the same switch; follow it.

@@ -4,6 +4,44 @@ What changed for the person using LBP Tracker, newest first. The site shows this
 version number in its status bar, so it is written for them: what they can do now that they could
 not before, never how it was done. No `--` or em dash in here; the site's text does without them.
 
+## 0.2.43 (2026-10-11)
+
+- The master bus is now the game's own, and it is where every song starts: the compressor the
+  game ends every song with, and the way a television folds the game's surround sound into two
+  speakers, which pulls every instrument a little towards the middle so that nothing is panned
+  hard to one side. Busy songs play a few decibels quieter than before and no longer go over the
+  top.
+- Our own master bus, the glue and the limiter, is still there as the other choice, under
+  Song/Mixer and on the G beside the volume, which now switches between the two. The Render view
+  has the same choice, and the Keyboard view plays through whichever one is picked.
+- Every instrument has now been checked against the game's own synthesiser, run on the same notes,
+  and the differences it found are gone. The ones you may hear:
+  - Notes whose modulation moves now swell and fade as in the game. The filter, the envelopes,
+    the drive and the echo send followed the modulation too early, and on some instruments, the
+    square wave and the electric harpsichord among them, the difference was plain.
+  - Filters that follow the keyboard now follow a pitch glide as the game does.
+  - Drum kits and other sounds that ignore the note no longer bend when a note glides.
+  - Choirs, strings, the electric piano and the noisy sounds (noise, record static, mosquito) now
+    start their second layer where the game does, which changes their texture at high
+    modulation.
+  - Struck sounds such as the woodpecker stop when they have died away, as in the game, and give
+    their voice back to other notes sooner.
+  - Drum hits and other sounds that play their sample once now end as in the game: their filter
+    and their other layers ring on for the last few milliseconds, where the tracker cut them off
+    the moment the sample ran out.
+  - A song with nine rows or more now plays as the game does when its first eight rows are all
+    busy: the game then skips the rows below them, and so does the tracker. Where two chips
+    overlap on one row, only the later one plays, as in the game.
+  - The reverb's early echoes arrive when the game's do, a few milliseconds later than before on
+    most settings.
+  - A note with several points packed into one step now lasts as long as it does in the game. The
+    game moves through a note's points one step at a time, so such a note sounds a step longer than
+    its last point.
+- The reverb rings on while a song plays when you change the tempo, the swing, a fader or the
+  echo, or edit the song, as in the game. Each of those used to silence it and start it again
+  from nothing. Choosing another reverb keeps it ringing too, and, as in the game, keeps
+  something of the first room: switch the reverb off and on for a fresh one.
+
 ## 0.2.42 (2026-10-05)
 
 - Short notes no longer click at their start and end. On some instruments, the triangle wave most

@@ -170,3 +170,18 @@ test('the halved copy is the engine’s int16 pair average', () => {
   // Every output sits on the int16 grid, which is the point.
   for (const v of out) assert.equal(v * 32768, Math.round(v * 32768));
 });
+
+test('a loop ending on the last frame reads silence once, at its first wrap', () => {
+  // `0x3780` wraps the integer index only when it passes `start + len`, then
+  // returns 0 for an index at or past the slot's frame count (`+0x78`): a loop
+  // that ends on the last frame meets that one frame exactly once, on the
+  // first pass, and never again -- the position is never rewound.
+  const frames = 100;
+  const data = new Float32Array(frames + 16).fill(0.5);
+  const chain = buildMipChain(data);
+  const loop = { start: 10, end: 100, frames };
+  assert.equal(readMipped(chain, 99.5, 0, loop), 0.5);
+  assert.equal(readMipped(chain, 100, 0, loop), 0, 'index 100 is the frame count: silence');
+  assert.equal(readMipped(chain, 100 + 90, 0, loop), 0.5, 'past start + len it wraps and sounds');
+  assert.equal(readMipped(chain, 100, 0, { start: 10, end: 100 }), 0.5, 'no frame count, no gap');
+});

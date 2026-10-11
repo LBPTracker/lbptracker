@@ -62,17 +62,64 @@ separate data (one `.fsb` per track under `lbp3\music\`); do not conflate it wit
 
 The sequencer's own audio never touches FMOD's voices: it is one 4-channel DSP whose read callback
 is `fmodextinput.prx`, and the sequencer module (`v0x1c3000`–`v0x1c7000`) makes no direct FMOD
-calls at all. The chain is built in the CWLib audio layer (`v0x3dd000`–`v0x3fe000`), and
-`Channel::addDSP` inserts at the head, so the last one added sits closest to the output:
+calls at all. The chain is built in the CWLib audio layer (`v0x3dd000`–`v0x3fe000`) by
+`v0x3e65a0`, with a frequency of 48000, **on a session's first song**: its one caller is the
+per-play init `v0x3e6c10` (at `v0x3e6d1d`, when the channel handle at `v0x132aab0` is still null),
+and that is reached only from the sequencer's play routine `v0x1c5670`, at `v0x1c56bd` through
+`v0x3e6d60` — every rel32 call or jump into `v0x3e65a0`, `v0x3e6c10`, `v0x3e6d60` and
+`v0x1c5670` was searched for (one each), and no relocation points at any of them.
 
 ```
 System::createDSP("Sequencer", channels = 4)        v0x3e66cb    handle v0x132aac8
-DSP::setDefaults(freq, vol, pan = 0.0, prio = 0)    v0x3e66f4
-System::playDSP(FREE, dsp, paused, &channel)        v0x3e6718    <- the DSP IS the channel head
+DSP::setDefaults(freq, vol = 1.0, pan = 0.0, prio = 0)   v0x3e66f4
+System::playDSP(FREE, dsp, paused = 1, &channel)    v0x3e6718    handle v0x132aab0 (v0x3e6d22)
 Channel::setMode(FMOD_2D = 8)                       v0x3e67cb
-Channel::addDSP(reverb)      "SMS Reverb",     channels = 0    v0x3e67f9
+Channel::setPriority(0)                             v0x3e67d7
+Channel::addDSP(reverb)      "SMS Reverb",     channels = 0    v0x3e67f9    handle v0x132aab8
 Channel::addDSP(wavehammer)  "SMS WaveHammer", channels = 0    v0x3e6976    handle v0x132aac0
 ```
+
+`Channel::setPriority` is `v0xa07610` → `ChannelI` `v0xa106f0` (0..256 into `+0x120`).
+
+**The graph FMOD builds from that, read in its own code.** `playDSP` does not make the DSP the
+channel's head: `ChannelSoftware` (vtable `v0x10c25a0`) owns a unit named "FMOD Channel DSPHead
+Unit" at `+0x88` (created in slot 7, `v0xabb82f`–`v0xabb882`), and its DSP-play slot 10
+(`v0xabc6a0`) creates an "FMOD Resampler Unit" at `+0x490`, wires `head ← resampler ← the played
+DSP`, and connects the head into the channel group through the connection kept at `+0x4b8` — the
+one that carries the speaker matrix. `Channel::addDSP` (`v0xa07c70` → `v0xa10fc0`) takes the head
+from slot `+0x140` (`v0xabf4f0`, `[+0x88]`) and queues an insert-between at input 0 (`v0xa27f20`,
+request type 6, run by `v0xa28070` from the flush at `v0xa53010`): the new unit goes between the
+head and what fed it. So, last added nearest the output:
+
+```
+master channel group ←(matrix, +0x4b8)─ ChannelHead ← WaveHammer ← Reverb ← Resampler ← Sequencer
+```
+
+The resampler runs at 48000/48000.
+
+**The channel plays at unity through a song; a fade-out is the only thing that moves it.**
+`setDefaults`' volume is the `vmovss xmm1` at `v0x3e66e6`, loading `v0xe7d544` = `0x3f800000`,
+1.0; the pan is `vxorps` zero and the priority `xor esi`. The builder returns the channel
+(`v0x3e6941`), `v0x3e6c10` keeps it at `v0x132aab0` beside the three DSP handles, and at **every**
+play it calls `Channel::setVolume(1.0)` on it (`v0x3e6d41`, `v0xe7d54c`; `v0xa071b0` → `ChannelI`
+`v0xa09fb0`, clamped to [0, 1] into `+0x19c`). The one other volume write is a fade: while the
+byte at `v0x132aad0` is set — by `v0x3e6f30`, which `v0x1c3550`, `v0x1c4e55`, `v0x3e1457` and
+`v0x7617f4` call, and cleared at every play (`v0x3e6cda`) — `v0x3eb0a1` takes 1/29 (`v0xe7d5b0`)
+off the volume per call until it reaches zero. So between the WaveHammer and the speaker matrix
+there is no gain while a song plays (read 2026-10-11 with `tools/lbpdis.py` and `tools/ebxref.py
+refs 0x132aab0`, nine references; an earlier reading had the handle in a local nothing could
+reach — the conclusion held, the reason did not).
+
+**The channel is created paused and runs from the first song on.** `v0x3e6d70(bool)` is
+`Channel::setPaused` (`v0xa07100` → `ChannelI` `v0xa0b8b0`, bit 0 of `+0x118`), and every caller
+pauses around a change to the state block and unpauses after it: the play routine at `v0x1c56cf`
+and `v0x1c5ef2`, `v0x1c5640` (`[state+0x1a60]`) at `v0x1c5648`/`v0x1c566b`, `v0x1c65a9`/`v0x1c65bb`,
+`v0x1c6afa`/`v0x1c6b0c`; `v0x3e6e00` (`[state+0x1a44]`) does the same through `v0xa07100`
+directly at `v0x3e6ea5`/`v0x3e6f0d`. So the three DSPs first run when a session's first song does,
+from their create state, and keep running between songs on the zeros the synthesiser writes when
+nothing plays. The play routine's order is the reverb's business (below): `v0x3e6c10` zeroes the
+echo line (`[state+0x1b18]`, 0xbb800 bytes) and the playhead, then the pause, the state, the
+reverb preset at `v0x1c5eeb`, and the unpause.
 
 **Sequencer → SMS Reverb → SMS WaveHammer → the mixer → 7.1 → the listener's fold.** Both added
 DSPs declare `channels = 0`, so they inherit the sequencer's **4**: the two DSPs after it share one
@@ -225,6 +272,15 @@ seven rows are already sorted, so one branch is always taken, and it pairs `d0` 
 `d1` with `g0`/`p0`, `d2` with `g2`/`p2`. Do not "fix" it by reading it as positional, and do not
 trust it for a hypothetical unsorted row.
 
+❗ **Only the longest tap is read where it says.** The early line is an SPU-style ring of `M` frames
+(`M` the longest tap) in a buffer rounded up to 1 KB, 256 frames (`0x1400`–`0x1407`), written a
+block at a time at the ring's position (`0x590`); the longest tap is read `M` behind it before the
+write (`0x670`), the other two after it at `pos + (M − d)` (`0x8f0`, `[state+0x500]`, `+0x504`),
+which is `d + (ring − M)` behind. So the two shorter reflections arrive `ring − M` frames late —
+130, 172, 3 and 92 on the early sets the six presets use. Found running the module, the only
+disagreement it showed; `Reverb` reads them there since 2026-10-11 and `reverb.test.ts` pins the
+arrivals.
+
 ### How the wet gets back — there is no connection and no gain
 
 The reverb's read callback asserts 4 in and 4 out and runs `0x20e0` over 256-frame blocks; that
@@ -234,11 +290,83 @@ dryR + wetR, 0, 0)`**. The two DSPs share one buffer, the send lanes are read in
 cleared, and `packages/lbp-tracker-lib/src/audio/effects.ts`'s unity at both ends is right. The
 cleared lanes are also what stops the send reaching the surrounds (below).
 
-⚠️ **What is not modelled**: the engine works in 256-frame blocks and rounds every delay buffer up
-to 1 KB, so a tap shorter than 256 samples cannot behave as a plain per-sample delay there. Tap set
-10's shortest is 5.019 ms = 241 samples, so preset 3 (`ReverbSetting` 0) is the one place this
-could show — *Residues* in [open-questions.md](open-questions.md). The wrong readings this DSP went
-through are *6 / 14* in [answered-questions.md](answered-questions.md).
+✔ **Checked against the module running** (`tools/prxrun.py`, 2026-10-11): the reverb configured by
+the eboot's own code (`v0x3fcc00`, `v0x3fcd50`, the setparameter callback `v0x3fd3d0` once per
+preset slot) and fed an impulse away from start-up agrees with `Reverb` to **−111 to −125 dB** of
+the response on all six settings; fed steady noise, to −52 to −86 dB, the module's float32 kernels
+drifting from the class's doubles round the feedback. A comb shorter than a block is not a
+problem — tap set 10's 241-sample comb agrees like the rest.
+
+❗ **A configure has two halves, and once the module has run a preset reaches only one.** The
+plugin's configure `0x0b40` runs when either of two dirty counters in the parameter block differs
+from the state's copy (`0x151b`–`0x152d`: `[param+0]` against `[state+0]`, `[param+2]` against
+`[state+2]`). Its first half, `0x0b65`–`0x0e08`, runs every time; its second, `0x0e22`–`0x14ac`,
+only while `[state+2]` lags. The eboot's configure `v0x3fcd50` bumps one counter — `[param+2]`
+when its flag is set (`v0x3fcfad`), `[param+0]` otherwise (`v0x3fcfb4`) — and it has two callers
+(`ebxref.py calls 0x3fcd50`): the create, flag set (`v0x3fd23b`), and the setparameter callback
+`v0x3fd3d0`, flag clear (`v0x3fd480`), which every preset goes through, ten calls, changed value
+or not. So the geometry is built once, by the module's first block, from whatever the parameters
+are by then, and every preset after that changes only the left column:
+
+| every configure, `0x0b65`–`0x0e08` | the first block alone, `0x0e22`–`0x14ac` |
+|---|---|
+| the input one-pole's pair `[state+0x14]`, `+0x18`, and its state zeroed (`0x0b69`) | every comb's length, ring and position |
+| the notch's coefficients, and its state zeroed, when the new preset has it on (`0x0bb1`–`0x0be1`) | every comb's own damping pair `[rec+0x44]`, `+0x48`, copied from the input one-pole's (`0x0e96`) |
+| how many mono combs run, `[state+0x510] = tapCount − 2` (`0x0c1d`) | the output delay's length |
+| every comb's gain `[rec+0x4c]`, from the **new** preset's lengths and decay (`0x0d30`, `0x0d90`) | the early taps' lengths, offsets `[state+0x500]`–`+0x50c` and gains `+0x51c`–`+0x530` |
+| the three levels, which the kernel reads from the parameters every block | |
+
+⚠️ **A comb the first preset never built still runs.** Tap set 16, `Bright Plate`'s, has nine
+lengths and the other five settings' have ten, so a ten-tap preset after `Bright Plate` runs eight
+mono combs over seven built. The eighth record is the create's zeros: a ring of 0 makes `0x670`
+point its read at its own write (`0x743`), in the scratch buffer it alternates with its neighbour
+(`0x18c0`), so it adds what the comb two slots before wrote this frame — a nearly undelayed copy of
+the send into the late field — and overwrites it with `gain · send`. That is why `Bright Plate` →
+`Room` answers at 720 frames, `Bright Plate`'s 15 ms output delay.
+
+✔ **Read in the state block, and run** (2026-10-11, `tools/prxrevswitch.py`). Dumped across a
+switch after eight blocks — `Cathedral` → `Hall` and `Bright Plate` → `Hall` — the words that
+changed are the left column's and no others; the eighth record after `Bright Plate` holds pointer
+0, ring 0, damping 0 and a fresh gain. `Reverb.reconfigure` is the left column with the comb that
+was never built, and a switch from each of settings 0–5 to each, with a burst running through it,
+agrees with the module to **−106 to −123 dB** after the switch, where a clean `Reverb` of the new
+setting is −4.0 to +5.6 dB off. It gives back the first arrivals the module gave: after a switch
+the old setting's — 3 → 5 at 399 frames, 5 → 3 at 1,846, 1 → 2 at 425, 0 → 3 at 289 — and 2 → 1 at
+720. On `Salem` (setting 3) after 1,024 frames on the create's preset 2, the reverb stage as
+`prx-chain.ts` scores it is −7.1 dB off a clean `Reverb` and **−114.9 dB** off one made at preset 2,
+run on the same silence and reconfigured — the clean configure's own −115 dB on a first song.
+
+The game makes the ten calls at two moments:
+
+- **every play**, through `v0x3e7470` at `v0x1c5eeb`, just before the unpause at `v0x1c5ef2`. The
+  chain's first block follows the first play, so a session's first song gets a clean configure,
+  and every later song its own coefficients over the first song's geometry — every song that
+  follows one with a different preset, for as long as the chain lives;
+- **every setter of the playing sequencer's settings**: fifteen stubs at `v0x1c7320`–`v0x1c74a3`
+  each store one field and tail-jump to `v0x1c6250`, which pushes tempo, swing, echo and the
+  channel volumes into the state block and re-applies the preset at `v0x1c6405`. On the same
+  preset a re-apply zeroes the input one-pole's and the notch's state and nothing else: once every
+  768 frames of steady noise it puts the module −24 to −39 dB off itself left alone, and
+  `reconfigure` follows the module re-applied to −109 to −121 dB. Who calls the setters while a
+  song plays is unread.
+
+**A comb reads silence until its ring has been written once round, from the module's first
+block.** A ring read that is not one block copied whole (`0x670`, `cmp r12d, ecx` at `0x0695`)
+goes through `0x160`, which adds the bytes asked for to a fill count `[rec+0x14]` and, while that
+still fits the ring, returns zeros (`0x0199`–`0x0287`); `0x8f0`, the early line's two shorter taps,
+tail-jumps there too. The geometry build starts a comb's count at 0 (`0x0f19`) and the early lines'
+and the output delay's at their own length (`0x1436`, `0x11fb`), which never fits, so only the
+combs lose anything: the first `ring − length` frames written into each, all inside the first
+block. ✔ Run: fed an impulse at frame 0, settings 0 and 2, whose combs answer inside the first
+2,048 frames, are −18.8 and −15.2 dB off `Reverb` until its combs are given this silence, then
+−115.0 and −139.0 dB. **Not modelled**, on purpose: the game's first block is always silent — the
+first step waits for the restart's chunk (*The clock* in [synth-engine.md](synth-engine.md)), and
+the module wrote nothing before frame 256 in any of nine scenes — so it changes nothing the game
+plays, while `Reverb`, fed from its first frame by the tracker's own clock and by the live player,
+would lose part of a first note's reverb that the game never loses.
+
+The wrong readings this DSP went through are *6 / 14* in
+[answered-questions.md](answered-questions.md).
 
 ## SMS WaveHammer — `fmodsmswavehammer.prx`, a COMPRESSOR, read and then run
 
@@ -279,6 +407,8 @@ unless in- and out-channels are both 4 and the length is a multiple of 256, then
 256-frame block, stepping 0x1000 bytes each time. `0x1770` memcpys the instance, the 0x180-byte
 state and the 0x80-byte config into static buffers and calls `0xa40`, the kernel — an SPU-DMA shape
 kept intact on a console with no SPU, which is why the module lives in `gamedata_orbis/spu/`.
+**It reads lanes 0-1 only** (`0x1880`), clears all four output lanes (`0x18c6`), runs the kernel on
+two channels (`[rbp−0x968] = 2`) and writes 0-1 back: lanes 2-3 come out zero whatever goes in.
 
 ### The units, from the kernel rather than the labels
 
@@ -361,7 +491,7 @@ The state it computes for itself, from the threshold in `0x380` (`powf(10, T/20)
 [state+0xc8] = 0.0079433 the axis floor F = 10^((T-3)/10)
 [state+0xe8] = 0.0158489 the threshold as a power ratio, 10^(T/10)
 [state+0x104]= 0.808766  the output constant, -1.844 dB
-[state+0x12c]= 0.5       the second smoother's seed, (1 − b0)/(1 + a1) — its own fixed point for a gain of 1
+[state+0x12c]= 0.49999997 the second smoother's seed, (1 − b0)/(1 + a1) in float32 — its own fixed point for a gain of 1
 ```
 
 ### And it was run
@@ -381,30 +511,83 @@ transfer, DC input, settled:
 −21 dBFS and settles to a constant −1.84 dB below it. ✔ **Implemented** in
 `packages/lbp-tracker-lib/src/audio/compressor.ts`, after the reverb sum where `Channel::addDSP`
 put it, and pinned by `test/compressor.test.ts` against **vectors taken from the running module**
-— a deterministic LCG signal under a raised cosine, seventeen sampled gains reproduced to better
-than 2e-5. Two things the vectors caught that reading had not: the second smoother's seed
-(`[state+0x12c]` is 0.5 at reset, and starting it at zero makes the first sample read 0.0126 where
-the module reads 0.998561 — an 18 dB hole lasting 50 ms at the top of every render), and `a1` for
-`CompCoeffSet` clear being 0.8667884, not the 0.96715 that `prxdis` prints as the qword-as-double.
+— a deterministic LCG signal under a raised cosine, seventeen sampled gains reproduced to 1e-7,
+the rows' own resolution (2e-5 while the model ran in double). Two things the vectors caught that
+reading had not: the second smoother's seed (`[state+0x12c]` is about 0.5 at reset, and starting it
+at zero makes the first sample read 0.0126 where the module reads 0.998561 — an 18 dB hole lasting
+50 ms at the top of every render), and `a1` for `CompCoeffSet` clear being 0.8667884, not the
+0.96715 that `prxdis` prints as the qword-as-double.
+
+❗ **Its float32 envelope never quite recovers** (found running it in series, below). Once the
+compressor has engaged, the release stalls: the second smoother's step near rest is
+`b0·(1−c)·δ` ≈ 2e-8, under half an ulp of its state, so the gain stops 1.1e-4 short of its target —
+the module rests at **0.8086755** instead of 0.8087664, −0.00099 dB, for the rest of the song, in
+every song that compressed. Never compressed, it stalls on the other side, at **0.8087710**.
+`tools/prxhammer.py` measures both: still for good 75 blocks after the test's signal, and 3 blocks
+into silence from reset. An envelope in double recovers, and is then 0.001 dB off the module for
+good.
+
+✔ **So `compressor.ts` is float32 throughout, in the module's order** (2026-10-11), every product
+and sum rounded where a `vmulss`/`vaddss` rounds it, and it is bit-exact against the module but for
+the console's libc. Run on the module's own input (`prx-chain.ts`, *local*), each part mattered:
+
+| float32 in | error on six songs | samples bit-exact |
+|---|---|---|
+| none (double) | −80 … −114 dB | 1–11% |
+| the envelope, `0x1194`–`0x12a7` | −111 … −134 dB | 22–98% |
+| + the lookup, `0x10f0` | the same | the same |
+| + the detector, `0x1000` | −130 … −147 dB | 92–99% |
+| + the constants the module builds for itself | −137 … −168 dB | 98.2–99.99% |
+| + the module's own table, dumped | **bit-exact** | 100% |
+
+- **The detector** is the big one: the running sum of squares, kept in float32 against the ring,
+  never quite cancels, and the gain follows that drift.
+- **The constants** are float32 too, from the template's tenths, and the float nearest each closed
+  form is not the module's: the floor `[+0xc8]` (`0x380`), the attack `[+0xf8]` (`0x6c8`) and
+  `[+0x104]` (`0xd44`) are each one ulp away, `0.005` is a literal one ulp *above* `fround(0.005)`
+  (`v0x1b08`, `v0x1bac`), and the seed `[+0x12c]` is 0.49999997 — the first frame of a fresh
+  module fed 1.0 reads 0.998123050, and a seed of exactly 0.5 makes it 0.998123169. ⚠️ Until all
+  of them were float32, plugging the module's dumped table in made the error *worse*: half a fix
+  is not evidence against the other half.
+- ⚠️ **The table is the one residue, and it is the console's libc.** The float32 transcription of
+  `0xb78`–`0xd3e`, with the console's own `log10f` and `powf` called through the module's GOT under
+  `prxrun`, reproduces all 4000 entries the module builds; with `Math.fround` of the double
+  results, 542 come out up to 4 ulps apart — the console's `log10f` differs from the correctly
+  rounded float on 333 of the 4000 inputs and its `powf` on 474. Hence 3e-5 dB of gain at most on
+  the songs, exact on the synthetic scenes (*The whole chain*, below). Matching it means porting
+  those two functions.
+- **It costs 12 ns a frame in V8**: 22 → 34 ns for the WaveHammer's step in the worklet's call
+  pattern, each `Math.fround` a conversion pair. That is 1.5 µs of a 2.67 ms quantum, and about 3%
+  of a whole render's ~420 ns a frame, inside that render's run-to-run noise.
 
 ❗ **It costs a real render 6.94 dB of RMS and 6.93 dB of peak** (`level-seq723339`: 0.134/0.934 →
 0.060/0.420; its closed-loop pole at the release coefficient is `2·b₀·c + a₁ = 0.99957`, about
-48 ms). ⚠️ **It is switched off by default** — the one measured DSP the project deliberately does
-not run, *38* in [open-questions.md](open-questions.md); the three wrong readings on the way are
-*37* in [answered-questions.md](answered-questions.md).
+48 ms). ✔ **It runs by default since 0.2.43**, as the first half of the game's master bus
+(*The game's master bus* below). It was off from 2026-09-06 on a listening judgement; whether the
+crest factor reaching it is the game's is still *38* in [open-questions.md](open-questions.md). The
+three wrong readings on the way are *37* in [answered-questions.md](answered-questions.md).
 
 ## The output stage: the game is a 7.1 renderer, and a stereo listener hears a fold
 
 `v0xa57770` — the `GetDriverCaps` callback of the output description named "FMOD Orbis AudioOut
 Output" (`v0x13e3c78`) — reports `FMOD_CAPS_OUTPUT_MULTICHANNEL | FMOD_CAPS_OUTPUT_FORMAT_PCMFLOAT`
 (`0x84`), **48000 Hz** (`v0xa577f7` rejects anything else) and **`FMOD_SPEAKERMODE_7POINT1`**
-(`[r8] = 6`). The game never calls `setSpeakerMode`, so that is the mode it runs in; the plugin's
-`Init` (`v0xa577a0`) accepts a speaker count of 2 or 8 and nothing else, passes
-`param = 4 | (channels != 2)` to `sceAudioOutOpen` — 4 is `FLOAT_STEREO`, 5 `FLOAT_8CH` — and sets
-all eight speaker volumes to 32768, 0 dB, applying no trim.
+(`[r8] = 6`). ⚠️ **That report is not what selects the mode, the game is.** FMOD's own default is
+stereo — `SystemI`'s constructor calls `setSpeakerMode(2)` at `v0xa4fbb4` — and the game, after
+`EventSystem::getSystemObject`, calls **`System::setSpeakerMode(6)`** at `v0x3e76d3`/`v0x3e76d8`
+(`v0xa48290` → `SystemI::setSpeakerMode` `v0xa4fed0`, whose case 6 sets 8 output channels at
+`v0xa501bd`) before `EventSystem::init`. The mode lives at `SystemI+0x9788` and each channel copies
+it to `ChannelI+0x198` (`v0xa0f017`). `SystemI::init` hands the driver `[SystemI+0x7dc]` = 8
+(`v0xa50fbf`), and the driver's `Init` (`v0xa577a0`) accepts a speaker count of 2 or 8 and nothing
+else, passes `param = 4 | (channels != 2)` to `sceAudioOutOpen` — 4 is `FLOAT_STEREO`, 5
+`FLOAT_8CH` — and sets all eight speaker volumes to 32768, 0 dB (the eight `int32` at
+`v0xe440c0`), applying no trim. (This file once said the game never calls `setSpeakerMode`; the
+conclusion held, the reason did not.)
 
-**How a 4-channel DSP reaches eight speakers.** `ChannelSoftware::setPan(0.0, 1.0)` (vtable
-`+0x98` → `v0xabdf30`) gives `L = R = 1.0` and, for a source of more than 2 channels, calls
+**How a 4-channel DSP reaches eight speakers.** At play, `ChannelI`'s setup (`v0xa0fbd0`, reached
+from `SystemI::playDSP` `v0xa54e90` through `v0xa0a350` and `v0xa0a770`) applies the channel's
+volume and, in pan mode 0, its pan through the real channel. `ChannelSoftware::setPan(0.0, 1.0)`
+(vtable `+0x98` → `v0xabdf30`) gives `L = R = 1.0` and, for a source of more than 2 channels, calls
 `setSpeakerMix(L, R, 1, 1, L, R, L, R)` (`+0xa8` → `v0xabe160`), which asks for the
 channel→speaker matrix (`v0xa243a0`); the 7.1 × 4-channel case is **`v0xa2599f`**, which scales
 every level except the two fronts by `k = 0.5` (`v0xefc008`):
@@ -423,23 +606,27 @@ stereo→7.1 case at `v0xa2579c` does the same). Source channels 2-3 would go to
 they are the reverb send, and the reverb writes them back as zero, so the surrounds are silent and
 the 7.1 bus carries only the front pair and the centre's average of it.
 
-**The fold a stereo listener hears.** Every capture this project has was made under shadPS4, whose
-downmix (`shared/src/core/libraries/audio/sdl_audio_out.cpp`, `DownmixF32_8CHToStereoPS4`) runs
-when the game opens six or more channels and the host device is stereo:
+**The fold a stereo listener hears.** ⚠️ **This step is not in the game's code**: the game's
+last act is eight float channels into `sceAudioOut`, and folding them for a stereo device is the
+platform's. Every capture this project has was made under shadPS4, whose downmix
+(`src/core/libraries/audio/sdl_audio_out.cpp`, `DownmixF32_8CHToStereoPS4`, re-read on 2026-10-11)
+runs when the game opens six or more channels and the host device is stereo:
 
 ```c
-static constexpr float DOWNMIX_CENTER = 0.7071f;                 // FC = 2
-d[i*2 + 0] = s[o + FL] + 0.7071f * s[o + FC] + 0.7071f * (s[o+4] + s[o+6]);
-d[i*2 + 1] = s[o + FR] + 0.7071f * s[o + FC] + 0.7071f * (s[o+5] + s[o+7]);
+static constexpr float DOWNMIX_CENTER = 0.7071f;   // and DOWNMIX_FRONT 1.0f, DOWNMIX_SURROUND 0.7071f
+d[i*2 + 0] = s[o + FL] + center + DOWNMIX_SURROUND * (s[o + 4] + s[o + 6]);   // center = 0.7071f * s[o + FC]
+d[i*2 + 1] = s[o + FR] + center + DOWNMIX_SURROUND * (s[o + 5] + s[o + 7]);
 ```
 
-`1/√2` is the ITU-R BS.775 coefficient that real hardware and a compliant emulator share, so a
-stereo listener hears this narrowing either way. Three read constants and no free parameter:
+The LFE (`s[o + 3]`) is never read, so FMOD's `0.5·(ch0 + ch1)` on it is dropped. `1/√2` is the
+ITU-R BS.775 coefficient, and the captures confirm `k·d` to six figures (below) — for shadPS4.
+What a real PS4 does for a stereo TV, coefficient and LFE alike, is in its firmware and has not
+been read; that it matches is an assumption. Three constants and no free parameter:
 
 ```
 plugin pan law   ch0 = (1-p)x, ch1 = px            PRX 0x2d21 / 0x2d40
 FMOD upmix       FC = k(ch0 + ch1),   k = 0.5      eboot v0xa2599f, v0xefc008
-BS.775 downmix   L = FL + d·FC,       d = 1/sqrt2  shadPS4, and real hardware
+BS.775 downmix   L = FL + d·FC,       d = 1/sqrt2  shadPS4 (0.7071f); real hardware assumed
 
 L = x[(1-p) + kd],  R = x[p + kd]  →  the normalised pan spans 1/(1 + 2kd) = 2 − √2 = 0.5857864
                                        and the sum grows by (1 + 2kd) = 1/(2 − √2), +4.645 dB
@@ -452,17 +639,91 @@ residual 0.0008 of the quiet channel's rms, correlation 1.000000, lag 0) — six
 at an operating point the fit had never seen, where constant power predicts 0.198. At a hard pan
 the game's stereo output is effectively mono.
 
-**What the tracker does with it** (`PAN_WIDTH` and `FOLD_GAIN` in
-`packages/lbp-tracker-lib/src/audio/effects.ts`): the **gain** is applied, once, after the whole
-chain — after the plugin's clip, the reverb and the compressor, where FMOD's speaker matrix applies
-it — and the **narrowing is not**, on a listening judgement (*39* in
-[open-questions.md](open-questions.md)). ⚠️ The gain is a constant, not `1/panWidth`: `k` and `d`
-are constants of FMOD and of BS.775, and coupling the gain to the width slider once turned a
-diagnostic into a +20 dB volume control. ⚠️ It belongs *after* the clip: applied per voice it put
-the plugin's hard clip 4.645 dB hotter than the game's ever is, engaging on material the game
-passes untouched (0.05% of frames on `level-seq732985`; 0.00% after).
+⚠️ The gain is a constant, not `1/panWidth`: `k` and `d` are constants of FMOD and of BS.775, and
+coupling the gain to a width slider once turned a diagnostic into a +20 dB volume control. ⚠️ It
+belongs *after* the clip: applied per voice it put the plugin's hard clip 4.645 dB hotter than the
+game's ever is, engaging on material the game passes untouched (0.05% of frames on
+`level-seq732985`; 0.00% after).
+
+## The game's master bus — what the tracker runs after the reverb
+
+Everything above, from the reverb's write-back to the listener's fold, is one stage with no free
+parameter, and `packages/lbp-tracker-lib/src/audio/master-stage.ts` runs it for the offline render
+and the live worklet alike, **by default since 0.2.43**:
+
+```
+(dry + reverb wet, L R) ─► SMS WaveHammer as shipped ─► × 1.0 (the channel) ─► 7.1 matrix ─► BS.775 fold
+                           one linked gain g           L' = gL + c·g(L+R),  R' = gR + c·g(L+R),  c = k·d = 2^-1.5
+```
+
+`FOLD_CENTRE` in `audio/effects.ts` is `c`; under it the sum grows by `FOLD_GAIN`, `1 + 2c`, and
+the difference not at all, which is the narrowing to `PAN_WIDTH`. ⚠️ **The narrowing belongs here
+and not at each voice's pan**: the clip and the WaveHammer's detector see the internal image in the
+game, so a pan narrowed upstream would feed both a different signal. ✔ `test/master-stage.test.ts`
+holds a hard-left voice's right channel at **0.261204** of its left through a whole render, the
+captures' 0.261202.
+
+Two other buses sit beside it, chosen on the page's engine card (and its **G**), on the Render view,
+or with `RenderOptions.master` / `LBP_MASTER`:
+
+- **ours** — the fold's gain alone, which keeps the file's own image, then `audio/master.ts`'s glue
+  and limiter: *42* in [open-questions.md](open-questions.md);
+- **`'none'`** — the fold's gain alone and nothing after it: the tracker's default from 2026-09-06
+  to 0.2.43, the hybrid of the game's downmixed level with its internal image, kept because the
+  listening decisions were judged against it.
 
 ⚠️ Everything this project measures from a recording is measured through that downmix, and the
 image it hears is narrower than the game's internal one. Point shadPS4 at a device with more than
 two channels and no downmix happens at all, which is the cheapest way to capture the eight channels
 directly.
+
+## The whole chain, run in series against the modules
+
+✔ **No gain, lane or ordering error between the stages** (2026-10-11). `tools/prxchain.py` runs
+`fmodextinput.prx`, `fmodsmsreverb.prx` and `fmodsmswavehammer.prx` in one image, each block of one
+the input of the next, the two DSPs made and the preset applied by the eboot's own code as a
+session's first song meets them (*The sequencer's chain*); `prx-chain.ts` compares every boundary
+with `renderSequencer` at `master: 'game'`, `declick: false`, `releaseTail: true`,
+`engineClock: true` ([tools.md](tools.md)). The fold after the WaveHammer is the matrix and
+shadPS4's downmix as read above, in float32. Error against the module's power, dB — **chained**,
+whole render / worst window against the loudest, and **local**, our stage alone on the module's
+own input, whole render:
+
+| scene (20 s songs) | reverb, send peak | deepest WaveHammer gain | synth | + reverb | + WaveHammer | + fold | local reverb | local WaveHammer, worst gain error | local fold |
+|---|---|---|---|---|---|---|---|---|---|
+| `Salem` 15843 | 3, −18.7 dBFS | −5.92 dB | −105.6 / −103.8 | −105.5 / −104.0 | −104.9 / −101.7 | −104.2 / −101.2 | −115.3 | −150.6, 8.2e-6 dB | −108.0 |
+| `Harmonyx` 64531 | 3, none | −6.97 dB | −104.2 / −104.4 | −104.2 / −104.4 | −105.6 / −101.5 | −103.6 / −100.5 | — | −138.0, 3.0e-5 dB | −108.0 |
+| `Influx` 68746 | 3, none | −2.78 dB | −110.4 / −113.4 | −110.4 / −113.4 | −110.4 / −112.8 | −105.1 / −107.2 | — | −168.3, 2.9e-6 dB | −108.0 |
+| `Ambit` 744399 | 5, −18.8 dBFS | −5.34 dB | −117.5 / −114.1 | −107.9 / −103.7 | −107.8 / −102.2 | −104.5 / −101.1 | −108.4 | −160.4, 3.5e-6 dB | −108.3 |
+| `Avian` 281831 | 5, −12.2 dBFS | −6.71 dB | −120.3 / −118.1 | −92.2 / −85.3 | −93.0 / −84.8 | −93.1 / −84.3 | −92.2 | −137.4, 2.8e-5 dB | −108.1 |
+| `Ascetic` 723339 | 5, −13.2 dBFS | −11.72 dB | −120.1 / −114.6 | −106.3 / −104.8 | −103.3 / −99.9 | −100.7 / −98.7 | −106.5 | −139.4, 2.9e-5 dB | −108.9 |
+| `saw_wave`, `notes` | 5, −29.6 dBFS | −1.84 dB | −101.5 / −93.9 | −101.5 / −93.9 | −101.5 / −93.9 | −100.8 / −93.7 | −116.9 | exact | −108.2 |
+| `saw_wave`, `echo` | 5, −26.0 dBFS | −1.84 dB | −101.6 / −93.9 | −101.8 / −94.8 | −101.8 / −94.8 | −101.1 / −94.7 | −116.0 | exact | −108.2 |
+| `saw_wave`, `chord` | 5, −24.9 dBFS | −1.84 dB | −97.3 / −95.4 | −97.3 / −95.1 | −97.3 / −95.1 | −97.0 / −94.9 | −109.4 | exact | −108.2 |
+
+(Re-measured 2026-10-11 with the record's float32 arithmetic on the engine's clock, *62* in
+[answered-questions.md](answered-questions.md); the local columns did not move. The WaveHammer's
+two columns and the chained fold again the same day, after the WaveHammer went float32 (*And it
+was run*), on the same renders: their `ours-game.f32` rebuilt from their `ours-reverb.f32` through
+the master stage, which with the stage as it was gives back the old file to −150 dB. A gain error
+reads 5e-7 dB where the stage is exact: `out/in` off float32 samples.)
+
+- Every boundary carries the synthesiser's error and adds no more than its own stage's local one.
+  Lanes 2-3 leave the reverb and the WaveHammer exactly zero, in all nine.
+- **The reverb**: −92 to −117 dB alone, the float32-against-double drift of *Checked against the
+  module running*; `Avian`'s is the loudest send, and with the synthesiser at −120 dB it is now
+  what `Avian` differs by at the fold.
+- **The WaveHammer**: exact on the synthetic scenes and within 3e-5 dB of gain on the songs, from
+  the first frame; what is left is the console libc's rounding of its table (*And it was run*).
+  Run in double it rested 0.001 dB off for good, and that rest was what the songs' worst windows at
+  the fold were made of: −82 to −85 dB, now −98.7 to −107.2 (`Avian` aside, whose difference is the
+  reverb's). Where it compresses hard its gain follows the signal and grows an upstream difference:
+  while the synthesiser still differed by −48 dB on `Ascetic`, the hammer took that to −36 dB in
+  its worst window.
+- **The fold**: −108 dB, shadPS4's `0.7071f` against `FOLD_CENTRE`'s `1/√2`.
+- Started from silence (`WARM=1024`, a later song after one on preset 2) the module's WaveHammer
+  has settled at rest (*And it was run*) and our offline render has not: 0.042 dB at 10 ms on `Salem`, −57.4
+  dB in its first window — *The WaveHammer's state when a song starts* in
+  [open-questions.md](open-questions.md). The reverb then stays clean only where the song's preset
+  is 2 again (`Ambit`, −108.4 dB); `Salem`'s is not, and its reverb stage goes to −7.1 dB (*SMS
+  Reverb*, above).

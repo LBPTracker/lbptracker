@@ -1,14 +1,19 @@
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
+import type { LadderCoefficients } from '../src/audio/moog.ts';
 import {
   FILTER_BYPASS_CUTOFF,
   FILTER_PARAMS,
   MoogLadder,
+  MoogLadder32,
   filterAt,
   filterAtInto,
+  filterEnds32,
   ladderCoefficients,
+  ladderCoefficients32Into,
   ladderCoefficientsInto,
+  rampStep32,
 } from '../src/audio/moog.ts';
 
 const SR = 48000;
@@ -177,10 +182,10 @@ test('the resonance follows the filter envelope, not the key tracking', () => {
   // ⚠️ This test asserted the opposite for one commit. The two terms in
   // fmodextinput.prx are the same shape -- `1 + (X - 1) * p` -- so they cannot
   // be told apart from the arithmetic. What separates them is X: [rbp-0xa90]
-  // is set to 1.0 at 0x1e25 and multiplied by a frequency ratio at 0x1e4a, so
+  // is set to 1.0 at 0x1de5 and multiplied by a frequency ratio at 0x1e0a, so
   // it is the pitch; [rbp-0xb70] holds the return of the envelope evaluator
-  // called at 0x222d with Params[7..10], so it is envelope B. The value
-  // multiplied into the resonance at 0x2a90 is the envelope one.
+  // called at 0x21ed with Params[7..10], so it is envelope B. The value
+  // multiplied into the resonance at 0x2a50 is the envelope one.
   const settings = { cutoff: 0.6, resonance: 0.9, keyTrack: 0.6, envAmount: 0.63 };
   const rate = 2 ** ((25 - 48) / 12);
 
@@ -225,8 +230,10 @@ test('a wide-open lowpass is skipped, and this ladder is not transparent', () =>
   }
   assert.ok(peak < 0.9, `a unit impulse comes out at ${peak.toFixed(3)}, not 1`);
   assert.ok(late > 1e-3, 'and it is still ringing after half a second');
-  // The threshold itself, from the comparison at 0x2ee9.
-  assert.equal(FILTER_BYPASS_CUTOFF, 0.99);
+  // The threshold itself, from the comparison at 0x2ea9: the module's 0.99f
+  // (`v0x4620`), which sits a hair above 0.99.
+  assert.equal(FILTER_BYPASS_CUTOFF, Math.fround(0.99));
+  assert.ok(FILTER_BYPASS_CUTOFF > 0.99);
 });
 
 test('piano bypasses at and above its base note, and tracks below it', () => {
@@ -396,4 +403,154 @@ test('the drive is a soft clip, and zero is an exact bypass', async () => {
   // Small signals get the full (1 + k) gain, which is where the loudness comes
   // from -- and why the two guitars carry the lowest output levels in the game.
   assert.ok(at(driven, 0.01) > at(clean, 0.01) * 2.8, 'quiet parts are lifted');
+});
+
+// --------------------------------------------- the module's float32, on its clock
+
+const f32 = Math.fround;
+
+/**
+ * The coefficients transcribed a second time from `0x3124`-`0x317c`, so an
+ * operation moved, merged or computed in double in `ladderCoefficients32Into`
+ * fails here rather than in a differential test an hour later.
+ */
+function coefficientsByHand(freq: number, res: number): LadderCoefficients {
+  const fr = f32(freq);
+  const t = f32(1 - fr);
+  const p = f32(fr + f32(f32(fr * f32(0.8)) * t));
+  return {
+    p,
+    f: f32(f32(p + p) + -1),
+    q: f32(f32(res) * f32(f32(f32(t * 0.5) * f32(f32(1 - t) + f32(f32(t * t) * f32(5.6)))) + 1)),
+  };
+}
+
+/** `0x31c6`-`0x327d`, again: the ladder with a given saturation constant. */
+function ladderByHand(saturation: number) {
+  let b0 = 0;
+  let b1 = 0;
+  let b2 = 0;
+  let b3 = 0;
+  let b4 = 0;
+  return (input: number, { p, f: fb, q }: LadderCoefficients): number => {
+    const x = f32(f32(input) - f32(q * b4));
+    const n1 = f32(f32(p * f32(b0 + x)) - f32(fb * b1));
+    const n2 = f32(f32(p * f32(b1 + n1)) - f32(fb * b2));
+    const n3 = f32(f32(p * f32(b2 + n2)) - f32(fb * b3));
+    const n4 = f32(f32(p * f32(b3 + n3)) - f32(fb * b4));
+    const y = f32(n4 - f32(f32(n4 * f32(n4 * n4)) * saturation));
+    [b0, b1, b2, b3, b4] = [x, n1, n2, n3, y];
+    return y;
+  };
+}
+
+/** A float32 draw in 0..1 from a fixed LCG, so the sweeps repeat. */
+function draws(seed: number): () => number {
+  let s = seed;
+  return () => {
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    return f32(s / 0x80000000);
+  };
+}
+
+test('the float32 coefficients round every operation, in the module’s order', () => {
+  const draw = draws(7);
+  const out = { p: 0, f: 0, q: 0 };
+  let roundedOnce = 0;
+  for (let i = 0; i < 2000; i += 1) {
+    const freq = draw();
+    const res = draw();
+    const c = ladderCoefficients32Into(freq, res, out);
+    assert.deepEqual({ ...c }, coefficientsByHand(freq, res), `freq ${freq} res ${res}`);
+    for (const v of [c.p, c.f, c.q]) assert.equal(f32(v), v, 'every coefficient is a float32');
+    // The double formula agrees to float32's precision...
+    const d = ladderCoefficients(freq, res);
+    assert.ok(Math.abs(c.q - d.q) < 1e-6 * Math.max(1, d.q), `q ${c.q} against ${d.q}`);
+    // ...and is not what rounding it once at the end gives.
+    if (f32(d.q) !== c.q || f32(d.p) !== c.p) roundedOnce += 1;
+  }
+  assert.ok(roundedOnce > 100, `the per-operation rounding shows on ${roundedOnce} of 2000`);
+});
+
+test('the float32 ladder is the module’s sequence, its cube by 0.166667f', () => {
+  // `woodpecker`'s full-modulation note: resonance 0.84 at a closed cutoff,
+  // driven by a loud square so the cube is working.
+  const c = ladderCoefficients32Into(0.03, 0.84, { p: 0, f: 0, q: 0 });
+  const ladder = new MoogLadder32();
+  const byHand = ladderByHand(f32(0.166667));
+  const sixth = ladderByHand(f32(1 / 6));
+  const double = new MoogLadder();
+  const dc = ladderCoefficients(0.03, 0.84);
+  let sixthApart = 0;
+  let doubleApart = 0;
+  let gap = 0;
+  for (let i = 0; i < 9600; i += 1) {
+    const input = Math.floor(i / 160) % 2 === 0 ? 0.9 : -0.9;
+    const y = ladder.process(input, c);
+    assert.equal(y, byHand(input, c), `sample ${i}`);
+    assert.equal(f32(y), y, 'the output is a float32');
+    if (sixth(input, c) !== y) sixthApart += 1;
+    const d = double.process(input, dc);
+    if (d !== y) doubleApart += 1;
+    gap = Math.max(gap, Math.abs(d - y));
+  }
+  // `0x3e2aaac1` is 22 ulps above a sixth, and a loud resonant ladder shows it.
+  assert.ok(sixthApart > 1000, `1/6 departs on ${sixthApart} samples`);
+  // The double ladder is the same filter and not the same numbers: apart on
+  // almost every sample, by -127 dB of the peak here on fixed coefficients.
+  assert.ok(doubleApart > 9000, `the double ladder departs on ${doubleApart} samples`);
+  assert.ok(gap < 1e-5, `by at most ${gap}`);
+  ladder.reset();
+  const again = ladderByHand(f32(0.166667));
+  for (let i = 0; i < 64; i += 1) assert.equal(ladder.process(0.5, c), again(0.5, c), 'a reset ladder starts over');
+});
+
+test('the two ends are formed in float32, with the envelope factor as the module writes it', () => {
+  const draw = draws(11);
+  const params: { x: number; y: number }[] = Array.from({ length: 27 }, () => ({ x: draw(), y: draw() }));
+  const out = { freqS: 0, freqE: 0, resS: 0, resE: 0 };
+  let factorShows = 0;
+  for (let i = 0; i < 500; i += 1) {
+    const [modS, modE, envBS, envBE] = [draw(), draw(), draw(), draw()];
+    const ratio = f32(0.25 + 4 * draw());
+    filterEnds32(params, modS, modE, envBS, envBE, ratio, false, out);
+    const at = (mod: number) => ({
+      cutoff: params[3].x + mod * (params[3].y - params[3].x),
+      resonance: params[4].x + mod * (params[4].y - params[4].x),
+      keyTrack: params[5].x + mod * (params[5].y - params[5].x),
+      envAmount: params[6].x + mod * (params[6].y - params[6].x),
+    });
+    const s = filterAt(at(modS), envBS, ratio);
+    const e = filterAt(at(modE), envBE, ratio);
+    for (const [ours, double] of [[out.freqS, s.freq], [out.freqE, e.freq], [out.resS, s.res], [out.resE, e.res]]) {
+      assert.equal(f32(ours), ours, 'a float32');
+      assert.ok(Math.abs(ours - double) < 1e-6, `${ours} against the double ${double}`);
+    }
+    // `(1 - a) + e·a` (`0x29e0`-`0x29e8`), not `1 + a·(e - 1)`: the resonance
+    // is that factor times one more float, so the two forms show on it.
+    const a = f32(params[6].x + f32(modS * f32(params[6].y - params[6].x)));
+    const r = f32(params[4].x + f32(modS * f32(params[4].y - params[4].x)));
+    const other = f32(r * f32(1 + f32(a * f32(envBS - 1))));
+    if (other !== out.resS && other <= 1) factorShows += 1;
+  }
+  assert.ok(factorShows > 10, `the factor's form shows on ${factorShows} of 500`);
+  // The render's `noKeyTrack` takes the key tracking out, whatever `Params[5]` says.
+  const flat = Array.from({ length: 27 }, () => ({ x: 0, y: 0 }));
+  flat[3] = { x: 0.5, y: 0.5 };
+  flat[5] = { x: 1, y: 1 };
+  assert.equal(filterEnds32(flat, 0, 0, 1, 1, 2, false, out).freqS, 0.5, 'an octave up doubles 0.25');
+  assert.equal(filterEnds32(flat, 0, 0, 1, 1, 2, true, out).freqS, 0.25, 'and noKeyTrack holds it');
+});
+
+test('a ramp steps by a float32 reciprocal, not a division', () => {
+  // `0x33eb`-`0x3411`: `1.0f / N`, then the difference times it.
+  const draw = draws(3);
+  let apart = 0;
+  for (let n = 1; n <= 256; n += 1) {
+    const [a, b] = [draw(), draw()];
+    const step = rampStep32(a, b, n);
+    assert.equal(step, f32(f32(b - a) * f32(1 / n)));
+    if (step !== f32((b - a) / n)) apart += 1;
+  }
+  assert.ok(apart > 10, `a division would differ on ${apart} of 256`);
 });

@@ -623,14 +623,19 @@ test('startFrame delays a voice sample-accurately', () => {
   assert.ok(left[5] > 0, 'sounding after the start frame');
 });
 
-test('a finished voice is dropped and leaves silence', () => {
+test('a finished voice is dropped after its block and leaves silence', () => {
   const mixer = new Mixer(44100);
   mixer.play({ sample: ramp(4), playbackRate: 1, gain: 1, pan: 0.5 });
   const left = new Float32Array(8);
   const right = new Float32Array(8);
   mixer.render(left, right);
-  assert.equal(mixer.voiceCount, 0, 'voice retired');
   for (let i = 4; i < 8; i += 1) assert.equal(left[i], 0, `silence at ${i}`);
+  // `0x3035` frees the record once its chunk is out, not at the sample's end.
+  assert.equal(mixer.voiceCount, 1, 'held to the end of its block');
+  const rest = new Float32Array(256 - 8);
+  mixer.render(rest, new Float32Array(rest.length));
+  assert.ok(rest.every((v) => v === 0), 'in silence');
+  assert.equal(mixer.voiceCount, 0, 'voice retired');
 
   mixer.render(left, right);
   assert.ok(left.every((v) => v === 0), 'buffers are cleared each block');
@@ -1063,4 +1068,26 @@ test('a voice whose send only rises later still reaches the bus', async () => {
   const echo: [Float32Array, Float32Array] = [new Float32Array(512), new Float32Array(512)];
   mixer.render(new Float32Array(512), new Float32Array(512), { echo });
   assert.ok(echo[0][400] > 0.4, `the bus fills once the send arrives: ${echo[0][400]}`);
+});
+
+// `0x20e0` frees a record after the chunk whose envelope END value is not
+// positive, in whatever stage -- so a struck instrument (sustain 0) gives its
+// record back once its decay has run, with the gate still open, and its
+// ladder stops with it rather than ringing on.
+test('an envelope that decays to nothing frees the record with the gate open', () => {
+  const tone = new Float32Array(48000).fill(0.5);
+  const sample = { channels: [tone], sampleRate: 48000, loop: { start: 0, end: 47999 } };
+  const mixer = new Mixer(48000);
+  // Decay 0.01 s from full to 0: 480 frames, inside the second 256-frame block.
+  mixer.play({
+    sample, playbackRate: 1, gain: 1, pan: 0.5, endFrame: 48000,
+    envelope: { attack: 0, decay: 0.01, sustain: 0, release: 0.5 },
+  });
+  const left = new Float32Array(256);
+  const right = new Float32Array(256);
+  mixer.render(left, right);
+  assert.equal(mixer.voiceCount, 1);
+  mixer.render(left, right);
+  mixer.render(left, right);
+  assert.equal(mixer.voiceCount, 0, 'gone after the chunk the decay ended in, gate or no gate');
 });

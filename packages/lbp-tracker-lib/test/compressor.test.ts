@@ -16,8 +16,9 @@ import {
  * `signal()` regenerates. They are not a snapshot of this implementation, so a
  * change that breaks them is a change that stops matching the game.
  *
- * Regenerate with the script in *37* of `steering/answered-questions.md` if the
- * signal here ever changes.
+ * `tools/prxhammer.py` regenerates them with the module made as the game makes
+ * it, against the console's own libc, and agrees with these to 5e-8 — the
+ * resolution of a gain read as `out/in` off float32 samples.
  */
 const VECTORS: readonly (readonly [number, number, number, number])[] = [
   [0, 0.011726822, 0.001427808, 0.998560501],
@@ -77,25 +78,48 @@ test('WaveHammer reproduces the gains the real PRX produced', () => {
   for (const [k, , , want] of VECTORS) {
     worst = Math.max(worst, Math.abs(gains[k] - want));
   }
-  // The harness runs the module in float32 throughout and this runs in double,
-  // so the tolerance is the accumulated width of that difference through a
-  // one-pole with a 0.97 pole, not a fudge factor.
-  assert.ok(worst < 2e-5, `worst gain error ${worst}`);
+  // Both sides are float32 in the same order, so this is the rows' own
+  // resolution: a gain read as out/in, printed to nine figures.
+  assert.ok(worst < 1e-7, `worst gain error ${worst}`);
+});
+
+test('once it has compressed, the gain rests where the module’s float32 envelope stalls', () => {
+  const { left, right } = signal();
+  const hammer = new WaveHammer();
+  for (let k = 0; k < FRAMES; k += 1) hammer.gainFor(left[k], right[k]);
+  let gain = 0;
+  for (let k = 0; k < 48000; k += 1) gain = hammer.gainFor(0, 0);
+  // `tools/prxhammer.py`: `[state+0xf0]` after the same signal and a second of
+  // silence, still for good 75 blocks in. Not the constant 0.8087664 it aims
+  // at: near rest the second smoother's step is under half an ulp of its state.
+  assert.equal(gain, 0.8086755275726318);
+  // Never compressed, it stalls on the other side of the constant.
+  const fresh = new WaveHammer();
+  for (let k = 0; k < 48000; k += 1) gain = fresh.gainFor(0, 0);
+  assert.equal(gain, 0.8087709546089172);
+});
+
+test('the second smoother is seeded in float32, a hair under 0.5', () => {
+  // `tools/prxhammer.py`: the first frame of a fresh module fed 1.0. A seed of
+  // exactly 0.5 makes it 0.99812317.
+  assert.equal(new WaveHammer().gainFor(1, 1), 0.998123049736023);
 });
 
 test('the coefficients match the ones the running module reports', () => {
-  // `[state+0xf8]` and `[state+0xfc]`, dumped by `runhammer.py state`.
-  assert.ok(Math.abs(waveHammerCoefficient(10, 48000) - 0.464158863) < 1e-7);
-  assert.ok(Math.abs(waveHammerCoefficient(250, 48000) - 0.984458208) < 1e-7);
+  // `[state+0xf8]` and `[state+0xfc]`, dumped by `prxhammer.py`. The attack is
+  // `powf` in float32, one ulp under the float nearest `0.1^(1/3)`.
+  assert.equal(waveHammerCoefficient(10, 48000), 0.4641588628292084);
+  assert.equal(waveHammerCoefficient(250, 48000), 0.9844582080841064);
   // `x = round(rate * ms * 1e-4)/8 - 3` is not positive below ~5 ms at 48 kHz,
   // and `0x733` stores zero rather than dividing by it.
   assert.equal(waveHammerCoefficient(5, 48000), 0);
 });
 
 test('the table axis starts exactly at the knee bottom, so entry 0 is unity', () => {
-  // `[state+0xc8]` = 0.007943281 when the threshold is -18 dB.
+  // `[state+0xc8]` when the threshold is -18 dB, one ulp under the float
+  // nearest `10^-2.1`: `0x380` gets there through `powf` and a square.
   const floor = waveHammerFloor(-18);
-  assert.ok(Math.abs(floor - 0.007943281) < 1e-8);   // the harness prints float32
+  assert.equal(floor, 0.007943280972540379);
   const gains = waveHammerTable(-18, 10, floor);
   assert.ok(Math.abs(gains[0] - 1) < 1e-6, `entry 0 is ${gains[0]}`);
   // `[state+0x100]`, the largest reduction, which the make-up normalises to 0.995.

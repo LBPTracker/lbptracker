@@ -53,7 +53,8 @@ import { loadResource } from '@lbptracker/cwlib/resource.ts';
 import { ENGINE_RATE, pitchRatio, velocityGain } from '@lbptracker/lib/voice.ts';
 import { engineSample, loopRegion, readWav, type WavData } from '@lbptracker/lib/wav.ts';
 import { webInflate } from '@lbptracker/cwlib/platform/web.ts';
-import { state } from './session.ts';
+import { engine as engineCard } from '../controls/engine.ts';
+import { masterChoice, state } from './session.ts';
 import { fillSoundField } from '../editor/glyph.ts';
 import { pickInstrument } from '../editor/instrument-picker.ts';
 import { instrumentsFrom, type InstrumentInfo } from '../editor/instruments.ts';
@@ -462,12 +463,15 @@ function panic(): void {
  * Push the whole output stage to the worklet.
  *
  * Rebuilding an effect drops its tail, so this is called when a control moves
- * and not per note.
+ * and not per note. ❗ The master bus is not the bench's: it is the engine
+ * card's choice, so an instrument tried here goes through the same one as the
+ * song.
  */
 function pushEffects(): void {
   node?.port.postMessage({
     type: 'effects',
     ...effectSettings(context?.sampleRate ?? 48000),
+    master: masterChoice(),
   });
 }
 
@@ -1238,6 +1242,7 @@ async function init(): Promise<void> {
     },
   );
   watch(bench.effectsSignature, () => pushEffects());
+  watch(engineCard.effectsSignature, () => pushEffects());
 
   $<HTMLSelectElement>('kb-mpeMode').addEventListener('change', applyMpeMode);
   $<HTMLSelectElement>('kb-bendRange').addEventListener('change', (e) => {

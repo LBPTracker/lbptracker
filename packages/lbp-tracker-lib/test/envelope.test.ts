@@ -6,6 +6,8 @@ import test from 'node:test';
 
 import {
   ADSR_PARAMS,
+  ENGINE_DT_END,
+  ENGINE_DT_START,
   ENVELOPE_SECONDS_PER_UNIT,
   Envelope,
   evaluateAdsr,
@@ -111,6 +113,44 @@ test('a zero release cuts immediately rather than hanging', () => {
   env.advance(0.001, true, { attack: 0, decay: 1, sustain: 1, release: 0 });
   assert.equal(env.advance(0.01, false, { attack: 0, decay: 1, sustain: 1, release: 0 }), 0);
   assert.ok(env.finished);
+});
+
+test('advance32 is 0x16b0 in float32, and the double envelope to within its rounding', () => {
+  // Chunks of 256 frames, each evaluated twice as `0x1c60` does: the start
+  // call with `frames · 1/48e6` units, the end call with `frames · 1/192000`.
+  const f = Math.fround;
+  const units = (x: number) => x * x * ENVELOPE_SECONDS_PER_UNIT;
+  for (const [a, d, s, r] of [[0.3, 0.5, 0.4, 0.6], [0, 0.2, 0, 0.1], [0.05, 0, 0.7, 0.3], [0.2, 0.9, 1, 0]]) {
+    const [a32, d32, s32, r32] = [a, d, s, r].map(f);
+    const adsr = { attack: units(a32), decay: units(d32), sustain: s32, release: units(r32) };
+    const e32 = new Envelope();
+    const e64 = new Envelope();
+    const n = 256;
+    let worst = 0;
+    for (let chunk = 0; chunk < 900; chunk += 1) {
+      const gate = chunk < 500;
+      const pairs: [number, number][] = [[f(n * ENGINE_DT_START), n / 48000 / 250], [f(n * ENGINE_DT_END), n / 48000]];
+      for (const [dt32, seconds] of pairs) {
+        const x = e32.advance32(dt32, gate, a32, d32, s32, r32);
+        const y = e64.advance(seconds, gate, adsr);
+        assert.equal(f(x), x, 'a float32 level');
+        worst = Math.max(worst, Math.abs(x - y));
+      }
+    }
+    assert.ok(worst < 1e-5, `${[a, d, s, r]}: apart by ${worst}`);
+    assert.ok(e32.finished && e64.finished, 'both released to zero');
+  }
+  // The constants are the module's floats, `v0x4560` and `v0x4564`.
+  assert.equal(ENGINE_DT_START, f(1 / 48e6));
+  assert.equal(ENGINE_DT_END, f(1 / 192000));
+});
+
+test('advance32 goes to full from a standing start only from exactly zero', () => {
+  // `0x171a`-`0x1736`: no attack, a decay not below zero, and a stored 0.
+  const env = new Envelope();
+  assert.ok(env.advance32(Math.fround(256 * ENGINE_DT_START), true, 0, 0.5, 0.25, 0.5) > 0.999);
+  // A zero decay lands on the sustain, mirrored as the module stores it.
+  assert.equal(new Envelope().advance32(0.01, true, 0, 0, 0.3, 0.5), Math.fround(2 - Math.fround(2 - 0.3)));
 });
 
 // ------------------------------------------------------- against the real set
@@ -374,6 +414,78 @@ test('cutFrame stops a one-shot that is ignoring its note', async () => {
   mixer.render(left, new Float32Array(400));
   assert.ok(left[149] !== 0, 'sounding right up to the cut');
   assert.equal(left[150], 0, 'and gone at it, mid-sample, with no release');
+});
+
+/**
+ * `0x3035`-`0x3069` ask whether layer 0 has run out once the chunk is out,
+ * and the record is freed after it; until then the chunk plays whole -- layer
+ * 0 reading silence (`0x37be`), the other layers and the ladder running on.
+ */
+test('a one-shot plays its last block whole and gives the record back after it', async () => {
+  const { Mixer } = await import('../src/audio/mixer.ts');
+  const { buildMipChain } = await import('../src/audio/mipmap.ts');
+  const rate = 48000;
+  const one = new Float32Array(300).fill(0.5);
+  const sample = { channels: [one], sampleRate: rate, mips: [buildMipChain(one)] };
+  const mixer = new Mixer(rate);
+  // Layer 1 at half speed is at frame 150 of the sample when layer 0 runs out.
+  mixer.play({
+    sample,
+    playbackRate: 1,
+    gain: 1,
+    pan: 0.5,
+    layers: [{ pan: 0.5 }, { pan: 0.5, detune: 0.5 }],
+  });
+  const left = new Float32Array(1024);
+  mixer.render(left, new Float32Array(1024));
+  assert.equal(left[299], 0.5, 'both layers up to layer 0’s last frame');
+  assert.equal(left[300], 0.25, 'then layer 1 alone, to the end of the block');
+  assert.equal(left[511], 0.25);
+  assert.equal(left[512], 0, 'freed after it, layer 1 mid-sample');
+  assert.equal(mixer.voiceCount, 0);
+});
+
+test('a position landing on the frame count keeps the record a block more', async () => {
+  const { Mixer } = await import('../src/audio/mixer.ts');
+  const { buildMipChain } = await import('../src/audio/mipmap.ts');
+  const rate = 48000;
+  const one = new Float32Array(256).fill(0.5);
+  const mixer = new Mixer(rate);
+  mixer.play({
+    sample: { channels: [one], sampleRate: rate, mips: [buildMipChain(one)] },
+    playbackRate: 1,
+    gain: 1,
+    pan: 0.5,
+    layers: [{ pan: 0.5 }, { pan: 0.5, detune: 0.5 }],
+  });
+  const left = new Float32Array(1024);
+  mixer.render(left, new Float32Array(1024));
+  // Layer 0 ends the first block at exactly 256: not past it (`jbe`).
+  assert.equal(left[300], 0.25, 'the next block plays');
+  assert.equal(left[512], 0, 'and the record goes after it');
+});
+
+test('a filtered one-shot’s ladder rings to the end of its last block', async () => {
+  const { Mixer } = await import('../src/audio/mixer.ts');
+  const { buildMipChain } = await import('../src/audio/mipmap.ts');
+  const rate = 48000;
+  const one = new Float32Array(300).fill(0.5);
+  const mixer = new Mixer(rate);
+  mixer.play({
+    sample: { channels: [one], sampleRate: rate, mips: [buildMipChain(one)] },
+    playbackRate: 1,
+    gain: 1,
+    pan: 0.5,
+    filter: {
+      settings: { cutoff: 0.3, resonance: 0.5, keyTrack: 0, envAmount: 0 },
+      envelope: { attack: 0, decay: 0, sustain: 1, release: 0 },
+    },
+  });
+  const left = new Float32Array(1024);
+  mixer.render(left, new Float32Array(1024));
+  assert.ok(left[400] !== 0, 'the ladder still rings after the sample');
+  assert.ok(left[511] !== 0);
+  assert.equal(left[512], 0, 'and stops in one frame when the record goes');
 });
 
 // --------------------------------------------------------- the whole block

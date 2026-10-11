@@ -17,6 +17,7 @@
  */
 
 import { MASTER_DEFAULTS } from '@lbptracker/lib/audio/master.ts';
+import type { MasterChoice } from '@lbptracker/lib/audio/master-stage.ts';
 import { shallowRef, watch } from 'vue';
 import { loaderFor, manifest, type Manifest } from '../assets.ts';
 import type { Sequencer } from '@lbptracker/cwlib/project.ts';
@@ -143,6 +144,16 @@ export const player = new Player({
 /** The pool size the engine switches ask for. */
 export const poolSize = (): number => (engine.on('optNoCap') ? VOICES_UNLIMITED : engine.raw('voices'));
 
+/**
+ * The master bus the engine card asks for: the game's, or ours at its glue.
+ * The keyboard's worklet follows the same choice (`daw/keyboard-view.ts`).
+ */
+export function masterChoice(): MasterChoice {
+  return engine.picked('master') === 'ours'
+    ? { amount: engine.raw('masterAmount'), ceilingDb: MASTER_DEFAULTS.ceilingDb }
+    : 'game';
+}
+
 export function pushEffects(): void {
   const song = state.song;
   player.setEffects({
@@ -153,10 +164,7 @@ export function pushEffects(): void {
     echoOn: engine.on('optEcho'),
     reverbOn: engine.on('optReverb'),
     clip: engine.on('optClip'),
-    // Ours, past the fold, and only when it is switched on.
-    master: engine.on('optMaster')
-      ? { amount: engine.raw('masterAmount'), ceilingDb: MASTER_DEFAULTS.ceilingDb }
-      : null,
+    master: masterChoice(),
   });
 }
 

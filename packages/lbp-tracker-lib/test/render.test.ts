@@ -224,3 +224,157 @@ test('a glide is linear in steps, so under swing it bends at every step it cross
   const frames = automation!.map((p) => p.frame);
   assert.ok(frames[1] - frames[0] > frames[2] - frames[1], 'the stretched step is longer than the squeezed one');
 });
+
+/** A one-slot instrument on a constant sample, for plans that need no audio. */
+async function planOf(
+  tracks: readonly { gridX?: number; gridY?: number; notes: Parameters<typeof import('@lbptracker/cwlib/notes.ts').groupNotes>[0] }[],
+  options: Parameters<typeof renderSequencer>[2] = {},
+  slot: { pitched?: boolean; numStack?: number; startOffset?: number; frames?: number; loop?: { start: number; end: number } } = {},
+  tempo = 120,
+) {
+  const { groupNotes, encodeNotes } = await import('@lbptracker/cwlib/notes.ts');
+  const { DEFAULT_SLOT } = await import('../src/instrument.ts');
+  const seq: Sequencer = {
+    uid: 1, name: 'plan', author: '', tempo, swing: 0,
+    echoFeedback: 0, echoTime: 1, echoMix: 0, reverb: 5,
+    loop: false, startPoint: 0, numChannels: 1, volumes: [1, 1, 1, 1, 1, 1], boardRows: 0,
+    tracks: tracks.map((t) => {
+      const { notes } = groupNotes(t.notes);
+      return {
+        guid: 1, name: 't', colour: DEFAULT_CHIP_COLOUR, gridX: t.gridX ?? 0, gridY: t.gridY ?? 0,
+        stepOffset: (t.gridX ?? 0) * 16, level: 1, pan: 0.5, echoSend: 0.5, reverbSend: 0, key: 0, scale: 0,
+        notes, records: encodeNotes(notes), trailingRecords: 0,
+      };
+    }),
+    lengthSteps: 32,
+  };
+  const params = Array.from({ length: 27 }, () => ({ x: 0, y: 0 }));
+  params[13] = { x: 1, y: 1 };
+  params[24] = { x: 1, y: 1 };
+  params[2] = { x: slot.startOffset ?? 0, y: slot.startOffset ?? 0 };
+  const frames = slot.frames ?? 4800;
+  const channel = new Float32Array(slot.loop ? Math.max(frames, slot.loop.end + 16) : frames).fill(0.5);
+  const loader = async () => ({
+    inst: {
+      slots: [{ ...DEFAULT_SLOT, pitched: slot.pitched ?? true }], sampleGuids: [1],
+      splitNotes: [87, 0, 0, 0, 0, 0, 0, 0, 0], numStack: slot.numStack ?? 1, params, arpeggio: [], arpeggiate: false,
+    },
+    slots: [{
+      wav: { channels: [channel], sampleRate: RATE, loop: slot.loop ? { ...slot.loop, frames } : undefined },
+      base: 60,
+    }],
+  });
+  const voices: {
+    voice: import('../src/audio/mixer.ts').VoiceSpec;
+    track: number;
+    startFrame: number;
+    walks: import('../src/polyphony.ts').PoolWalks;
+  }[] = [];
+  await renderSequencer(seq, loader, {
+    planOnly: true,
+    ...options,
+    onVoice: (voice, where) =>
+      voices.push({ voice, track: where.track, startFrame: where.startFrame, walks: where.walks }),
+  });
+  return voices;
+}
+
+const hit = (step: number, pitch = 60, end = true) => ({
+  step, pitch, volume: 96, timbre: 0, modulation: 0, subStep: 0 as const, end,
+});
+
+test('the walk takes one clip per row and stops once rows 0..7 are taken', async () => {
+  // Nine rows, row 8 first in the clip array: the walk scans from the LAST
+  // header (`0x0300`), so rows 7..0 fill the mask to 0xff before it reaches
+  // row 8, and `0x05dc` ends the scan there.
+  const rows = [8, 0, 1, 2, 3, 4, 5, 6, 7];
+  const dropped = await planOf(rows.map((r) => ({ gridY: r, notes: [hit(0)] })));
+  assert.deepEqual(dropped.map((v) => v.track).sort(), [1, 2, 3, 4, 5, 6, 7, 8]);
+  // Row 8 last in the array is scanned first, its bit keeps the mask off
+  // 0xff, and every row plays.
+  const kept = await planOf([...rows.slice(1), 8].map((r) => ({ gridY: r, notes: [hit(0)] })));
+  assert.equal(kept.length, 9);
+  // Two clips on one row at once: the later header wins the row.
+  const shared = await planOf([{ gridY: 2, notes: [hit(0)] }, { gridY: 2, notes: [hit(0, 64)] }]);
+  assert.deepEqual(shared.map((v) => v.track), [1]);
+});
+
+test('the pool scores a held note at its current point, walk by walk', async () => {
+  const at = (step: number, volume: number, end = false) => ({
+    step, pitch: 60, volume, timbre: 0, modulation: 0, subStep: 0 as const, end,
+  });
+  // Two notes claimed together on a pool of two: one held at 100, one opening
+  // at 127 and fading to 10 by step 4. A third arrives at step 5 and must take
+  // the record that is quiet NOW (`0x3930` rewrites +0x0c at every walk); scored
+  // at their claims, the note held at 100 would go, on either clock.
+  const tracks = [
+    { gridY: 0, notes: [at(0, 100), at(8, 100, true)] },
+    { gridY: 1, notes: [at(0, 127), at(4, 10), at(8, 10, true)] },
+    { gridY: 2, notes: [at(5, 100), at(6, 100, true)] },
+  ];
+  for (const engineClock of [false, true]) {
+    // Looped, or each note gives its record back when its sample runs out.
+    const voices = await planOf(tracks, { voiceLimit: 2, engineClock }, { loop: { start: 0, end: 4800 } });
+    const of = (track: number) => voices.find((v) => v.track === track)!;
+    assert.equal(of(0).voice.cutFrame, undefined, 'the note held at 100 keeps its record');
+    assert.notEqual(of(1).voice.cutFrame, undefined, 'the faded note is stolen');
+    // Its walks: the ramp at steps 1..4, flat to its end at 8, and the walk at
+    // 9 that closes its gate -- each times the channel's 0.75.
+    const { from, scores } = of(1).walks;
+    assert.equal(from, 1);
+    assert.equal(scores.length, 9);
+    [127 - 117 / 4, 127 - 117 / 2, 127 - 351 / 4, 10, 10, 10, 10, 10, 10].forEach((v, i) =>
+      assert.ok(Math.abs(scores[i] - 0.75 * v / 127) < 1e-12, `walk ${i + 1}`));
+  }
+});
+
+test('an unpitched slot ignores a glide', async () => {
+  const glide = [hit(0, 60, false), hit(2, 72, true)];
+  const pitched = await planOf([{ notes: glide }]);
+  assert.deepEqual(pitched[0].voice.automation?.map((p) => p.pitch), [0, 6, 12]);
+  const unpitched = await planOf([{ notes: glide }], {}, { pitched: false });
+  assert.deepEqual(unpitched[0].voice.automation?.map((p) => p.pitch), [0, 0, 0]);
+});
+
+test('a random start scales the sample’s own frames, not the patched buffer', async () => {
+  // A loop ending on the last frame makes the buffer 16 frames longer than the
+  // sample; `0x1ad1` reads the slot's `+0x78`, the sample's length.
+  const voices = await planOf([{ notes: [hit(0)] }], { random: () => 0.5 }, {
+    numStack: 2, startOffset: 1, frames: 4800, loop: { start: 100, end: 4800 },
+  });
+  assert.equal(voices[0].voice.layers?.[1].startPosition, Math.fround(4800 * 0.5));
+});
+
+test('on the engine’s clock a voice carries the walk the module runs, and its chunks', async () => {
+  // 60 to 72 over two steps: the spawn's values and slide, the walk at 1
+  // caught up to 66, the end record's at 2, and the walk at 3 that closes the
+  // gate -- each holding from its walk's chunk end.
+  const voices = await planOf([{ notes: [hit(0, 60, false), hit(2, 72, true)] }], { engineClock: true }, {}, 180);
+  const { engine, engineGrid, endFrame } = voices[0].voice;
+  assert.ok(engine && engineGrid?.chunks, 'the record and the chunks travel together');
+  assert.deepEqual(engine.walks.map((w) => [w.pitch, w.pitchSlide]), [[60, 6], [66, 6], [72, 0], [72, 0]]);
+  assert.equal(engine.walks[0].frame, 0);
+  assert.equal(voices[0].startFrame + engine.walks[3].frame, endFrame, 'the closing walk is the gate');
+  const plain = await planOf([{ notes: [hit(0, 60, false), hit(2, 72, true)] }], {}, {}, 180);
+  assert.equal(plain[0].voice.engine, undefined, 'the tracker’s clock keeps the double voice');
+});
+
+test('records bunched inside a step close the gate a walk late', async () => {
+  // 6, 6⅓, 6⅔ and 8: the cursor reaches the end record at walk 9 and the
+  // module closes at walk 10 (`closingWalk`), not at the end's step plus one.
+  const at = (subStep: 0 | 1 | 2, step: number, end = false) => ({ ...hit(step, 60, end), subStep });
+  const voices = await planOf([{ notes: [at(0, 6), at(1, 6), at(2, 6), at(0, 8, true)] }]);
+  assert.equal(voices[0].voice.endFrame, 10 * 6000);
+  // 6, 6⅓ and 8: the cursor is on the end record by walk 8, in time.
+  const spread = await planOf([{ notes: [at(0, 6), at(1, 6), at(0, 8, true)] }]);
+  assert.equal(spread[0].voice.endFrame, 9 * 6000, 'a gap lets the cursor catch up');
+});
+
+test('on the engine’s clock a voice starts and is gated where the module does', async () => {
+  const voices = await planOf([{ notes: [hit(0), hit(2)] }], { engineClock: true }, {}, 180);
+  assert.deepEqual(voices.map((v) => v.startFrame), [256, 8192]);
+  assert.deepEqual(voices.map((v) => v.voice.endFrame), [4096, 12032]);
+  assert.equal(voices[1].voice.engineGrid?.origin, 8192);
+  const ours = await planOf([{ notes: [hit(0), hit(2)] }], {}, {}, 180);
+  assert.deepEqual(ours.map((v) => v.startFrame), [0, 8000], 'the tracker’s own clock is the default');
+});

@@ -44,9 +44,10 @@ export const ADSR_PARAMS = { attack: 11, decay: 12, sustain: 13, release: 14 } a
  * A second envelope with the same shape, at `Params[7..10]`: the **filter**
  * envelope.
  *
- * ✔ Measured: `0x21ef`-`0x220d` interpolate these four and `0x2227` calls the
- * same evaluator with them; its return, kept at `[rbp-0xb70]`, is the
- * `envelopeB` of `filterAt`'s `envFactor` (`0x2a28`). See `FILTER_PARAMS` in
+ * ✔ Measured: `0x213d`-`0x21cd` interpolate these four and `0x21ed` and
+ * `0x2227` call the same evaluator with them; its returns, kept at
+ * `[rbp-0xb70]` and `[rbp-0xb60]`, are the `envelopeB` of `filterAt`'s
+ * `envFactor` at the two ends (`0x29e8`, `0x2a72`). See `FILTER_PARAMS` in
  * `audio/moog.ts` for how it was told apart from the key tracking.
  */
 export const ADSR_PARAMS_B = { attack: 7, decay: 8, sustain: 9, release: 10 } as const;
@@ -84,6 +85,15 @@ export const ADSR_PARAMS_B = { attack: 7, decay: 8, sustain: 9, release: 10 } as
  * stage turns inside a segment the ramp cuts the corner, as the engine's does.
  */
 export const ENVELOPE_SECONDS_PER_UNIT = 4;
+
+/**
+ * The two `dt` constants as the module holds them, float32: `frames ·
+ * 1/48,000,000` for the block's start (`0x201f`, `v0x4560`) and `frames ·
+ * 1/192,000` for its end (`0x2054`, `v0x4564`), the frames being the engine's
+ * own at 48 kHz. `Envelope.advance32` takes them.
+ */
+export const ENGINE_DT_START = Math.fround(1 / 48e6);
+export const ENGINE_DT_END = Math.fround(1 / 192000);
 
 /**
  * A `Params` pair is a **range**, and the note picks a point inside it.
@@ -216,6 +226,62 @@ export class Envelope {
       this.stored = Math.min(floor, this.stored + remaining / adsr.decay);
     }
     return this.level;
+  }
+
+  /**
+   * `0x16b0` itself, in float32: `advance` as the module computes it, for a
+   * record on the engine's clock. `dt` is in the module's units --
+   * `frames · ENGINE_DT_START` or `frames · ENGINE_DT_END` -- and `a`, `d`,
+   * `s`, `r` are the four `Params` values at the chunk's start modulation,
+   * squared here as `0x16e6`, `0x1712` and `0x1750` square them.
+   *
+   * The branches are the module's, which `advance` also has but for one: a
+   * standing start goes to 1 only from exactly 0, with no attack and a decay
+   * not below 0 (`0x171a`-`0x1736`); `advance` takes any level at or under 1
+   * there when the attack is 0, which no shipped instrument reaches.
+   */
+  advance32(dt: number, gate: boolean, a: number, d: number, s: number, r: number): number {
+    const f = Math.fround;
+    if (!gate) {
+      // `0x1750`-`0x1792`: the level un-mirrored, less `dt / r²`, 0 ends it.
+      const R = f(r * r);
+      if (R > 0) {
+        const level = this.stored > 1 ? f(2 - this.stored) : this.stored;
+        const next = f(level - f(dt / R));
+        if (next >= 0) {
+          this.stored = next;
+          return next;
+        }
+      }
+      this.stored = 0;
+      this.done = true;
+      return 0;
+    }
+    const A = f(a * a);
+    let stored = this.stored;
+    // `0x16f6`: what the attack still needs, against this call's `dt`.
+    const need = f(A * f(1 - stored));
+    if (need > dt && A > 0) {
+      stored = f(stored + f(dt / A));
+      this.stored = stored;
+      return stored > 1 ? f(2 - stored) : stored;
+    }
+    const D = f(d * d);
+    if (stored === 0 && !(A > 0) && D >= 0) stored = 1;
+    let rest = dt;
+    if (need > 0) {
+      // `0x1744`: the attack completes, and what is left of `dt` decays.
+      stored = 1;
+      rest = f(dt - need);
+    }
+    const floor = f(2 - s);
+    let out = floor;
+    if (D > 0) {
+      out = f(f(rest / D) + stored);
+      if (!(out < floor)) out = floor;
+    }
+    this.stored = out;
+    return out > 1 ? f(2 - out) : out;
   }
 
   /** Restart the envelope for a new note. */

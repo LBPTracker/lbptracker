@@ -87,12 +87,16 @@ export function patchLoop(
  */
 export function engineSample(wav: WavData): {
   readonly channels: Float32Array[];
-  readonly loop: { readonly start: number; readonly end: number } | undefined;
+  readonly loop: { readonly start: number; readonly end: number; readonly frames: number } | undefined;
 } {
-  const loop = wav.loop ? loopRegion(wav.loop, wav.channels[0].length) : undefined;
+  const frames = wav.channels[0].length;
+  const loop = wav.loop ? loopRegion(wav.loop, frames) : undefined;
   const looped = loop !== undefined && loop.end > loop.start;
   const channels = wav.channels.map((c) => (looped ? patchLoop(c, loop) : c));
-  return { channels, loop: looped ? loop : undefined };
+  // `frames` rides on the loop because only a looped buffer is longer than the
+  // sample: the patch puts 16 frames past the loop's end, and the sampler still
+  // tests its index against the slot's own length (`readMipped`).
+  return { channels, loop: looped ? { ...loop, frames } : undefined };
 }
 
 /**

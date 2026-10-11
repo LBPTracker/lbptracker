@@ -11,8 +11,8 @@ const choices = controls.choicesIn(props.group);
 <template>
   <div v-for="(choice, i) in choices" :key="choice.id" class="row"
        :style="i ? 'margin-top:.5rem' : undefined">
-    <label :for="choice.id">{{ choice.label }}</label>
-    <select :id="choice.id" v-model="controls.chosen[choice.id]" autocomplete="off">
+    <label :for="choice.id" :title="choice.title">{{ choice.label }}</label>
+    <select :id="choice.id" v-model="controls.chosen[choice.id]" :title="choice.title" autocomplete="off">
       <option v-for="option in choice.options" :key="option.value" :value="option.value">
         {{ option.label }}
       </option>

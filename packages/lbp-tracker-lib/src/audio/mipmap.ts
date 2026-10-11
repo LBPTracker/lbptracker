@@ -103,6 +103,13 @@ export function buildMipChain(data: Float32Array, levels = MIP_LEVELS): Float32A
 export interface LoopSpan {
   readonly start: number;
   readonly end: number;
+  /**
+   * The sample's own length, the slot's `+0x78`, when the buffer is longer than
+   * it -- as a looped buffer is, by the 16 frames the loader's patch writes past
+   * the loop. `0x37be` tests the wrapped index against this and not against the
+   * buffer; see note 3 on `readMipped`.
+   */
+  readonly frames?: number;
 }
 
 /**
@@ -128,6 +135,20 @@ export interface LoopSpan {
  *    directly -- the patched frame, equal to `loop.start`'s -- and the frame
  *    after it maps to `loop.start + 1`, so the two readings agree and the
  *    period is exactly `end − start` frames.
+ * 3. **Then an index at or past the sample's length reads silence** (`0x37be`,
+ *    `jge` to a `ret` with `xmm0` still zero), and that test comes after the
+ *    wrap. So when a loop ends on the sample's last frame -- every single-cycle
+ *    waveform the game ships -- index `loop.end` is not read as the patched
+ *    frame but as **zero**, for one interpolation step. The engine never
+ *    rewinds the voice's position, only this index, so past the first trip
+ *    round the loop the index is always beyond `loop.end` and wrapped: the gap
+ *    happens **once per note**, at the first wrap. Found 2026-10-11 by running
+ *    `fmodextinput.prx` beside the tracker (`tools/prxrun.py`): one sample of
+ *    `kenny_square_a4` read as 0.0 where this read +0.25.
+ *
+ * ⚠️ The caller must pass the voice's **unwrapped** position for any of this to
+ * hold: wrapping it first hides the gap, and keeps a float32 precision on long
+ * looped notes that the engine, converting its ever-growing double, has lost.
  */
 export function readMipped(
   chain: MipChain,
@@ -155,7 +176,7 @@ export function readMipped(
       index = loop.start + ((index - loop.start) % span);
     }
   }
-  if (index < 0 || index >= full.length) return 0;
+  if (index < 0 || index >= (loop?.frames ?? full.length)) return 0;
 
   let source = full;
   let at = index;

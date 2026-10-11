@@ -1,6 +1,6 @@
 {
   "name": "@lbptracker/cwlib",
-  "version": "0.2.42",
+  "version": "0.2.43",
   "type": "module",
   "description": "A TypeScript reader for LittleBigPlanet's serialised resources: LVLb/PLNb containers, the Thing graph, its parts, and the saves they arrive in.",
   "license": "MIT",

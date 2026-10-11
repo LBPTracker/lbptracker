@@ -18,7 +18,7 @@ const CHECK_SPECS = [
   { id: 'mergeRows', group: 'write', label: 'one track per row, not per mixer setting', start: true },
   // Off by default: on, the download carries the game's samples, and is a zip.
   { id: 'instruments', group: 'write', label: 'the instruments and their samples, as a Live project (.zip)', start: false },
-  // Off by default: ours, not the game's, like the engine's own master bus.
+  // Off by default: ours, not the game's, like the engine card's other master bus.
   { id: 'masterBus', group: 'write', label: 'our master bus on the master: glue and limiter, at the engine’s glue', start: false },
 ] as const satisfies readonly Check[];
 

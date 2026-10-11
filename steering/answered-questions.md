@@ -21,7 +21,8 @@ render that normalises cannot see a gain error (*22*); a reader that fails insid
 entered the wrong part (*54*); a quantised clock read at a fixed point of a periodic process is
 not dithered by anything (*55*); a meter that looks wrong may be right about the wrong thing, so
 measure the whole process from outside first (*56*); an alarm is tested by making happen what it
-alarms about (*57*).
+alarms about (*57*); a harness is a model too, and every field it invents is a claim (*62*);
+zeroing a gain inside a loop hides every error that feeds the loop (*62*).
 
 ---
 
@@ -162,15 +163,15 @@ the envelope factor, not the pitch; the clamps and the 0.99 bypass are the engin
 [synth-engine.md](synth-engine.md).
 
 ❌ **Two wrong turns, and the second was a consequence of the first.** "The resonance follows the
-key tracking" was asserted from `0x2a90` alone, on the assumption that `xmm4` was the keytrack (it
+key tracking" was asserted from `0x2a50` alone, on the assumption that `xmm4` was the keytrack (it
 is the envFactor). Then "`Params[5]` and `[6]` are swapped": with the resonance wrongly taking the
 pitch, `musicbox.rinst` (key tracking 1) self-oscillated on high notes, and swapping the indices
 made the symptom go away — by moving the error, not removing it, silently trading every
 instrument's filter-envelope depth for its key tracking, which a listener heard immediately as
 broken envelopes. **A fix that removes a symptom is not evidence.** What settled it: the two terms
 have the same `1 + (X − 1)·p` shape, so only the identity of `X` distinguishes them — `[rbp-0xa90]`
-is set to 1.0 at `0x1e25` and multiplied at `0x1e4a` by a frequency over the slot's base frequency
-(the pitch ratio); `[rbp-0xb70]` receives the envelope evaluator's result at `0x222d` (envelope B).
+is set to 1.0 at `0x1de5` and multiplied at `0x1e0a` by a frequency over the slot's base frequency
+(the pitch ratio); `[rbp-0xb70]` receives the envelope evaluator's result at `0x21ed` (envelope B).
 Two short traces, cheaper than either wrong turn.
 
 ## 6c. The unison stack — measured, documented, and not wired up for a session
@@ -329,6 +330,86 @@ always starts at a block's first frame — which is exactly why its grid is *the
 onsets placed to the frame (*3*), the global grid put a knot anywhere in a note's first and last
 block, and for a stage shorter than a block the knot *is* the stage's length. ⚠️ Piecewise-linear
 ramps with different knots are the same sound only while each stage spans several knots.
+
+## 62. The synthesiser against its own module — what running `fmodextinput.prx` found
+
+**Answer**: the game's synthesiser, loaded with the game's `libc.prx` and run on the eboot's own
+scene layout (`tools/prxsynth.py` beside `packages/lbp-tracker-lib/dev/prx-scene.ts` and
+`prx-compare.ts`), against our render of the same scene. On the tracker's clock 203 of 204
+one-instrument scenes sit below −60 dB of their loudest window, median −92 dB overall. On the
+engine's clock, since the record's own float32 arithmetic (`VoiceSpec.engine`), every one of the
+199 that sound does, median −107 dB, and 16 corpus songs, 20 s each, agree to −102 … −127 dB where
+they were at −61 … −91:
+
+| song | before | after | | song | before | after |
+|---|---|---|---|---|---|---|
+| `Vision` 15853 | −62.9 / −54.2 | −126.7 / −125.7 | | 36305 | −76.4 / −75.4 | −117.8 / −99.9 |
+| `Avian` 281831 | −61.2 / −57.8 | −120.3 / −118.1 | | 68746 | −74.8 / −75.5 | −110.4 / −113.4 |
+| 24870 | −79.7 / −69.5 | −107.2 / −103.3 | | 271798 | −72.2 / −75.5 | −118.6 / −122.1 |
+| 170680 | −79.6 / −75.3 | −123.1 / −118.5 | | 15855 | −82.0 / −78.8 | −116.1 / −107.1 |
+| 743527 | −82.3 / −81.1 | −110.6 / −108.3 | | 64531 | −87.3 / −81.1 | −104.2 / −104.4 |
+| 744399 | −86.2 / −81.9 | −117.5 / −114.1 | | 179190 | −84.5 / −83.4 | −102.3 / −100.8 |
+| 4404710 | −83.2 / −86.8 | −112.1 / −116.6 | | 74639 | −89.5 / −87.0 | −109.7 / −107.1 |
+| 731173 | −83.7 / −87.8 | −110.1 / −111.6 | | 15843 | −91.1 / −91.7 | −105.6 / −103.8 |
+
+(whole render / worst window against the loudest, dB). Longer: 281831 over 175 s −59.7 → −89.9,
+731173 over 100 s −59.8 → −100.8, 743527 over 180 s −64.6 → −115.2, `C4K3 S0NG` over 28 s with the
+tail on −63.0 → −101.1. Each fix lives where its fact does — the start/end table and the walk in
+[synth-engine.md](synth-engine.md), the open ends in [open-questions.md](open-questions.md). The
+wrong turns:
+
+- **"Evaluated at both ends" read as "every parameter at both ends".** It was true of the pitch, the
+  level, the LFO depths and the filter; the ADSRs and the key tracking take the start for both. The
+  phrase came from the first loads read; only reading every load of `[rbp-0xaa4]` and `[rbp-0x9f0]`
+  separated them. −19.5 dB and −42 dB were hiding behind it.
+- **A guard that guessed an A/B from a value.** `keyTrack === 0 ? 0 : …` meant "the caller zeroed
+  it"; on `robot`, whose key tracking is 0 at modulation 0 and 1 at full, it froze the term for the
+  whole glide. An A/B travels as a flag (`morph.noKeyTrack`).
+- **A harness that is wrong the same way the engine can be.** The scene builder set every clip's
+  length to `0x7fffffff`, so a finished clip held its row for the whole song and the module went
+  silent at `Vision`'s step 48 — which read as our renderer playing notes the game drops. A
+  harness is a model of the engine too; every field it invents is a claim.
+- **A window error measured against its own power.** It put a −90 dB tail that ends a block apart
+  at the top of the list as "−0.2 dB". The comparison reads the worst window against the loudest.
+- **Song comparisons on the tracker's clock.** With onsets on their own frame every song differed
+  from the module by more than its own level, and nothing past the first off-grid note could be
+  judged; the engine's clock (*3* in [open-questions.md](open-questions.md)) is what makes a song
+  comparable at all.
+- **Rounding the control points' frames looked like the glide's −27 dB.** It was 0.45 of a frame
+  and real, but the cause was the walk-anchored slide; comparing the voice's positions chunk by
+  chunk against the record's `+0x40` is what told the two apart.
+- **The two worst songs were blamed on the clock's split chunks and on sub-steps.** 281831 is at
+  240 bpm and `Vision` has sub-step records, so both looked like timing. The error's shape said
+  otherwise: 281831's grew 6 dB per doubling of time from the first frame, which is a rate held
+  slightly wrong, not a moment misplaced. Every layer's `+0x40 + 8i` against ours, chunk by chunk
+  (`POSV=` prints all five), found the held notes 0.0056 frames ahead after four seconds and
+  `Vision`'s glides 0.05 frames ahead after one step — float32 against double, both.
+- **Rounding the double rate to float32 at the end looked like the float32 rate.** It moved
+  `pulse_wave` 10 dB and `mosquito` not at all: the module rounds `exp2f`'s result and the detune
+  before their product, and its rate sits one ulp below the float32 nearest ours. Only the whole
+  chain in the module's order lands on its positions.
+- **A slide's `t` taken from frames looked exact.** It is linear in the playhead and the playhead
+  is linear in frames inside a chunk — but the module's playhead is a float32 that advances by
+  `f(p + N/L)`, not by `N/L`, and `t` is its fraction. 2e-6 steps apart, on a 24-semitone glide.
+- **A clamp that changes nothing inside 0..1.** `Voice` clamped the cutoff before squaring it, the
+  module only after; no test could tell while the modulation stayed in range. Reproducing the
+  walk's overshoot past modulation 1 is what made it audible: −11.7 dB on `saw_wave`.
+- **"What the player stops at" read as a stop.** The slot table said it of `+0x78`, and `Voice`
+  stopped every layer and the ladder at layer 0's last frame. `0x3035` is a test run once the
+  chunk is out, and the chunk plays whole: a filtered kit's ladder rang on past our end, −63 dB of
+  the loudest window, and nine of the battery's ten worst scenes, kits and one-shots, sat at
+  −61 … −78 dB for it. The numbers since are in *The voice pool* in
+  [synth-engine.md](synth-engine.md); 24870 and 271798 above moved with them.
+- **A residue that rode on the resonance was blamed on the ladder.** `woodpecker` at −77.9 dB,
+  the `gover` scenes at −57 … −72, all of them −104 … −106 with `Params[4]` zeroed on both sides —
+  and the ladder ran in double where the module's runs in float32. Transcribed in float32, the
+  ladder moved them; put back in double one part at a time, it changed nothing above −107 dB. The
+  ramp's float32 add was the whole of `woodpecker`, and envelope B and the chunk's two ends most of
+  the rest (*The filter* in [synth-engine.md](synth-engine.md)): a resonant ladder turns a cutoff
+  wrong by a part in 10⁵ into a phase drift of its ringing, so zeroing the resonance silenced every
+  error upstream of the cutoff along with the ladder's own. ⚠️ Zeroing a gain inside a loop
+  removes everything that feeds the loop; take the inputs back to double one at a time before
+  naming the loop. 24870 and 15855 above moved with it.
 
 ## 45. Where the ladder sits — one pair per record, after the sum and a clip
 
@@ -498,12 +579,20 @@ The wrong turns are the useful part:
   takeover; the stolen voice stops instantly. A fade would be an invention.
 - ❌ **"We schedule notes the engine would not."** The skip at `0x04d4` tests `channelVolume × clip
   Level`, not velocity (*31*); it never fires on real data.
-- ❗ **The score follows the note's volume automation** — `[+0x0c]` is rewritten per block from the
-  current control point — and a note fading out becomes the cheapest thing in the pool. Measured
-  before being built: scoring every note by the quietest point it ever reaches gives 1,494 steals
-  against 1,411. Slightly *more*. **Because the score does not decide HOW MANY notes are stolen,
-  only WHICH ones** — the count is set by occupancy alone. So no refinement of the score can move
-  the number, and the clip's `Level` went into the score for correctness, not as the way in.
+- ❗ **The score follows the note's volume automation, walk by walk** — `[+0x0c]` is rewritten at
+  every step from the current control point — and a note fading out becomes the cheapest thing in
+  the pool. `allocateVoices` scored a note once, at its opening velocity, until 2026-10-11, and
+  with the tail on stole the wrong notes on the `C4K3 S0NG` bar of *29* in
+  [open-questions.md](open-questions.md); the reading, and what the per-walk score measures against
+  the module there and on three more songs, are in *The voice pool* in
+  [synth-engine.md](synth-engine.md).
+- ❌ **"The score decides WHICH notes are stolen, never HOW MANY."** Written here before the
+  per-walk score existed, from a proxy (every note scored by the quietest point it ever reaches:
+  1,494 steals against 1,411) and the inference that occupancy alone sets the count. It does not:
+  a steal takes back only what the victim had left, so stealing a note about to end leaves the
+  pool fuller afterwards than stealing a long one. The per-walk score moves `C4K3 S0NG`'s count on
+  the tracker's clock from 701 to 805 with the tail off and from 1,672 to 1,957 with it on. The
+  clip's `Level` is in the score for correctness all the same.
 - ✔ **The baseline is not ours — it is the song.** Counted straight off the records, `C4K3 S0NG`
   wants more than 32 records 21.0% of the time; the renderer asks for 16.0%. Three ways it could
   have been our fault were checked and all are clean: all 244 tracks are distinct; 0 of 13,091
@@ -606,6 +695,7 @@ candidates the project spent four sessions choosing between — FMOD's `SFXREVER
 | the early rows' columns 6-8 are gains, 3-5 "are not levels" | 46, −60 and 21 are absurd as gains | 3-5 **are** the gains — they multiply an early level of order 0.003 because of the `/100`; 6-8 are pan positions |
 | each comb needs a `1 − gain` normalisation | eight feedback combs summed are ~9× unity at DC | the kernel sums the raw delay outputs with **nothing** between; the level is `lateLevel`, read off the wrong slot |
 | `reverbSend` multiplies `Params[25]` | a `vmulss` sits next to the send's clamp | that multiply is on the **echo** path, the negative branch of the bipolar offset; the reverb send is the placement's field alone |
+| a configure costs the next block of late field | run, an impulse in the block after a configure lost its comb arrivals and kept its early ones | that configure was the **first**: a comb reads silence until its ring has been written once round, a count only the geometry build zeroes (`[rec+0x14]`, `0x0f19`); a later configure touches no ring and zeroes only the input one-pole's and the notch's state. Feed a module's first block before reading anything as per-configure |
 
 And two process errors: the renderer called `process()` twice per frame, once per channel, through
 one instance, so every delay line ran at twice the frame rate with both channels sharing one state
@@ -640,6 +730,13 @@ everything derived from the *arithmetic* rather than the state: the struct layou
 knee's closed form. Two more things only the running module's vectors caught: the second
 smoother's seed and the `f32`-versus-`f64` misprint of `a1`.
 
+❌ **And a fourth, run in series (2026-10-11): float32 is all or nothing.** The model rested
+0.001 dB off the module for good because the module is float32 throughout; with the envelope alone
+in float32 it was closer, and plugging in the module's own dumped table on top made it *worse*,
+because the constants beside it were still the double formulas rounded — each one ulp off. Only
+with every stage and every constant in float32 did the table close it to bit-exact. Half a fix is
+not evidence against the other half (*And it was run* in [lbp-audio-engine.md](lbp-audio-engine.md)).
+
 ## 22. The stereo width — the game narrows every pan to `2 − √2`
 
 **Answer**: predicted from two interior points, measured at both extremes to six figures, and then
@@ -673,9 +770,16 @@ evidence in its own right, and the renderer hard-panned a day longer than the ev
 
 ## 39. The stereo fold — the gain moved to where the game applies it
 
-**Answer**: the fold's gain runs after the plugin's clip, the reverb and the compressor, where
-FMOD's speaker matrix applies it; the narrowing is not applied, on a listening judgement —
-[lbp-audio-engine.md](lbp-audio-engine.md), *39* in [open-questions.md](open-questions.md).
+**Answer**: the fold runs after the plugin's clip, the reverb and the compressor, where FMOD's
+speaker matrix applies it, and since 0.2.43 the game's master bus runs all of it, gain and
+narrowing — [lbp-audio-engine.md](lbp-audio-engine.md), *The game's master bus*. From 2026-09-06
+to 2026-10-11 the narrowing was left out on a listening judgement, the gain alone kept; that chain
+is `'none'` now, and ours keeps the same image (*42* in [open-questions.md](open-questions.md)).
+
+⚠️ **Narrow the bus, not the voice.** The note this entry once left — "the other half is one line
+at the `pan:` field" — would have put the narrowed image in front of the plugin's clip and the
+WaveHammer's detector, which in the game see the internal one. The fold is a matrix on the sum
+after both (`FOLD_CENTRE`, `master-stage.ts`).
 
 ❗ **The old placement was a real bug, not a tidiness point.** Folded into each voice, the gain put
 `clipToUnit` 4.645 dB hotter than the game's clip ever sees, so it engaged on material the game

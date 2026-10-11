@@ -23,6 +23,8 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import { MASTER_DEFAULTS } from '../src/audio/master.ts';
+import { type MasterChoice } from '../src/audio/master-stage.ts';
 import { buildMipChain } from '../src/audio/mipmap.ts';
 import { type SampleBuffer } from '../src/audio/mixer.ts';
 import {
@@ -112,11 +114,19 @@ const seed = process.env.LBP_SEED ? Number(process.env.LBP_SEED) : undefined;
  */
 const clip = process.env.LBP_NO_CLIP !== '1';
 /**
- * Whether `SMS WaveHammer`, the compressor the game's chain ends in, runs.
- * `LBP_COMPRESSOR=1` turns it on. ⚠️ Off by default, which is a deviation from
- * the game -- see the `compressor` option in `packages/lbp-tracker-lib/src/render.ts`.
+ * Which master bus ends the chain (`src/audio/master-stage.ts`). The game's by
+ * default -- `SMS WaveHammer`, then the 7.1 fold with its narrowing.
+ * `LBP_MASTER=none` leaves the fold's gain alone, the default until 0.2.43;
+ * `LBP_MASTER=<0..10>` puts ours there instead, at that glue.
  */
-const compressor = process.env.LBP_COMPRESSOR === '1';
+const masterEnv = process.env.LBP_MASTER ?? 'game';
+const master: MasterChoice =
+  masterEnv === 'game' || masterEnv === 'none'
+    ? masterEnv
+    : { amount: Number(masterEnv), ceilingDb: MASTER_DEFAULTS.ceilingDb };
+if (typeof master === 'object' && !(master.amount >= 0 && master.amount <= 10)) {
+  throw new Error(`LBP_MASTER is game, none or a glue from 0 to 10, not "${masterEnv}"`);
+}
 /**
  * How many voices the pool holds. `LBP_VOICES=off` (or 0) removes the cap.
  *
@@ -280,7 +290,7 @@ const result = await renderSequencer(seq, loadInstrument, {
   seed,
   voiceLimit,
   clip,
-  compressor,
+  master,
   pitchShift,
   oneShot,
   releaseTail,
@@ -320,14 +330,18 @@ console.log(
     (clip
       ? `; output clip touched ${((100 * result.clippedFrames) / result.frames).toFixed(2)}% of frames`
       : '; output clip OFF')
-    + (compressor
-      ? `; WaveHammer down to ${(20 * Math.log10(result.compressorGain)).toFixed(2)} dB`
-      : '; WaveHammer OFF'),
+    + (master === 'game'
+      ? `; the game's master bus, WaveHammer down to ${(20 * Math.log10(result.compressorGain)).toFixed(2)} dB`
+      : master === 'none'
+        ? '; master bus OFF, the fold gain alone'
+        : `; our master bus at glue ${master.amount}`),
 );
 console.log(`pre-normalisation RMS ${result.rms.toFixed(5)}`);
 
 const { pcm, norm } = toPcm16(result.left, result.right);
 const out = `fixtures/level-seq${seq.uid}${oneShot === 'gate' ? '' : `-${oneShot}`}${withReverb ? '' : '-noreverb'}${withEcho ? '' : '-noecho'}${fromArg ? `-at${Math.round(fromArg)}` : ''}${onlyGuids.length ? `-only${onlyGuids.join('_')}` : ''}${skipGuids.length ? '-skip' : ''}${noKeyTrack ? '-nokeytrack' : ''}${unpitchedGuids.length ? '-unpitchedkit' : ''}${Number.isFinite(voiceLimit) ? '' : '-novoicelimit'}${clip ? '' : '-noclip'}${declick ? '' : '-nodeclick'}${
+  master === 'game' ? '' : master === 'none' ? '-masternone' : `-masterours${master.amount}`
+}${
   pitchShift.size ? `-pitch${[...pitchShift.keys()].join('_')}` : ''
 }${unpitchedPercussion ? '-unpitched' : ''}.wav`;
 await writeFile(out, writeWav(pcm, 2, RATE));

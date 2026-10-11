@@ -38,7 +38,33 @@
  * `256 % 64 == 0` returns the index to where the other channel started; it is
  * equivalent to the per-channel rings below, and stops being equivalent if the
  * block size ever changes — which the read callback refuses to let happen.
+ *
+ * ❗ **All of it is float32, in the module's order, and has to be.** Every
+ * `Math.fround` below is a `vmulss`, `vaddss`, `vsubss` or `vdivss` in the
+ * module, and so are the ones that build its constants. Run in double, the
+ * running sum of squares does not drift the way the module's does and the
+ * envelope does not stall where the module's stalls; in float32 the stage is
+ * bit-exact against the module on six songs except where the console's own
+ * `powf` and `log10f` round a table entry differently (*And it was run* in
+ * `steering/lbp-audio-engine.md`).
  */
+
+const f = Math.fround;
+
+/**
+ * `v0x1b08` and `v0x1bac`, the factor that turns tenths of a dB into a power of
+ * ten: 0x3ba3d70b, which is one ulp **above** `fround(0.005)`. The threshold and
+ * the output gain both go through it.
+ */
+const TENTHS_TO_EXPONENT = 0.005000000353902578;
+
+/**
+ * The module's `powf` and `log10f` (`_FLog(1, ·)`), as the float nearest the
+ * double result. ⚠️ The console's libc does not always round that way, and that
+ * is the one thing this file does not reproduce: see `waveHammerTable`.
+ */
+const powf = (x: number, y: number): number => f(x ** y);
+const log10f = (x: number): number => f(Math.log10(x));
 
 /** How `SMS WaveHammer` is configured, in the plugin's own units. */
 export interface WaveHammerParams {
@@ -83,20 +109,22 @@ export const WAVEHAMMER_SHIPPED: WaveHammerParams = {
  * `x = round(rate · ms · 1e-4)/8 − 3`, and zero when that is not positive.
  *
  * ⚠️ The `1e-4` is not a milliseconds-to-seconds conversion and the `/8` is not
- * a block size. Together they turn 10 ms at 48 kHz into `x = 3`, whose
- * coefficient 0.464159 is exactly what the running module reports at
- * `[state+0xf8]`, and 250 ms into `x = 147` and 0.984458 at `[state+0xfc]`.
- * Neither factor is explained here; both are measured, and the two agreements
- * are what say the formula is read right.
+ * a block size. Together they turn 10 ms at 48 kHz into `x = 3` and 250 ms into
+ * `x = 147`, whose coefficients are exactly what the running module reports at
+ * `[state+0xf8]` and `[state+0xfc]`. Neither factor is explained here; both are
+ * measured, and the two agreements are what say the formula is read right.
+ * ⚠️ In float32: `powf(0.1f, 1/3f)` is one ulp under the float nearest
+ * `0.1^(1/3)`, and the module's attack is that one.
  */
 export function waveHammerCoefficient(ms: number, sampleRate: number): number {
-  const x = Math.round(sampleRate * ms * 1e-4) / 8 - 3;
-  return x > 0 ? 0.1 ** (1 / x) : 0;
+  const n = Math.trunc(f(f(sampleRate * f(ms * f(1e-4))) + 0.5));
+  const x = f(f(n * 0.125) - 3);
+  return x > 0 ? powf(f(0.1), f(1 / x)) : 0;
 }
 
 /**
- * The 4000-entry gain table `0xc43` builds, over the axis `[floor, 1]` in
- * mean-square level.
+ * The 4000-entry gain table `0xb78`–`0xd3e` builds, over the axis `[floor, 1]`
+ * in mean-square level.
  *
  * The knee is the unique cubic Hermite matching value *and* slope at both ends —
  * unity gain at `T−3`, slope `1/R` at `T+3` — which is why `P(1) = 1`,
@@ -104,6 +132,12 @@ export function waveHammerCoefficient(ms: number, sampleRate: number): number {
  * therefore reduces to `gain_dB = −3(1−r)t²` for `t ≤ 1` and `3(1−2t)(1−r)`
  * above, with `t = (L − T + 3)/6`; `tools/wavehammer.py check` agrees that
  * closed form with a literal transcription of the assembly to 2.1e-14 dB.
+ *
+ * Built here as the module builds it: in float32, operation for operation, from
+ * the template's tenths. ⚠️ Except for `powf` and `log10f`: with the console's
+ * own, this order reproduces every entry the module builds; with ours, a few
+ * hundred entries come out a few ulps apart (*And it was run* in
+ * `steering/lbp-audio-engine.md`).
  *
  * ⚠️ `ratio ≥ 50` is **not** the same curve with a small `1/R`: `0xbc9` masks
  * the reciprocal to zero and `0xcb6` takes `out = T` outright.
@@ -113,32 +147,46 @@ export function waveHammerTable(
   ratio: number,
   floor: number,
 ): Float32Array {
-  const big = ratio >= 50;
-  const invR = big ? 0 : 1 / ratio;
-  const k = big ? 3 : invR * 3 + 3;
-  const a = 6 / k;
-  const b = invR * a;
-  const c3 = a + b - 2;
-  const c2 = 3 - 2 * a - b;
+  const ratioTenths = Math.round(ratio * 10);
+  const t = f(Math.round(thresholdDb * 10) * f(0.1));
+  const big = f(ratioTenths * f(0.1)) >= 50;
+  const invR = f(10 / ratioTenths);
+  const kneeTop = f(t + 3);
+  const kneeBottom = f(t - 3);
+  const k = big ? 3 : f(f(invR * 3) + 3);
+  const a = f(6 / k);
+  const b = big ? 0 : f(invR * a);
+  const c3 = f(f(a + b) - 2);
+  const c2 = f(f(f(a * -2) + 3) - b);
+  const step = f(1 / 3999);
+  const span = f(1 - floor);
   const out = new Float32Array(4000);
   for (let i = 0; i < 4000; i += 1) {
-    const x = floor + (1 - floor) * (i / 3999);
-    const level = 10 * Math.log10(x);
+    const x = f(floor + f(span * f(i * step)));
+    const level = f(log10f(x) * 10);
     let target: number;
-    if (level > thresholdDb + 3) {
-      target = big ? thresholdDb : thresholdDb + invR * (level - thresholdDb);
+    if (level > kneeTop) {
+      target = big ? t : f(t + f(invR * f(level - t)));
     } else {
-      const t = (level - thresholdDb + 3) / 6;
-      target = thresholdDb - 3 + k * (a * t + c2 * t * t + c3 * t * t * t);
+      const u = f(f(f(level - t) + 3) * f(1 / 6));
+      const u2 = f(u * u);
+      const cubic = f(f(u2 * c2) + f(u * f(u2 * c3)));
+      target = f(kneeBottom + f(k * f(f(u * a) + cubic)));
     }
-    out[i] = 10 ** ((target - level) * 0.05);
+    out[i] = powf(10, f(f(target - level) * f(0.05)));
   }
   return out;
 }
 
-/** The bottom of the table's axis: the knee bottom as a power ratio (`0x408`). */
+/**
+ * The bottom of the table's axis: the knee bottom as a power ratio. `0x380`
+ * turns the threshold, which the template holds in tenths of a dB, into an
+ * amplitude, squares it and takes 3 dB off (`0x3f7`–`0x408`).
+ */
 export function waveHammerFloor(thresholdDb: number): number {
-  return 10 ** ((thresholdDb - 3) / 10);
+  const tenths = Math.round(thresholdDb * 10);
+  const amplitude = f(tenths * 10) <= -9000 ? 0 : powf(10, f(tenths * TENTHS_TO_EXPONENT));
+  return f(f(amplitude * amplitude) * f(10 ** -0.3));
 }
 
 export class WaveHammer {
@@ -155,7 +203,11 @@ export class WaveHammer {
   private readonly b0: number;
   private readonly a1: number;
 
-  /** Two rings of `window` samples, channel 0 then channel 1. */
+  /**
+   * Two rings of the last `window` squares, channel 0 then channel 1. The
+   * module keeps the samples and squares the oldest again on its way out;
+   * keeping its square is the same float.
+   */
   private readonly ring: Float32Array;
   private at = 0;
   private sumL = 0;
@@ -169,24 +221,27 @@ export class WaveHammer {
   /**
    * `[state+0x12c]`, the second smoother's state.
    *
-   * ⚠️ It is **not** zero at reset: `0x901` seeds it with `(1 − b0)/(1 + a1)`,
-   * which is 0.5 for either coefficient pair. That is the smoother's own fixed
-   * point for a gain of 1, so the first sample comes out near unity instead of
-   * near `b0`. Starting it at zero makes sample 0 read 0.0126 where the running
-   * module reads 0.998561 — an 18 dB hole at the top of every render.
+   * ⚠️ It is **not** zero at reset: `0x8f1`–`0x901` seed it with
+   * `(1 − b0)/(1 + a1)` in float32, a hair under 0.5 for the shipped pair. That
+   * is the smoother's own fixed point for a gain of 1, so the first sample comes
+   * out near unity instead of near `b0`. Starting it at zero makes sample 0 read
+   * 0.0126 where the running module reads 0.998561 — an 18 dB hole at the top of
+   * every render.
    */
   private smooth: number;
 
   constructor(p: WaveHammerParams = WAVEHAMMER_SHIPPED, sampleRate = 48000) {
     this.window = p.longLook ? 128 : 64;
     this.mask = this.window - 1;
-    this.invWindow = 1 / this.window;
+    this.invWindow = f(1 / this.window);
     this.ring = new Float32Array(this.window * 2);
     this.floor = waveHammerFloor(p.thresholdDb);
-    this.indexScale = 3999 / (1 - this.floor);
+    this.indexScale = f(3999 / f(1 - this.floor));
     this.gains = waveHammerTable(p.thresholdDb, p.ratio, this.floor);
-    const manual = p.outGainTenths * 10 <= -9000 ? 0 : 10 ** (p.outGainTenths * 0.005);
-    this.constant = (0.995 / this.gains[3999]) * manual;
+    // `0xd44`–`0xdad`.
+    const manual =
+      f(p.outGainTenths * 10) <= -9000 ? 0 : powf(10, f(p.outGainTenths * TENTHS_TO_EXPONENT));
+    this.constant = f(f(f(0.995) / this.gains[3999]) * manual);
     this.attack = waveHammerCoefficient(p.attackMs, sampleRate);
     this.release = waveHammerCoefficient(p.releaseMs, sampleRate);
     // `0x8a4` / `0x8c7`: one qword holding two floats, chosen by `CompCoeffSet`.
@@ -195,33 +250,49 @@ export class WaveHammer {
     this.b0 = p.coeffSet ? 0.0140483807772398 : 0.06660577654838562;
     this.a1 = p.coeffSet ? 0.9719032645225525 : 0.8667884469032288;
     // Both pairs are chosen so the smoother has unity DC gain, `2·b0/(1−a1)`.
-    this.smooth = (1 - this.b0) / (1 + this.a1);
+    // The module keeps `1 + a1` as a literal of its own (`v0x1b68`, `v0x1b70`),
+    // which is this sum rounded.
+    this.smooth = f(f(1 - this.b0) / f(1 + this.a1));
   }
 
   /** One frame in; the gain to apply to **both** channels out. */
   gainFor(left: number, right: number): number {
+    // `0x1000`: the module's buffers are float32, and so is the running sum it
+    // keeps against the ring, which therefore never quite cancels — and the
+    // gain follows that drift.
+    const l = f(left);
+    const r = f(right);
+    const ll = f(l * l);
+    const rr = f(r * r);
     const other = this.window;
     const oldL = this.ring[this.at];
     const oldR = this.ring[other + this.at];
-    this.ring[this.at] = left;
-    this.ring[other + this.at] = right;
+    this.ring[this.at] = ll;
+    this.ring[other + this.at] = rr;
     this.at = (this.at + 1) & this.mask;
-    this.sumL += left * left - oldL * oldL;
-    this.sumR += right * right - oldR * oldR;
+    this.sumL = f(f(this.sumL - oldL) + ll);
+    this.sumR = f(f(this.sumR - oldR) + rr);
 
+    // `0x10f0`. The module's `max` also takes in a zeroed scratch, which only
+    // matters when both sums have drifted below zero: unity either way. The
+    // division by the window is exact, the window being a power of two.
     const x = Math.max(this.sumL, this.sumR) * this.invWindow;
-    let table = 1;
+    // `0x1194`–`0x12a7`, starting with `table · constant`: exact at unity.
+    let target = this.constant;
     if (x > this.floor) {
-      const index = (x - this.floor) * this.indexScale;
+      const index = f(f(x - this.floor) * this.indexScale);
+      let table: number;
       if (index >= 3999) {
         table = this.gains[3999];
       } else {
         const lo = index | 0;
-        table = this.gains[lo] + (index - lo) * (this.gains[lo + 1] - this.gains[lo]);
+        const g = this.gains[lo];
+        // `index − lo` is exact in float32.
+        table = f(g + f((index - lo) * f(this.gains[lo + 1] - g)));
       }
+      target = f(table * this.constant);
     }
 
-    const target = table * this.constant;
     let c: number;
     if (target >= this.env) {
       // The gain is rising, so the signal is getting quieter: release. `0x11d0`.
@@ -236,8 +307,8 @@ export class WaveHammer {
           // does not change. So the count collapses to 30, the expression below
           // reduces to `release`, and the parameter is dead.
           if (this.falling >= 1001) this.falling = 1000;
-          const scaled = (((this.falling - 30) * 0) | 0) / 30 + 1;
-          c = this.release / (this.release + (1 - this.release) / scaled);
+          const scaled = f(((f((this.falling - 30) * 0) | 0) + 30) * f(1 / 30));
+          c = f(this.release / f(this.release + f(f(1 - this.release) / scaled)));
         } else {
           c = this.release;
         }
@@ -251,12 +322,17 @@ export class WaveHammer {
       this.falling += 1;
     }
 
-    const u = this.env * c + target * (1 - c);
+    // ⚠️ Float32 in the module's order is what makes the release stall: near
+    // rest the second smoother's step is under half an ulp of its state, so
+    // once it has compressed the gain stops short of `constant` for the rest of
+    // the song. In double it recovers, and is 0.001 dB off the module from then
+    // on (*And it was run* in steering/lbp-audio-engine.md).
+    const u = f(f(this.env * c) + f(target * f(1 - c)));
     const previous = this.smooth;
-    this.smooth = this.b0 * u + this.a1 * previous;
+    this.smooth = f(f(u * this.b0) + f(previous * this.a1));
     // ⚠️ `0x129a` writes `s_prev + s_new`, not `s_new`, and that sum is both the
     // gain applied and the value the next sample compares its target against.
-    this.env = previous + this.smooth;
+    this.env = f(previous + this.smooth);
     return this.env;
   }
 }

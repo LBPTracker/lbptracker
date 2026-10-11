@@ -2,8 +2,9 @@
 
 Read before planning a work session. Nothing here is a guess dressed up as a fact, and **nothing
 here blocks the build**: the note format, the containers, the level walk, the asset chain and the
-whole signal path are measured, and import, playback and export are built. What is left is four
-*decisions* where the project knowingly departs from the measured engine, a short list of measured
+whole signal path are measured, and import, playback and export are built. What is left is three
+*decisions* where the project knowingly departs from the measured engine, a master bus of our own
+beside the game's, one question about what reaches the game's compressor, a short list of measured
 residues nothing models yet, one loose end left over from the export, three things about the chip
 tint that only Create Mode can answer, whether the Ableton set opens in Live 12, how its Samplers sound, where its
 swing groove puts the notes and whether Live's Delay is the engine's echo, and three
@@ -51,12 +52,42 @@ better may be the wrong one.
 the choir chord enters with five voices or one. Two seconds, no counting, and a shadPS4 capture is
 admissible because the voice pool is the game's own plugin executing. `LBP_RELEASE_TAIL=1`.
 
-## 38. The compressor — `compressor`, default **off**
+**The plugin itself on that bar** (2026-10-11): `fmodextinput.prx` executing the song from step 0
+with its pool empty, as a first pass starts (`prx-scene.ts … backup <save dir> 28` with `CLOCK=1`,
+then `prxsynth.py` with `READ=256 VOICES=…`; the module and ours agree at −62 dB over the 25.8 s
+before the chord, which is what says the scene is the song). Structure only:
+
+- At the walk of step 224 the pool holds 18 records. 12 of them are the previous choir and string
+  chords, whose notes end on that step and which keep their records through the release (the
+  module frees them at steps 224.72 and 226.16). The walk spawns 18 notes into 14 free records,
+  so it steals four.
+- The chord (clip 81, written pitches 65, 62, 58, 53, 46 in clip order) claims records 26–30.
+  `mime_artist`'s five notes come after it in the same walk. They take the last free record, then
+  steal the four lowest scores: a fading `mime_artist` note on record 16 (written 115 → 9, scoring
+  0.0266 at that walk where its claim scored 0.3396) and the chord's first three claims (0.0331
+  each).
+- **Two of the five sound, 53 and 46.** The other three are overwritten inside the walk and never
+  render a frame: deleted from `scene.json`, the module's output stays the same to 1.2e-7.
+- Ours, tail off, plays all five. After 25.8 s its whole difference from the module is those three
+  notes: −12.8 dB of the module's level over 25.8–28 s, −62 dB once they are subtracted.
+- Ours, tail on, plays the same two since the pool scores a held note at every walk (2026-10-11,
+  the numbers in *The voice pool* in [synth-engine.md](synth-engine.md)). Scored at its opening
+  velocity the fading note was dearer than the chord, so the fourth steal landed on the chord as
+  well and ours played one.
+
+So a capture of the game should hear two voices enter, not five and not one, and the render with
+the tail on now plays two. ⚠️ The listening judgement at the top of this question was made on the
+render that played one. The plugin says nothing about which render a listener should prefer; that
+remains the decision above.
+
+## 38. The compressor's input — is the crest factor reaching it the game's?
 
 `SMS WaveHammer` is read end to end, checked against the module executing, implemented and pinned
-to better than 2e-5 against vectors from that run ([lbp-audio-engine.md](lbp-audio-engine.md)),
-and off on both the offline and the live path because the listener judged it wrong the first time
-it ran. It costs `level-seq723339` 6.94 dB of RMS and 6.93 dB of peak.
+to better than 2e-5 against vectors from that run ([lbp-audio-engine.md](lbp-audio-engine.md)).
+**It runs by default since 0.2.43**, as the first half of the game's master bus. From 2026-09-06 it
+was off, because the listener judged it wrong the first time it ran; on 2026-10-11 the owner asked
+for the game's master bus by default instead, so the DSP is no longer the decision. What it is fed
+still is: it costs `level-seq723339` 6.94 dB of RMS and 6.93 dB of peak.
 
 ❌ The first diagnosis — "our RMS sits 3.5 dB above its knee, so our level into the chain is too
 hot" — was generalised from one song. Over four corpus sequencers against the knee bottom at
@@ -81,23 +112,29 @@ the game's does, and the one song it had "explained" was a coincidence (the othe
 
 **What would settle it**: a capture with a known reference beside it, so the *ratio* is admissible;
 and, cheaper and needing no console, our own render at −0, −6 and −12 dB fed through the real DSP
-with `tools/runhammer.py`, to see how much gain reduction each trim provokes. `LBP_COMPRESSOR=1`, or
-`compressor: true`.
+with `tools/runhammer.py`, to see how much gain reduction each trim provokes. `LBP_MASTER=none` (or
+`master: 'none'`) renders the chain without it, for the A/B.
 
-## 42. The master bus — `optMaster` / `RenderOptions.master`, default **off**
+## 42. Our master bus — a choice beside the game's, never the default
 
-❗ **The only DSP in this project that is not the game's.** `audio/master.ts` is a glue compressor
-(2.5:1, soft knee, threshold moved by one knob from -6 to -22 dBFS) followed by a lookahead peak
-limiter with a -0.3 dBFS ceiling, and it runs **after the stereo fold**, where the game's chain has
-ended: past the plugin's clip, past `SMS Reverb`, past `SMS WaveHammer`. Nothing in LBP does this.
-It exists because the project's owner asked for a mix that holds together, and it is off in the
-live engine and in the render alike, so nothing measured against a capture of the game is affected
-unless somebody switches it on. The Ableton export can carry it too, as Live's Compressor and
-Limiter on the master, off by default ([ableton-interchange.md](ableton-interchange.md), *The
-master bus*).
+The master bus is a choice between two (`audio/master-stage.ts`): **the game's**, the default —
+`SMS WaveHammer` and the 7.1 fold, gain and narrowing ([lbp-audio-engine.md](lbp-audio-engine.md),
+*The game's master bus*) — and **ours**. The engine card's `master` choice and the bar's **G**
+pick it live, the Render view's own choice offline, `RenderOptions.master` and `LBP_MASTER` in the
+library.
 
-Measured live on `Ascetic` at the default setting (glue 4): peaks 0.35/0.52 without, 0.56/0.85
-with, a lift of about 4.2 dB, and the limiter holding everything under the ceiling.
+❗ **Ours is the only DSP in this project that is not the game's.** `audio/master.ts` is a glue
+compressor (2.5:1, soft knee, threshold moved by one knob from -6 to -22 dBFS) followed by a
+lookahead peak limiter with a -0.3 dBFS ceiling. It takes the game's bus's place: the fold's gain
+alone, the file's own pans and no WaveHammer, then the glue and the limiter, past where the game's
+chain ends. Nothing in LBP does this. It exists because the project's owner asked for a mix that
+holds together, and nothing measured against a capture of the game is affected unless somebody
+picks it. The Ableton export can carry it too, as Live's Compressor and Limiter on the master, off
+by default ([ableton-interchange.md](ableton-interchange.md), *The master bus*).
+
+Measured live on `Ascetic` at the default setting (glue 4), against `'none'` — the fold's gain
+alone, which was the chain without it then: peaks 0.35/0.52 without, 0.56/0.85 with, a lift of
+about 4.2 dB, and the limiter holding everything under the ceiling.
 
 ⚠️ **Two traps, both of them cost a test.** The limiter's gain has to be the *smallest the
 lookahead window asks for*, not the newest: taking the newest and releasing upwards lets the peak
@@ -109,33 +146,31 @@ the delay this very sample, or the one peak it never sees is its own. Both are p
 scale assumes the mix already peaks there; ours does not, and the makeup then adds more than the
 compressor took -- +7.4 dB at the default, against +4.2 dB now.
 
-**What would settle whether it should ever be on by default**: nothing measurable. It is a taste
-question, and the answer this project gives is that the faithful path is the default and this is a
-switch beside it.
-
-## 39. The stereo narrowing — not applied
-
-The 7.1 centre feed folds every pan to `2 − √2` of its width for a stereo listener, derived from
-three read constants and confirmed to six figures ([lbp-audio-engine.md](lbp-audio-engine.md)).
-The fold's **gain** (+4.645 dB) is applied after the whole chain; the **narrowing** is not, because
-the listener asked for the file's own pans. It is still half of a linear operator, and that is
-worth saying plainly: if a capture ever shows the image is wrong, the other half is one line at the
-`pan:` field where the voice spec is built, plus the same at the stack spread. Nothing measurable is
-left of this one.
+**What would settle whether it should ever be the default**: nothing measurable. It is a taste
+question, and the answer this project gives — the owner's, again on 2026-10-11 — is that the
+faithful path is the default and this is a choice beside it.
 
 ## 3. Note onsets — sample-accurate, where the engine places them on its block
 
 **A note begins at the top of a chunk** ([synth-engine.md](synth-engine.md)): the one after the
-chunk that crossed its step, or the one its sub-step falls in. Reproducing it would move every
-on-step onset later by 0 to 5.33 ms and every sub-step onset earlier by as much, and rests on the
-block grid being song-aligned — `p` is 0 at the first block, so it should be, but that is an
-inference. The gate is the same deviation: the engine first reads it closed at the next chunk's
-top, 0 to 5.33 ms late, and the tracker closes it on its frame. What the tracker does keep is the
-whole-chunk ramp after each of the two events (*60* in [answered-questions.md](answered-questions.md)),
-so only the timing differs, not the shape. **What would settle it**: capture a fast unswung drum
-pattern and measure inter-onset intervals against the exact step clock. On a 256-frame grid the
-deviation is a sawtooth with a 5.33 ms range, which is unmistakable; sample-accurate onsets have
-none.
+chunk that crossed its step, or the one its sub-step falls in. Reproducing it moves every on-step
+onset later by 0 to 5.33 ms and every sub-step onset earlier by as much. The gate is the same
+deviation: the engine first reads it closed at the next chunk's top, 0 to 5.33 ms late, and the
+tracker closes it on its frame. What the tracker keeps by default is the whole-chunk ramp after
+each of the two events (*60* in [answered-questions.md](answered-questions.md)), so only the timing
+differs, not the shape.
+
+✔ **What the engine does is no longer an inference.** Run under `tools/prxsynth.py`, the module
+places onsets exactly on the song-aligned 256-frame grid, whatever read size it is given
+(*The clock* in [synth-engine.md](synth-engine.md)), and `RenderOptions.engineClock` reproduces it:
+on it, 16 corpus songs rendered for 20 s each agree with the module to better than −100 dB (*62* in
+[answered-questions.md](answered-questions.md) has the numbers), where on the tracker's clock they
+cannot be compared at all past the first note off a block
+boundary. ⚠️ **What is left is the decision, and it is the owner's**: the game has the sawtooth, the
+tracker's default does not. Turning the default over costs nothing in the offline render; the live
+player and the keyboard schedule voices on their own clocks and would need the engine's clock
+brought into the worklet (*The chunk bounds inside a block*, below). **What would settle it**, if
+a listening judgement is wanted: A/B `engineClock` on a fast unswung drum pattern.
 
 ## 61. The end of a voice — `RenderOptions.declick`, default **on**
 
@@ -165,10 +200,39 @@ seconds of *Rhombitruncated* from the game. A bongo hit every 0.461 s from 0.257
 
 ## Residues — measured, not modelled, not audible so far
 
-- **The reverb's block granularity.** `fmodsmsreverb.prx` works in 256-frame blocks and rounds
-  every delay buffer up to 1 KB, so a tap shorter than 256 samples cannot behave as a plain
-  per-sample delay there. Tap set 10's shortest is 5.019 ms = 241 samples, so preset 3
-  (`ReverbSetting` 0) is the one place this could show.
+- **The WaveHammer's state when a song starts.** The chain is built on a session's first song and
+  runs between songs from then on (*The sequencer's chain* in
+  [lbp-audio-engine.md](lbp-audio-engine.md); `v0x3e6e00`'s FMOD calls are `Channel::setPaused`
+  around a write to `[state+0x1a44]`). So the first song meets the WaveHammer at its reset state (unity, the
+  smoother at ½), which is what an offline render does — `tools/prxchain.py` agrees with it to
+  3e-5 dB of gain from the first frame — and every later song meets it settled on silence at rest
+  (*And it was run* in [lbp-audio-engine.md](lbp-audio-engine.md)), which is what the live
+  worklet does. The render gets there in about 700 frames (in float32 it stops moving at frame
+  732); measured on `Ascetic` on 2026-10-11 with a recorder worklet, before the stage went float32,
+  after those 14 ms the live output and the offline render agree to 1e-6. Against a later song the
+  render is up to +1.8 dB hot over its first 14 ms; nobody has heard it.
+- **The WaveHammer's table.** The console's `log10f` and `powf` put 542 of the 4000 entries the
+  module builds up to 4 ulps from `Math.fround` of the double result, which leaves `compressor.ts`,
+  otherwise bit-exact against the module, 3e-5 dB of gain off at most on six songs (*And it was
+  run* in [lbp-audio-engine.md](lbp-audio-engine.md)). Porting those two functions would close it.
+- **A preset change on a running reverb — modelled, and wired as the game does.** The
+  module builds its lengths once and every later preset changes only its coefficients, and
+  `Reverb.reconfigure` does the same to −106 dB (*SMS Reverb* in
+  [lbp-audio-engine.md](lbp-audio-engine.md)). `render.ts` renders one song from a new `Reverb`,
+  which is a session's first song and right. The live worklet (`mixer-worklet.ts`) gets an
+  `effects` message from `player.ts` on every whole-plan load, every `setSettings` (tempo, swing,
+  channels, faders, board rows) and every change of an effect. Since 2026-10-11 it keeps its
+  `Reverb` across them while the setting is the same, and calls `reconfigure` on it, the game's
+  re-apply through `v0x1c6250`. ✔ Checked in the browser (2026-10-11): one 62.5 ms note with a
+  full send into setting 5, a recorder worklet on the player's output, and a tempo change 0.7 s
+  into the tail. The tail goes through it at −40 dB and is at −74 dB 1.7 s on. A new `Reverb` at
+  the same frame, which is what the worklet did on every message until then, is exact digital
+  silence from that frame on. `mixer-worklet.test.ts` holds the kept instance to a `Reverb`
+  reconfigured at the same frame. ✔ **A changed setting is re-applied too, since 2026-10-12, the
+  owner's choice**: the tail carries on, and the reverb keeps the lengths of the setting it was
+  built with (the page load, or switching it on in the Engine card) through every later change,
+  as the game's editor session does. Whoever changes the reverb mid-song hears part of the old
+  room; a fresh one is a page reload or the reverb switched off and on.
 - **The chunk bounds inside a block.** The engine splits a 256-frame block into chunks at the
   step clock's `frac(4 · position)` bound and evaluates its ramps per chunk; the tracker's
   segments are whole blocks counted from a note's first frame and from its gate (*60*). A float32
@@ -176,17 +240,68 @@ seconds of *Rhombitruncated* from the game. A bongo hit every 0.461 s from 0.257
   60, 8.5% at 240), and because the bound clusters at step boundaries the chunk after a note's end
   is a whole block only 75% of the time and shorter than 64 frames 6% of it. So in the game a
   release shorter than a chunk sometimes fades faster than here — the knots matter whenever a
-  stage is shorter than the chunk it lands in. Reproducing the bounds needs the sequencer clock
-  inside the mixer, which the keyboard has none of.
-- **Whether `q` should reach 3.** With the correct filter reading `musicbox` at full modulation
-  has resonance 0.856 at `freq ≈ 0.019`, and the Stilson/Smith compensation grows as the cutoff
-  falls, so `q ≈ 3.1`. The coefficient formula matches instruction for instruction; the saturation
-  bounding the ladder has only been read as `b4 −= b4³/6`. If a resonant patch howls, look there,
-  not at the four indices (*6b*).
-- **Which playback rate the filter's key tracking is fed.** It is the current rate (`Northern
-  Lights`'s `noise` riser swept 1.83× on the opening rate where the pitch swept 4.76×); the engine
-  reads `[rbp-0xa90]`, the cached `exp2f` result, and `LBP_NO_KEYTRACK` stays because the term may
-  be inert altogether on the instruments that matter.
+  stage is shorter than the chunk it lands in. ✔ **Reproduced on the engine's clock**
+  (`engine-clock.ts`'s `splits`, `VoiceSpec.engineGrid`), where it also carries the walk-anchored
+  slides (*The gate and the ramps*); not on the default clock, and not in the live player or the
+  keyboard, which have no sequencer clock in the mixer.
+- **The pool's order on the default clock.** The engine takes a step's records at its walk, clip by
+  clip from the last header (*The voice pool* in [synth-engine.md](synth-engine.md)); the render
+  does so on the engine's clock only, and on its own clock allocates by exact position in schedule
+  order. Moving the default would have to move `LiveVoicePool` with it, or the live player and the
+  render stop being one instrument (`polyphony.test.ts` pins their equivalence). Measured cost on
+  the engine's clock: `Influx` −34.6 dB → −74.8 dB.
+- **Float32 in the rate, off the engine's clock.** The engine forms each layer's rate in float32
+  and only steps it in double (*The pitch* in [synth-engine.md](synth-engine.md)). ✔ **Reproduced
+  on the engine's clock** (`VoiceSpec.engine`): there the synthetic battery's median went from −92
+  to −107 dB and `square_wave`'s chord scene, whose vibrato drifted a read across an odd loop's
+  wrap, from −48.8 to −90.6 dB of its loudest window. The default clock, the live player and the
+  keyboard still form it in double — a drift of 0.0056 frames in four seconds on a held stacked
+  note, about −43 dB of its own level by then; nobody has heard it. Moving them needs the record's walk
+  and the clock's float32 playhead brought into the worklet, as *3* does.
+- **A sub-step record in the middle of a note, off the engine's clock.** The engine takes a record
+  at the walk of its whole step and runs its slide from the playhead's fraction of that step, so a
+  record at `k + 1/3` ramps as if it sat at `k`, and a slide over a third of a step runs on to the
+  next walk (*The gate and the ramps*). ✔ **Reproduced on the engine's clock** and measured: the
+  `gsub` phrase of `prx-scene.ts` agrees with the module at −100 to −111 dB on twelve instruments.
+  The default clock still anchors the ramp at the record's own position, and the live player with
+  it.
+- **The filter in float32, off the engine's clock.** ✔ **Reproduced on the engine's clock**
+  (`VoiceSpec.engine`): the module runs envelope B, the cutoff and resonance at a chunk's two ends,
+  the ramp between them, the coefficients and the ladder all in float32, and what mattered was
+  not the ladder but what drives its cutoff — the ramp's float32 add above all, which loses a slow
+  sweep's step inside a chunk. *The filter* in [synth-engine.md](synth-engine.md) has the reading,
+  what each part is worth and what it costs. The default clock, the live player and the keyboard
+  keep all of it in double, bit for bit as before: there it measures the same. Left: envelope A
+  still runs `advance` in double on the engine's clock, not measured. ⚠️ **If the engine's clock
+  becomes the default**, the float32 ladder comes with it, and it is the costly part that is worth
+  least; float32 inputs around the double ladder are the cheap way. That is the owner's call with
+  the clock's.
+- **A one-shot's last block.** ✔ **Settled**: the module renders the chunk a one-shot runs out in
+  whole — the other layers and the ladder run on past layer 0's last frame — and frees the record
+  after it. The reading and the numbers are in *The voice pool* in
+  [synth-engine.md](synth-engine.md); `Voice` does it on both clocks, and on the tracker's clock the
+  nine scenes it settled sit at −82 … −110 dB of their loudest window, where that clock's double
+  arithmetic holds the whole battery's median at −92 (*Float32 in the rate, off the engine's
+  clock*, above). Left: the pool's `freedBy` takes the sample's length over the
+  note's rate without layer 0's detune, which the render draws from the seeded stream after the
+  pool has run. The 20 renders measured make the same decisions with the chunk or without it, so
+  nothing has shown the detune yet; making it exact means drawing the stack before the pool without
+  changing the stream. `woodpecker`, the tenth scene, was the filter's float32 (above).
+- **A chain stored out of order.** The walk takes a note's records in the clip's array order
+  (`0x3a0a`'s cursor) and `makeNote` sorts them by position, so the ~81 corpus notes whose last
+  record precedes the first ([sequencer-data-model.md](sequencer-data-model.md)) play differently
+  here, the glide and the gate taken in another order. None plays in the first 20 s of the 16
+  songs measured, so it is read and not measured.
+- **The fader under a held note, live.** `0x3930` re-reads the channel's volume into `[+0x04]` at
+  every walk; the live player scales a note's walk scores by the fader as it stands when the note
+  is handed over (`Player.walksOf`), so a fader moved while a note holds its record changes that
+  note's score in the engine and not here. The render's channel volumes do not move.
+- **Whether `q` should reach 3.** ✔ **Settled: it does, in the module too.** With the correct
+  filter reading `musicbox` at full modulation has resonance 0.856 at `freq ≈ 0.019`, and the
+  Stilson/Smith compensation grows as the cutoff falls, so `q ≈ 3.1`. The saturation is read
+  operation by operation now, `b4 − (b4·(b4·b4))·0.166667f`, and `woodpecker`'s full-modulation note,
+  at `q ≈ 3.1` the same way, agrees with the module running (*The filter* in
+  [synth-engine.md](synth-engine.md)).
 - **The piano's loop contour.** A 5.75% flutter at F5's wrap rate was measured before the
   amplitude envelope existed ([game-assets.md](game-assets.md)); the piano's sustain is 0.070, and
   whether the flutter survives the envelope has not been re-measured. A sustained F5 captured from
@@ -199,9 +314,14 @@ seconds of *Rhombitruncated* from the game. A bongo hit every 0.461 s from 0.257
   grows by two at a time, and the corpus's chip spacing makes the bar 8 steps (*The tile* in
   [sequencer-data-model.md](sequencer-data-model.md)), so the editor derives 32, 48 … 128 from
   the notes (`clipStepsFor` in [editor.md](editor.md)) — a rule consistent with the data, not a
-  reading of the length. **What would settle it**: find the writer of `+0x60` in the eboot — the
-  likeliest sources are the component's `scaleX` on the board and the highest `x` in `Notes` —
-  or save a level with an empty six-bar grid and see what changes in the file.
+  reading of the length. ⚠️ **It reaches the sound since 2026-10-11**: the header carries it too
+  (`+0x08`), and the walk's row scan keeps a clip on its row until the length runs out (*Which
+  clips spawn* in [synth-engine.md](synth-engine.md)), so it decides when a finished clip lets its
+  row go and, through the scan's stop at eight rows, whether a clip on row 8 or below spawns at
+  all. `render.ts` takes the editor's rule for it. **What would settle it**: find the writer of
+  `+0x60` in the eboot — the likeliest sources are the component's `scaleX` on the board and the
+  highest `x` in `Notes` — or save a level with an empty six-bar grid and see what changes in the
+  file.
 
 ## 40. What a new SEQUENCER starts at — the editor's defaults are the corpus's modes
 
@@ -347,12 +467,14 @@ file). Each item below is a decision where a measurement is still missing:
     semitone (`ghost` at key 55).
 - **The release** is written from the sustain level; the engine releases from wherever the level
   is, so a note let go during its decay releases for less in the game.
-- **The master at 0 dB**, so the set is the engine's own sum: **4.645 dB under the tracker**, which
-  multiplies in the fold's gain last (`FOLD_GAIN`, [lbp-audio-engine.md](lbp-audio-engine.md)).
-  Chosen for headroom: `Ascetic` renders to a 0.934 peak with that gain and the compressor off,
-  and a Live mix at that level has nothing to catch it — in the game `SMS WaveHammer` does, and
-  it is off in the tracker (*38*) and not in the set. Raising the master by the fold's +4.645 dB
-  matches the tracker's playback.
+- **The master at 0 dB**, so the set is the engine's own sum: what reaches the game's master bus,
+  before `SMS WaveHammer` and before the fold's +4.645 dB on the sum
+  ([lbp-audio-engine.md](lbp-audio-engine.md), *The game's master bus*). Live has no WaveHammer,
+  so nothing in the set does what the tracker's default bus does, and a dense passage that the
+  tracker compresses plays uncompressed there. Chosen for headroom: `Ascetic` renders to a 0.934
+  peak with the fold's gain and no compressor, and a Live mix at that level has nothing to catch
+  it. Raising the master by the fold's +4.645 dB matches the tracker on `'none'`, not on the
+  game's bus.
 - **Not carried at all**: the unison stack (`Numstack` layers, `Params[0..2]`), the three LFOs
   (`Params[15..23]`). Per note, the modulation now moves the level (pressure) and the cutoff (the
   slide's first destination, measured). The slide's second destination is free. The resonance,

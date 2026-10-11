@@ -7,10 +7,15 @@
  * the same project must render identically on every browser and every run.
  */
 
+import type { EngineChunks } from '../engine-clock.ts';
+import type { EngineWalk, Param32, PitchSlot } from '../engine-record.ts';
+import { layerRate32, lfoStep32, param32, ratio32, sin32 } from '../engine-record.ts';
 import type { Adsr } from '../envelope.ts';
 import {
   ADSR_PARAMS,
   ADSR_PARAMS_B,
+  ENGINE_DT_END,
+  ENGINE_DT_START,
   ENVELOPE_SECONDS_PER_UNIT,
   Envelope,
   evaluateParam,
@@ -23,8 +28,17 @@ import type { LfoSettings } from './lfo.ts';
 import { LFO_RATE_SCALE, panFold } from './lfo.ts';
 import type { FilterSettings } from './moog.ts';
 import { FILTER_PARAMS } from './moog.ts';
-import { FILTER_BYPASS_CUTOFF, MoogLadder, ladderCoefficientsInto } from './moog.ts';
-import type { MipChain } from './mipmap.ts';
+import type { FilterEnds, Ladder } from './moog.ts';
+import {
+  FILTER_BYPASS_CUTOFF,
+  MoogLadder,
+  MoogLadder32,
+  filterEnds32,
+  ladderCoefficients32Into,
+  ladderCoefficientsInto,
+  rampStep32,
+} from './moog.ts';
+import type { LoopSpan, MipChain } from './mipmap.ts';
 import { mipLevelFor, readMipped } from './mipmap.ts';
 
 export interface SampleBuffer {
@@ -39,7 +53,8 @@ export interface SampleBuffer {
    */
   readonly channels: readonly Float32Array[];
   readonly sampleRate: number;
-  readonly loop?: { readonly start: number; readonly end: number };
+  /** Half-open, and with the sample's own length when the buffer is longer (`LoopSpan`). */
+  readonly loop?: LoopSpan;
   /**
    * Optional per-channel mip chains from `buildMipChain`.
    *
@@ -66,6 +81,19 @@ export interface SampleBuffer {
 export interface AutomationPoint {
   /** Frames from the voice's start. */
   readonly frame: number;
+  /**
+   * On the engine's clock: the frame, from the voice's start, of the walk that
+   * makes this point the record's -- the end of the chunk that crossed it.
+   *
+   * ✔ The engine's slides change only at a walk (`0x3930` writes `+0x08`,
+   * `+0x0c`, `+0x28` and their slides), and a chunk evaluates both its ends
+   * on the record it starts with (`0x1d8c`, `0x1e2c`), so the chunk that
+   * crosses a point runs the old slide PAST it -- a glide of 24 semitones in
+   * a step ends that chunk at 51.16 for 51 -- and the next starts on the
+   * point's own value. Set, `Voice` does the same; unset, a segment's ends
+   * are read off the polyline, the tracker's clock.
+   */
+  readonly from?: number;
   /**
    * Semitones relative to the note's base pitch.
    *
@@ -157,6 +185,34 @@ export interface LayerSpec {
   readonly lfoPhase?: readonly [number, number, number];
 }
 
+/**
+ * What a record holds that its voice needs to run its rate as the module
+ * does (`engine-record.ts` has the arithmetic and why it matters).
+ *
+ * Per chunk, `0x1c60` reads the last walk's values and slides at the chunk's
+ * two ends, `t` being the float32 playhead's fraction there less the spawn's
+ * sub-step until the first walk (`0x1ce7`-`0x1d03`): the pitch as
+ * `f(t · slide) + pitch` (`0x1d8c`, `0x1e2c`), the volume and modulation the
+ * same at the start and plus `f(dt · slide)` at the end (`0x1ec0`-`0x1f59`,
+ * `0x20ae`). The three LFO phases are float32 too, never wrapped, each layer
+ * the base plus the chunk's fan added once per layer (`0x287b`-`0x28bb`).
+ */
+export interface EngineRecord {
+  /** The spawn's values first, then one row per walk to the one that closes the gate. */
+  readonly walks: readonly EngineWalk[];
+  /** `+0x3e · ⅓`, the spawn's sub-step: `t` is measured from it until the first walk clears it (`0x3969`). */
+  readonly startThird: number;
+  readonly slot: PitchSlot;
+  /** A render's `pitchShift` on top, which the engine does not have. 1 normally. */
+  readonly shift: number;
+  /** The instrument's `Params`, for the LFOs' rates, depths and fans, and the filter's ends. */
+  readonly params: readonly (Param32 | undefined)[];
+  /** The render's `noKeyTrack` A/B, which `params` still carries. */
+  readonly noKeyTrack?: boolean;
+  /** `+0x98`, `+0x9c`, `+0xa0` at the spawn. */
+  readonly lfoPhases: readonly [number, number, number];
+}
+
 export interface VoiceSpec {
   readonly sample: SampleBuffer;
   /**
@@ -172,6 +228,32 @@ export interface VoiceSpec {
   readonly pan: number;
   /** Output frame at which this voice starts. Lets a block schedule sample-accurately. */
   readonly startFrame?: number;
+  /**
+   * The engine's chunks, when the render runs its clock
+   * (`RenderOptions.engineClock`): the voice's first frame on that clock's
+   * frame axis, and every chunk start there that is not a 256-frame block's.
+   *
+   * Set, the voice's segments are the engine's chunks for its whole life --
+   * the song's blocks, cut where the step clock cut them, and a gate closed at
+   * a split chunk followed by the rest of that block -- instead of a grid of
+   * its own that starts again at the gate. A record's ramps are straight lines
+   * between its chunk ends, so a steep glide sampled at other ends drifts in
+   * phase. Unset, the tracker's grid, *60* in steering/answered-questions.md.
+   */
+  readonly engineGrid?: {
+    readonly origin: number;
+    readonly splits: readonly number[];
+    /** The clock's chunks and float32 playheads, which `engine` reads its slides off. */
+    readonly chunks?: EngineChunks;
+  };
+  /**
+   * The record's own float32 arithmetic, on the engine's clock -- with
+   * `engineGrid.chunks`, the voice takes its pitch, volume and modulation from
+   * these walks and the chunk's playhead instead of `automation` and
+   * `morph.points`, and forms every layer's rate the module's way. Unset, the
+   * double-precision voice the default clock and the live player use.
+   */
+  readonly engine?: EngineRecord;
   /** Output frame at which it stops, or undefined to run to the end of the sample. */
   readonly endFrame?: number;
   /**
@@ -314,7 +396,12 @@ export interface VoiceSpec {
   readonly morph?: {
     readonly params: readonly InstrumentParam[];
     /** Modulation at each control point, in frames from the voice's start. */
-    readonly points: readonly { readonly frame: number; readonly value: number }[];
+    readonly points: readonly {
+      readonly frame: number;
+      readonly value: number;
+      /** As `AutomationPoint.from`. */
+      readonly from?: number;
+    }[];
     /**
      * The placement's echo send as the engine's bipolar offset, `2*send - 1`.
      *
@@ -334,6 +421,28 @@ export interface VoiceSpec {
      * the product the modulation owns.
      */
     readonly opening: number;
+    /**
+     * The render's `noKeyTrack` A/B, which the modulation must not undo.
+     *
+     * ⚠️ Not inferred from the spec's `keyTrack` being 0: an instrument whose
+     * key tracking is 0 at the opening modulation and rises with it (`robot`,
+     * 0 to 1) is not an A/B, and holding it at 0 cost that glide +1.8 dB
+     * against the module.
+     */
+    readonly noKeyTrack?: boolean;
+    /**
+     * The modulation the drive and the echo send are taken at, from each frame
+     * on: one step behind `points`, and held across the step.
+     *
+     * ✔ Neither is evaluated by the chunk. `0x3930`, which the sequencer's walk
+     * calls for every record at every whole step (`0x0e8d`-`0x0eef`), computes
+     * `voice+0x1c` (`Params[25]`, `0x3b54`) and `voice+0x20` (`Params[26]`,
+     * `0x3b93`) from `voice+0x28` as the PREVIOUS call left it, and only then
+     * writes this step's modulation there (`0x3c81`, `0x3eff`); `0x19e0` seeds
+     * it with the first record's (`0x1a1a`). The chunk reads both as constants
+     * (`0x1ee0`, `0x2f3f`). Absent, the segment's start modulation is used.
+     */
+    readonly held?: readonly { readonly frame: number; readonly value: number }[];
   };
   /**
    * How much of this voice goes to the echo and reverb buses, 0..1.
@@ -492,6 +601,11 @@ class Derived {
   readonly filter = { cutoff: 1, resonance: 0, keyTrack: 0, envAmount: 0 };
   readonly lfoRate = [0, 0, 0];
   readonly lfoDepth = [0, 0, 0];
+  /**
+   * Radians per layer that the LFO fan has moved since the note's spawn: the
+   * layer's `phase` already holds the fan at the opening modulation.
+   */
+  readonly lfoFan = [0, 0, 0];
   drive = 0;
   /** `Params[24]` as a ratio against the level the spec's `gain` was built with. */
   level = 1;
@@ -577,8 +691,15 @@ class Voice {
   // The filter envelope and one ladder per channel -- the engine keeps two,
   // which is what its ten per-record state floats are.
   private readonly filterEnv = new Envelope();
-  private readonly ladderL = new MoogLadder();
-  private readonly ladderR = new MoogLadder();
+  private readonly ladderL: Ladder;
+  private readonly ladderR: Ladder;
+  /**
+   * On the engine's clock the filter is the module's float32 throughout:
+   * envelope B (`Envelope.advance32`), the two ends (`filterEnds32`), the ramp
+   * (`rampStep32`) and the ladder (`MoogLadder32`). Off it, the same formulas
+   * in double -- *The filter* in steering/synth-engine.md has why.
+   */
+  private readonly filter32: boolean;
   private readonly secondsPerFrame: number;
   /** Frames rendered since this voice started: the automation's clock. */
   private elapsed = 0;
@@ -616,6 +737,7 @@ class Voice {
   private res = 0;
   private resStep = 0;
   private readonly coefficients = { p: 0, f: 0, q: 0 };
+  private readonly filterEnds: FilterEnds = { freqS: 0, freqE: 0, resS: 0, resE: 0 };
   private driveK = 0;
   private driveOnePlusK = 1;
   private curEcho: number;
@@ -651,6 +773,21 @@ class Voice {
   private autoPitch = 0;
   private autoGain = 1;
   private morphCursor = 0;
+  private heldCursor = 0;
+  /** Index of the next engine chunk split past the voice's frame; -1 before the first segment. */
+  private splitCursor = -1;
+  // `VoiceSpec.engine`: the chunk and the walk the segment is in, the three
+  // float32 LFO phases, and the segment's two ends as the record reads them.
+  private engineChunk = -1;
+  private engineWalk = 0;
+  private readonly enginePhase = new Float32Array(3);
+  private readonly engineLfo = { inc: new Float32Array(3), fan: new Float32Array(3) };
+  private enginePitchS = 0;
+  private enginePitchE = 0;
+  private engineGainS = 0;
+  private engineGainE = 0;
+  private engineModS = 0;
+  private engineModE = 0;
   /** The record's own L/R accumulator: one block, post-pan, pre-filter. */
   private readonly scratchL = new Float32Array(BLOCK_FRAMES);
   private readonly scratchR = new Float32Array(BLOCK_FRAMES);
@@ -687,6 +824,10 @@ class Voice {
         ? spec.layers
         : [{ pan: spec.pan, startPosition: spec.startPosition, lfoPhase: spec.lfoPhase }];
     this.layers = layerSpecs.map((layer) => new Layer(layer, draw));
+    if (spec.engine !== undefined) this.enginePhase.set(spec.engine.lfoPhases);
+    this.filter32 = spec.engine !== undefined && spec.engineGrid?.chunks !== undefined;
+    this.ladderL = this.filter32 ? new MoogLadder32() : new MoogLadder();
+    this.ladderR = this.filter32 ? new MoogLadder32() : new MoogLadder();
 
     // What a voice with no morph derives once and reads for both ends.
     const f = this.fixed;
@@ -727,7 +868,10 @@ class Voice {
    * times, the ladder squares the cutoff -- so the modulation is what gets
    * interpolated and the derivation is redone from it, at both ends of the
    * segment, which is what the engine does (`xmm7` at the start, `xmm15` at
-   * `0x2a54` onward for the end).
+   * `0x2a54` onward for the end). ⚠️ Not every result is used at both ends:
+   * the ADSRs, the LFO rates and the fan are the start's alone, as the
+   * engine's are -- the table in steering/synth-engine.md, *The per-voice
+   * renderer*.
    */
   private derive(out: Derived, mod: number): Derived {
     const spec = this.spec;
@@ -751,13 +895,24 @@ class Voice {
       out.filter.resonance = at(FILTER_PARAMS.resonance);
       // ❗ The caller may have zeroed the key tracking as an A/B, and the
       // modulation must not put it back.
-      out.filter.keyTrack = filter.settings.keyTrack === 0 ? 0 : at(FILTER_PARAMS.keyTrack);
+      out.filter.keyTrack = morph.noKeyTrack === true ? 0 : at(FILTER_PARAMS.keyTrack);
       out.filter.envAmount = at(FILTER_PARAMS.envAmount);
     }
     if (spec.lfos !== undefined) {
+      const perLayer = (2 * Math.PI) / this.layers.length;
+      const opening = morph.points[0]?.value ?? mod;
       for (let n = 0; n < 3; n += 1) {
         out.lfoRate[n] = at(LFO_PARAMS[n].rate);
         out.lfoDepth[n] = at(LFO_PARAMS[n].depth);
+        // ❗ The fan follows the modulation too: `0x22e5`-`0x236d` evaluate
+        // `Params[17|20|23]` at the chunk's start modulation, times 2π over
+        // `Numstack`, every chunk, and `0x287b`-`0x28bb` add it once per layer
+        // to the stored phase. The spec's `lfoPhase` holds the fan at the
+        // spawn's modulation, `points[0]` (the render's `event.modulation`), so
+        // this is the difference. Fixed at the spawn's, `electric_piano`'s
+        // modulation glide was +4.1 dB off the module.
+        const spread = p[LFO_PARAMS[n].spread] ?? ZERO_PARAM;
+        out.lfoFan[n] = (evaluateParam(spread, mod) - evaluateParam(spread, opening)) * perLayer;
       }
     }
     out.drive = clamp01(at(OUTPUT_PARAMS.drive));
@@ -771,11 +926,18 @@ class Voice {
     return out;
   }
 
-  /** The modulation at a frame of the note's own clock, along its control points. */
-  private modAt(frame: number): number {
+  /**
+   * The modulation at a frame of the note's own clock, along its control
+   * points, on the segment active at `anchor` -- see `AutomationPoint.from`.
+   */
+  private modAt(frame: number, anchor = frame): number {
     const points = this.spec.morph!.points;
     let i = this.morphCursor;
-    while (i + 1 < points.length && points[i + 1].frame <= frame) i += 1;
+    if (points[0].from === undefined) {
+      while (i + 1 < points.length && points[i + 1].frame <= frame) i += 1;
+    } else {
+      while (i + 1 < points.length && points[i + 1].from! <= anchor) i += 1;
+    }
     this.morphCursor = i;
     const from = points[i];
     const to = points[i + 1];
@@ -793,7 +955,7 @@ class Voice {
    * zero-length segment (two records on one step, authoring debris) takes the
    * later value rather than dividing by zero.
    */
-  private automationAt(frame: number): void {
+  private automationAt(frame: number, anchor = frame): void {
     const points = this.spec.automation;
     if (points === undefined || points.length === 0) {
       this.autoPitch = 0;
@@ -801,7 +963,11 @@ class Voice {
       return;
     }
     let i = this.autoCursor;
-    while (i + 1 < points.length && points[i + 1].frame <= frame) i += 1;
+    if (points[0].from === undefined) {
+      while (i + 1 < points.length && points[i + 1].frame <= frame) i += 1;
+    } else {
+      while (i + 1 < points.length && points[i + 1].from! <= anchor) i += 1;
+    }
     this.autoCursor = i;
     const from = points[i];
     const to = points[i + 1];
@@ -871,10 +1037,32 @@ class Voice {
     // is from the chunk where `0x1f65` first reads the gate closed.
     if (this.gateOpen && !held) {
       this.gateOpen = false;
-      this.gridOrigin = this.elapsed;
+      if (spec.engineGrid === undefined) this.gridOrigin = this.elapsed;
     }
-    const off = (this.elapsed - this.gridOrigin) % BLOCK_FRAMES;
-    let n = BLOCK_FRAMES - off;
+    const grid = spec.engineGrid;
+    let n: number;
+    if (grid === undefined) {
+      n = BLOCK_FRAMES - ((this.elapsed - this.gridOrigin) % BLOCK_FRAMES);
+    } else {
+      const at = grid.origin + this.elapsed;
+      n = BLOCK_FRAMES - (at % BLOCK_FRAMES);
+      const splits = grid.splits;
+      let i = this.splitCursor;
+      if (i < 0) {
+        // First segment: find the first split past the onset by bisection.
+        let lo = 0;
+        let hi = splits.length;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (splits[mid] <= at) lo = mid + 1;
+          else hi = mid;
+        }
+        i = lo;
+      }
+      while (i < splits.length && splits[i] <= at) i += 1;
+      this.splitCursor = i;
+      if (i < splits.length && splits[i] - at < n) n = splits[i] - at;
+    }
     if (this.life > 0 && this.life < n) n = this.life;
     if (this.hold > 0 && this.hold < n) n = this.hold;
     if (this.release > 0 && this.life > this.release && this.life - this.release < n) {
@@ -888,8 +1076,12 @@ class Voice {
     const invN = 1 / n;
 
     const morph = spec.morph;
-    const S = morph !== undefined ? this.derive(this.startD, this.modAt(s)) : this.fixed;
-    const E = morph !== undefined ? this.derive(this.endD, this.modAt(e)) : this.fixed;
+    const engine = spec.engine !== undefined && spec.engineGrid?.chunks !== undefined;
+    if (engine) this.engineEnds(s, n);
+    const S =
+      morph !== undefined ? this.derive(this.startD, engine ? this.engineModS : this.modAt(s, s)) : this.fixed;
+    const E =
+      morph !== undefined ? this.derive(this.endD, engine ? this.engineModE : this.modAt(e, s)) : this.fixed;
 
     // The two envelopes, each evaluated twice as the engine does it: once with
     // a dt of `frames / 48,000,000` units (`0x201f`, `v0x4560`) for the
@@ -900,18 +1092,36 @@ class Voice {
     // the engine's envelopes run a 250th faster than its clock; so do these.
     // Both ends are ramped between, and the stages being straight lines, the
     // ramp is exact except where a stage turns inside the segment.
+    // ❗ Both calls take the ADSR at the segment's START modulation: the four
+    // are interpolated once, with `[rbp-0xaa4]` -- `+0x28` plus the elapsed
+    // steps at the chunk's start (`0x1cfb`) times the slide (`0x1f4a`) -- and
+    // passed unchanged to both (`0x1f8c`-`0x2089` for A, `0x213d`-`0x2227` for
+    // B). Passing the end's to the second call put a gliding sustain a
+    // segment ahead: -19.5 dB against the module on a square-wave glide.
     const startDt = seconds / 250;
     let envS = 1;
     let envE = 1;
     if (spec.envelope !== undefined) {
       envS = this.env.advance(startDt, held, S.adsr);
-      envE = this.env.advance(seconds, held, E.adsr);
+      envE = this.env.advance(seconds, held, S.adsr);
     }
     let envBS = 0;
     let envBE = 0;
     if (spec.filter !== undefined) {
-      envBS = this.filterEnv.advance(startDt, held, S.adsrB);
-      envBE = this.filterEnv.advance(seconds, held, E.adsrB);
+      if (this.filter32) {
+        // `0x213d`-`0x2227`: `0x16b0` in float32, the four at the start modulation.
+        const p = spec.engine!.params;
+        const m = this.engineModS;
+        const a = param32(p[ADSR_PARAMS_B.attack], m);
+        const d = param32(p[ADSR_PARAMS_B.decay], m);
+        const su = param32(p[ADSR_PARAMS_B.sustain], m);
+        const r = param32(p[ADSR_PARAMS_B.release], m);
+        envBS = this.filterEnv.advance32(Math.fround(n * ENGINE_DT_START), held, a, d, su, r);
+        envBE = this.filterEnv.advance32(Math.fround(n * ENGINE_DT_END), held, a, d, su, r);
+      } else {
+        envBS = this.filterEnv.advance(startDt, held, S.adsrB);
+        envBE = this.filterEnv.advance(seconds, held, S.adsrB);
+      }
     }
     // Ours, for a voice with no envelope: the linear fade and the decay. The
     // fade's start is a segment bound, so a segment is wholly before it or
@@ -936,105 +1146,311 @@ class Voice {
     // The note's own glide at both ends: semitones, then `exp2f`, then the
     // rate is what ramps -- the engine's two `exp2f` calls at `0x1dc2` and
     // `0x1e63`, the second with the slide added.
-    this.automationAt(s);
-    const pitchS = this.autoPitch;
-    const volS = this.autoGain;
-    this.automationAt(e);
-    const pitchE = this.autoPitch;
-    const volE = this.autoGain;
-    // See `silentAfter`: the engine frees the record after this chunk.
-    this.silentAfter = volE <= 0;
-    const base = spec.playbackRate * this.bendRate;
-    const ratioS = pitchS === 0 ? base : base * 2 ** (pitchS / 12);
-    const ratioE = pitchE === 0 ? base : base * 2 ** (pitchE / 12);
+    let pitchS = 0;
+    let pitchE = 0;
+    let volS = this.engineGainS;
+    let volE = this.engineGainE;
+    if (!engine) {
+      this.automationAt(s, s);
+      pitchS = this.autoPitch;
+      volS = this.autoGain;
+      this.automationAt(e, s);
+      pitchE = this.autoPitch;
+      volE = this.autoGain;
+    }
+    // See `silentAfter`: the engine frees the record after this chunk. ❗ So
+    // does an envelope whose END value is not positive in ANY stage, not only
+    // a finished release: `0x20e0` tests the second `0x16b0` call's return, so
+    // a decay onto a sustain of 0 frees the record with the gate still open.
+    // Rendering on put `woodpecker`'s ladder ringing a block past the module's
+    // silence.
+    this.silentAfter = volE <= 0 || (spec.envelope !== undefined && envE <= 0);
+    let ratioS: number;
+    let ratioE: number;
+    if (engine) {
+      const record = spec.engine!;
+      const shift = record.shift * this.bendRate;
+      ratioS = ratio32(record.slot, this.enginePitchS) * shift;
+      ratioE = ratio32(record.slot, this.enginePitchE) * shift;
+    } else {
+      const base = spec.playbackRate * this.bendRate;
+      ratioS = pitchS === 0 ? base : base * 2 ** (pitchS / 12);
+      ratioE = pitchE === 0 ? base : base * 2 ** (pitchE / 12);
+    }
     const gainS = spec.gain * S.level * volS * envS * fadeS * decayS * this.pressure;
     const gainE = spec.gain * E.level * volE * envE * fadeE * decayE * this.pressure;
 
-    // The three LFOs: this segment's phase increment is the start modulation's
-    // rate times the scale times the segment's seconds (`0x2263`-`0x22cf`,
-    // with `xmm7`), and each oscillator is read at the phase and at the phase
-    // plus the increment. `sin` is skipped where the depth is zero at that end;
-    // `0 * sin` is exactly 0 so nothing changes but the cost.
-    const inc0 = S.lfoRate[0] * LFO_RATE_SCALE[0] * seconds;
-    const inc1 = S.lfoRate[1] * LFO_RATE_SCALE[1] * seconds;
-    const inc2 = S.lfoRate[2] * LFO_RATE_SCALE[2] * seconds;
-    const d0S = S.lfoDepth[0];
-    const d0E = E.lfoDepth[0];
-    const d1S = S.lfoDepth[1];
-    const d1E = E.lfoDepth[1];
-    const d2S = S.lfoDepth[2];
-    const d2E = E.lfoDepth[2];
-    const acc = this.lfoAcc;
-    for (const layer of this.layers) {
-      const p0 = layer.phase[0] + acc[0];
-      const p1 = layer.phase[1] + acc[1];
-      const p2 = layer.phase[2] + acc[2];
-      // LFO 1 on the rate, riding on the detune at the same 0.05 (`0x27b5`).
-      const rateS = ratioS * (layer.detune + (d0S !== 0 ? 0.05 * d0S * Math.sin(p0) : 0));
-      const rateE = ratioE * (layer.detune + (d0E !== 0 ? 0.05 * d0E * Math.sin(p0 + inc0) : 0));
-      // LFO 2 on the gain, `1 + depth * osc` (`0x255c`-`0x2574`).
-      const gLS = gainS * (d1S !== 0 ? 1 + d1S * Math.sin(p1) : 1);
-      const gLE = gainE * (d1E !== 0 ? 1 + d1E * Math.sin(p1 + inc1) : 1);
-      // LFO 3 on the pan, folded with the layer's own pan (`0x25fe`, `0x26cb`).
-      const panS = panFold(d2S !== 0 ? Math.sin(p2) : 0, d2S, layer.basePan);
-      const panE = panFold(d2E !== 0 ? Math.sin(p2 + inc2) : 0, d2E, layer.basePan);
-      layer.rate = rateS;
-      layer.rateStep = (rateE - rateS) * invN;
-      layer.gain = gLS;
-      layer.gainStep = (gLE - gLS) * invN;
-      layer.pan = panS;
-      layer.panStep = (panE - panS) * invN;
+    if (engine) {
+      this.engineLayers(n, ratioS, ratioE, gainS, gainE, S, E);
+    } else {
+      // The three LFOs: this segment's phase increment is the start modulation's
+      // rate times the scale times the segment's seconds (`0x2263`-`0x22cf`,
+      // with `xmm7`), and each oscillator is read at the phase and at the phase
+      // plus the increment. `sin` is skipped where the depth is zero at that end;
+      // `0 * sin` is exactly 0 so nothing changes but the cost.
+      const inc0 = S.lfoRate[0] * LFO_RATE_SCALE[0] * seconds;
+      const inc1 = S.lfoRate[1] * LFO_RATE_SCALE[1] * seconds;
+      const inc2 = S.lfoRate[2] * LFO_RATE_SCALE[2] * seconds;
+      const d0S = S.lfoDepth[0];
+      const d0E = E.lfoDepth[0];
+      const d1S = S.lfoDepth[1];
+      const d1E = E.lfoDepth[1];
+      const d2S = S.lfoDepth[2];
+      const d2E = E.lfoDepth[2];
+      const acc = this.lfoAcc;
+      // Both ends of a layer take the start modulation's fan, as the engine's
+      // one per-chunk evaluation does.
+      const fan = S.lfoFan;
+      for (let i = 0; i < this.layers.length; i += 1) {
+        const layer = this.layers[i];
+        const p0 = layer.phase[0] + acc[0] + i * fan[0];
+        const p1 = layer.phase[1] + acc[1] + i * fan[1];
+        const p2 = layer.phase[2] + acc[2] + i * fan[2];
+        // LFO 1 on the rate, riding on the detune at the same 0.05 (`0x27b5`).
+        const rateS = ratioS * (layer.detune + (d0S !== 0 ? 0.05 * d0S * Math.sin(p0) : 0));
+        const rateE = ratioE * (layer.detune + (d0E !== 0 ? 0.05 * d0E * Math.sin(p0 + inc0) : 0));
+        // LFO 2 on the gain, `1 + depth * osc` (`0x255c`-`0x2574`).
+        const gLS = gainS * (d1S !== 0 ? 1 + d1S * Math.sin(p1) : 1);
+        const gLE = gainE * (d1E !== 0 ? 1 + d1E * Math.sin(p1 + inc1) : 1);
+        // LFO 3 on the pan, folded with the layer's own pan (`0x25fe`, `0x26cb`).
+        const panS = panFold(d2S !== 0 ? Math.sin(p2) : 0, d2S, layer.basePan);
+        const panE = panFold(d2E !== 0 ? Math.sin(p2 + inc2) : 0, d2E, layer.basePan);
+        layer.rate = rateS;
+        layer.rateStep = (rateE - rateS) * invN;
+        layer.gain = gLS;
+        layer.gainStep = (gLE - gLS) * invN;
+        layer.pan = panS;
+        layer.panStep = (panE - panS) * invN;
+      }
+      // The stored phases advance once, after the layers (`0x28f1`-`0x293b`);
+      // bounded so a float that has run for an hour keeps its precision.
+      const twoPi = 2 * Math.PI;
+      acc[0] = (acc[0] + inc0) % twoPi;
+      acc[1] = (acc[1] + inc1) % twoPi;
+      acc[2] = (acc[2] + inc2) % twoPi;
     }
-    // The stored phases advance once, after the layers (`0x28f1`-`0x293b`);
-    // bounded so a float that has run for an hour keeps its precision.
-    const twoPi = 2 * Math.PI;
-    acc[0] = (acc[0] + inc0) % twoPi;
-    acc[1] = (acc[1] + inc1) % twoPi;
-    acc[2] = (acc[2] + inc2) % twoPi;
 
-    // The filter's cutoff and resonance at both ends (`0x2a02`-`0x2a90`, then
-    // again from the end modulation), clamped as the engine clamps them. The
+    // The filter's cutoff and resonance at both ends (`0x29c2`-`0x2a50`, then
+    // `0x2a54`-`0x2aa5` from the end modulation), clamped as the engine clamps them. The
     // key tracking takes the record's own ratio -- before the detune and the
-    // LFO -- which is what `[rbp-0xa90]` holds.
+    // LFO -- which is what `[rbp-0xa90]` holds. ❗ The START ratio, at both
+    // ends: `0x2a15` loads it once and `0x2a26` and `0x2a8c` both multiply by
+    // it; nothing writes the slot between `0x1e1f` and `0x2b3d`. The end's
+    // ratio put a pitch glide's ladder a fraction of a chunk ahead, a phase
+    // shift that followed the slope: -42 dB on `sine_wave`, -99 dB once held.
     if (spec.filter !== undefined) {
-      const fS = S.filter;
-      const fE = E.filter;
-      const cutS = clamp01(fS.cutoff + this.timbre);
-      const cutE = clamp01(fE.cutoff + this.timbre);
-      const envFS = 1 + fS.envAmount * (envBS - 1);
-      const envFE = 1 + fE.envAmount * (envBE - 1);
-      const freqS = clamp01(cutS * cutS * (1 + (ratioS - 1) * fS.keyTrack) * envFS);
-      const freqE = clamp01(cutE * cutE * (1 + (ratioE - 1) * fE.keyTrack) * envFE);
-      const resS = clamp01(fS.resonance * envFS);
-      const resE = clamp01(fE.resonance * envFE);
+      const ends = this.filterEnds;
+      if (this.filter32 && this.timbre === 0) {
+        // The record's own float32, in the module's order (`filterEnds32`).
+        const record = spec.engine!;
+        filterEnds32(
+          record.params,
+          this.engineModS,
+          this.engineModE,
+          envBS,
+          envBE,
+          ratioS,
+          record.noKeyTrack === true,
+          ends,
+        );
+      } else {
+        const fS = S.filter;
+        const fE = E.filter;
+        // ⚠️ The cutoff is squared unclamped (`0x29ec`-`0x29ff`) and only the
+        // product is clamped. Inside 0..1 that is the same thing; a modulation
+        // past 1, which a slide over a third of a step reaches by the walk after
+        // it, puts `saw_wave`'s cutoff at -0.62 and the module's at 0.38. Our
+        // live timbre is not the engine's, and keeps its clamp.
+        const cutS = this.timbre === 0 ? fS.cutoff : clamp01(fS.cutoff + this.timbre);
+        const cutE = this.timbre === 0 ? fE.cutoff : clamp01(fE.cutoff + this.timbre);
+        const envFS = 1 + fS.envAmount * (envBS - 1);
+        const envFE = 1 + fE.envAmount * (envBE - 1);
+        ends.freqS = clamp01(cutS * cutS * (1 + (ratioS - 1) * fS.keyTrack) * envFS);
+        ends.freqE = clamp01(cutE * cutE * (1 + (ratioS - 1) * fE.keyTrack) * envFE);
+        ends.resS = clamp01(fS.resonance * envFS);
+        ends.resE = clamp01(fE.resonance * envFE);
+        if (this.filter32) {
+          ends.freqS = Math.fround(ends.freqS);
+          ends.freqE = Math.fround(ends.freqE);
+          ends.resS = Math.fround(ends.resS);
+          ends.resE = Math.fround(ends.resE);
+        }
+      }
+      const { freqS, freqE, resS, resE } = ends;
       // `0x2e99`: the block-start cutoff over 0.99 takes the unfiltered path.
       this.bypass = freqS > FILTER_BYPASS_CUTOFF;
       // `0x30d8`: both ends equal takes the constant-coefficient ladder;
       // otherwise `0x33d6` re-derives the coefficients per sample from a ramp.
       this.rampFilter = freqS !== freqE || resS !== resE;
       this.freq = freqS;
-      this.freqStep = (freqE - freqS) * invN;
       this.res = resS;
-      this.resStep = (resE - resS) * invN;
-      if (!this.bypass && !this.rampFilter) {
-        ladderCoefficientsInto(freqS, resS, this.coefficients);
+      if (this.filter32) {
+        this.freqStep = rampStep32(freqS, freqE, n);
+        this.resStep = rampStep32(resS, resE, n);
+        if (!this.bypass && !this.rampFilter) ladderCoefficients32Into(freqS, resS, this.coefficients);
+      } else {
+        this.freqStep = (freqE - freqS) * invN;
+        this.resStep = (resE - resS) * invN;
+        if (!this.bypass && !this.rampFilter) ladderCoefficientsInto(freqS, resS, this.coefficients);
       }
     } else {
       this.bypass = true;
     }
 
-    // The drive and the sends are per chunk, from its start (`0x1ee0`; the
-    // sends are read as constants in the output loop, `0x2f3f`-`0x2f89`).
-    this.driveK = driveCoefficient(S.drive);
+    // The drive and the sends are constants of the chunk (`0x1ee0`; the sends
+    // in the output loop, `0x2f3f`-`0x2f89`), set by the walk a step behind
+    // the modulation: see `morph.held`. Following the ramp instead put
+    // `electric_harpsichord`'s modulation glide 0.7 dB above the module.
+    let drive = S.drive;
+    let echo = S.echo;
+    const walk = morph?.held;
+    if (engine && morph !== undefined) {
+      // The walk's own `+0x28` as the walk before it left it: the spawn's
+      // seed for the spawn (`0x1a1a`), the previous row's after that.
+      const value = spec.engine!.walks[Math.max(0, this.engineWalk - 1)].mod;
+      drive = clamp01(evaluateParam(morph.params[OUTPUT_PARAMS.drive] ?? ZERO_PARAM, value));
+      echo = echoAt(morph, value);
+    } else if (walk !== undefined && walk.length > 0) {
+      let i = this.heldCursor;
+      while (i + 1 < walk.length && walk[i + 1].frame <= s) i += 1;
+      this.heldCursor = i;
+      const value = walk[i].value;
+      drive = clamp01(evaluateParam(morph!.params[OUTPUT_PARAMS.drive] ?? ZERO_PARAM, value));
+      echo = echoAt(morph!, value);
+    }
+    this.driveK = driveCoefficient(drive);
     this.driveOnePlusK = 1 + this.driveK;
-    this.curEcho = S.echo;
+    this.curEcho = echo;
   }
 
   /**
-   * Render up to `take` frames of the current segment at `at`, returning how
-   * many were written -- fewer than `take` only when layer 0 ran out of an
-   * unlooped sample, which ends the voice (`0x3035`-`0x3069` checks that
-   * layer's position and no other).
+   * `VoiceSpec.engine`: the record's pitch, volume and modulation at the two
+   * ends of the segment starting at the voice frame `s`, as `0x1c60` reads
+   * them off the last walk and the chunk's float32 playhead (`EngineRecord`).
+   */
+  private engineEnds(s: number, n: number): void {
+    const f = Math.fround;
+    const record = this.spec.engine!;
+    const grid = this.spec.engineGrid!;
+    const { starts, playheads } = grid.chunks!;
+    const at = grid.origin + s;
+    let c = this.engineChunk;
+    if (c < 0) {
+      let lo = 0;
+      let hi = starts.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (starts[mid] <= at) lo = mid;
+        else hi = mid - 1;
+      }
+      c = lo;
+    }
+    while (c + 2 < starts.length && starts[c + 1] <= at) c += 1;
+    this.engineChunk = c;
+    let pS = playheads[c];
+    let pE = playheads[c + 1];
+    const from = starts[c];
+    const to = starts[c + 1];
+    if (at !== from || at + n !== to) {
+      // A segment the engine does not have -- a one-shot's hold or our own
+      // fade cut the chunk -- reads the playhead along it.
+      const per = (pE - pS) / (to - from);
+      pE = f(pS + per * (at + n - from));
+      pS = f(pS + per * (at - from));
+    }
+    const walks = record.walks;
+    let k = this.engineWalk;
+    while (k + 1 < walks.length && walks[k + 1].frame <= s) k += 1;
+    this.engineWalk = k;
+    const w = walks[k];
+    // `0x0c35`/`0x0c48` take each end's fraction; `0x1c9b` adds 1 to the end's
+    // when the chunk crossed a step, so a crossing chunk runs the old slide
+    // past it; `0x1ce7`-`0x1cff` take the spawn's sub-step off both.
+    const third = k === 0 ? record.startThird : 0;
+    const a = f(pS - Math.floor(pS));
+    let b = f(pE - Math.floor(pE));
+    if (b < a) b = f(b + 1);
+    const tS = Math.max(0, f(a - third));
+    const tE = f(b - third);
+    const dt = f(tE - tS);
+    this.enginePitchS = f(f(tS * w.pitchSlide) + w.pitch);
+    this.enginePitchE = f(f(tE * w.pitchSlide) + w.pitch);
+    this.engineGainS = f(f(tS * w.gainSlide) + w.gain);
+    this.engineGainE = f(f(dt * w.gainSlide) + this.engineGainS);
+    this.engineModS = f(f(tS * w.modSlide) + w.mod);
+    this.engineModE = f(f(dt * w.modSlide) + this.engineModS);
+  }
+
+  /**
+   * `VoiceSpec.engine`: every layer's rate, gain and pan for the segment, the
+   * rate as `0x2755`-`0x2876` forms it -- float32 at both ends, widened, and
+   * stepped by `(double)(1.0f / N)` (`0x2467`) -- and the three float32 phases
+   * advanced after the last layer (`0x28f1`-`0x293b`). The gain and the pan
+   * keep the double arithmetic of the other path and take the same phases.
+   */
+  private engineLayers(
+    n: number,
+    ratioS: number,
+    ratioE: number,
+    gainS: number,
+    gainE: number,
+    S: Derived,
+    E: Derived,
+  ): void {
+    const f = Math.fround;
+    const params = this.spec.engine!.params;
+    const lfo = this.engineLfo;
+    lfoStep32(params, this.engineModS, n, this.layers.length, lfo);
+    const [inc0, inc1, inc2] = lfo.inc;
+    const [fan0, fan1, fan2] = lfo.fan;
+    const depthS = param32(params[16], this.engineModS);
+    const depthE = param32(params[16], this.engineModE);
+    const d1S = S.lfoDepth[1];
+    const d1E = E.lfoDepth[1];
+    const d2S = S.lfoDepth[2];
+    const d2E = E.lfoDepth[2];
+    // The rate steps by `(double)(1.0f / N)` (`0x2467`); the gain and the pan
+    // keep the other path's double reciprocal.
+    const invN = f(1 / n);
+    const invD = 1 / n;
+    const phase = this.enginePhase;
+    let p0 = phase[0];
+    let p1 = phase[1];
+    let p2 = phase[2];
+    for (let i = 0; i < this.layers.length; i += 1) {
+      const layer = this.layers[i];
+      const rateS = layerRate32(ratioS, layer.detune, depthS, p0);
+      const rateE = layerRate32(ratioE, layer.detune, depthE, f(inc0 + p0));
+      const gLS = gainS * (d1S !== 0 ? 1 + d1S * sin32(p1) : 1);
+      const gLE = gainE * (d1E !== 0 ? 1 + d1E * sin32(f(inc1 + p1)) : 1);
+      const panS = panFold(d2S !== 0 ? sin32(p2) : 0, d2S, layer.basePan);
+      const panE = panFold(d2E !== 0 ? sin32(f(inc2 + p2)) : 0, d2E, layer.basePan);
+      layer.rate = rateS;
+      layer.rateStep = (rateE - rateS) * invN;
+      layer.gain = gLS;
+      layer.gainStep = (gLE - gLS) * invD;
+      layer.pan = panS;
+      layer.panStep = (panE - panS) * invD;
+      p0 = f(fan0 + p0);
+      p1 = f(fan1 + p1);
+      p2 = f(fan2 + p2);
+    }
+    phase[0] = f(inc0 + phase[0]);
+    phase[1] = f(inc1 + phase[1]);
+    phase[2] = f(inc2 + phase[2]);
+  }
+
+  /**
+   * Render `take` frames of the current segment at `at`.
+   *
+   * ❗ **Every frame of it, whatever the sample does.** A layer past the end of
+   * an unlooped sample reads silence (`0x37be`, `jge 0x3928`) and keeps
+   * stepping; the other layers, the clip and the ladder run on to the chunk's
+   * end. Only then does `0x3035`-`0x3069` ask whether layer 0 has run out
+   * (`ranOut`), and the record is freed after the chunk. Stopping every layer
+   * and the ladder at layer 0's last frame cut a filtered kit's ladder ring a
+   * part-chunk early: `bb_kit_2`, -63 dB of its loudest window against the
+   * module.
    */
   private renderSegment(
     outLeft: Float32Array,
@@ -1043,7 +1459,7 @@ class Voice {
     take: number,
     interpolate: Interpolator,
     engineSampler: boolean,
-  ): number {
+  ): void {
     const { sample } = this.spec;
     const chans = sample.channels;
     const mono = chans.length === 1;
@@ -1063,7 +1479,6 @@ class Voice {
     sL.fill(0, 0, take);
     sR.fill(0, 0, take);
 
-    let stop = take;
     const layers = this.layers;
     for (let li = 0; li < layers.length; li += 1) {
       const layer = layers[li];
@@ -1074,18 +1489,19 @@ class Voice {
       const rateStep = layer.rateStep;
       const gainStep = layer.gainStep;
       const panStep = layer.panStep;
-      let i = 0;
-      for (; i < stop; i += 1) {
+      for (let i = 0; i < take; i += 1) {
         if (loop !== undefined) {
+          // ❗ **The engine's sampler never rewinds the position**: the record
+          // keeps a double that only grows (`0x2d59`) and `0x3780` wraps the
+          // integer index it reads at, so `readMipped` is handed the unwrapped
+          // value and does the wrap itself -- which is what gives the engine its
+          // one silent sample at a loop ending on the sample's last frame, and
+          // its float32 roughness on long looped notes. Our own path wraps the
+          // position, both taps with it, at loop.end.
           const span = loop.end - loop.start;
-          // The engine wraps only *past* loop.end, because it leaves the second
-          // interpolation tap unwrapped and so still needs the frame at the end
-          // to point somewhere. Our own path wraps both taps and therefore wraps
-          // at loop.end. See readMipped.
-          const past = mipL !== undefined ? position > loop.end : position >= loop.end;
-          if (span > 0 && past) position = loop.start + ((position - loop.start) % span);
-        } else if (position >= srcL.length) {
-          break;
+          if (mipL === undefined && span > 0 && position >= loop.end) {
+            position = loop.start + ((position - loop.start) % span);
+          }
         }
         // Hand the loop to the interpolator only once the voice is inside it.
         // Before that the taps behind `loop.start` are the attack and are
@@ -1097,9 +1513,13 @@ class Voice {
         let l: number;
         let r: number;
         if (mipL !== undefined) {
+          // Silence at an index past the frame count, which `readMipped` tests.
           const level = mipLevelFor(rate);
           l = readMipped(mipL, position, level, region);
           r = mono ? l : readMipped(mipR!, position, level, region);
+        } else if (loop === undefined && position >= srcL.length) {
+          l = 0;
+          r = 0;
         } else {
           l = interpolate(srcL, position, region);
           r = mono ? l : interpolate(srcR, position, region);
@@ -1117,18 +1537,14 @@ class Voice {
         gain += gainStep;
         pan += panStep;
       }
-      // Layer 0 running out ends the record; a later layer merely goes quiet.
-      if (i < stop && li === 0) stop = i;
       layer.position = position;
       layer.rate = rate;
       layer.gain = gain;
       layer.pan = pan;
     }
-    if (stop < take) this.ended = true;
-    if (stop === 0) return 0;
 
     // The record's own clip, on the summed layers, before anything else.
-    for (let i = 0; i < stop; i += 1) {
+    for (let i = 0; i < take; i += 1) {
       const l = sL[i];
       const r = sR[i];
       sL[i] = l > 1 ? 1 : l < -1 ? -1 : l;
@@ -1139,7 +1555,7 @@ class Voice {
     if (!this.bypass) {
       const coefficients = this.coefficients;
       if (!this.rampFilter) {
-        for (let i = 0; i < stop; i += 1) {
+        for (let i = 0; i < take; i += 1) {
           sL[i] = this.ladderL.process(sL[i], coefficients);
           sR[i] = this.ladderR.process(sR[i], coefficients);
         }
@@ -1148,26 +1564,40 @@ class Voice {
         let res = this.res;
         const freqStep = this.freqStep;
         const resStep = this.resStep;
-        for (let i = 0; i < stop; i += 1) {
-          ladderCoefficientsInto(freq, res, coefficients);
-          sL[i] = this.ladderL.process(sL[i], coefficients);
-          sR[i] = this.ladderR.process(sR[i], coefficients);
-          freq += freqStep;
-          res += resStep;
+        if (this.filter32) {
+          // The step is added after each sample's ladders, in float32 (`0x36d9`,
+          // `0x36ea`). ❗ That add is most of what the float32 filter is worth: a
+          // step under half an ulp of the cutoff is lost, so a slow sweep stands
+          // still inside a chunk. Accumulated in double, `woodpecker` was -78 dB
+          // against the module and `synth_strings`' gover -58 (synth-engine.md).
+          for (let i = 0; i < take; i += 1) {
+            ladderCoefficients32Into(freq, res, coefficients);
+            sL[i] = this.ladderL.process(sL[i], coefficients);
+            sR[i] = this.ladderR.process(sR[i], coefficients);
+            freq = Math.fround(freq + freqStep);
+            res = Math.fround(res + resStep);
+          }
+        } else {
+          for (let i = 0; i < take; i += 1) {
+            ladderCoefficientsInto(freq, res, coefficients);
+            sL[i] = this.ladderL.process(sL[i], coefficients);
+            sR[i] = this.ladderR.process(sR[i], coefficients);
+            freq += freqStep;
+            res += resStep;
+          }
         }
         this.freq = freq;
         this.res = res;
       }
     }
-    for (let i = 0; i < stop; i += 1) {
+    for (let i = 0; i < take; i += 1) {
       outLeft[at + i] += sL[i];
       outRight[at + i] += sR[i];
     }
-    this.elapsed += stop;
-    this.life -= stop;
-    this.cut -= stop;
-    this.hold -= stop;
-    return stop;
+    this.elapsed += take;
+    this.life -= take;
+    this.cut -= take;
+    this.hold -= take;
   }
 
   /**
@@ -1228,36 +1658,45 @@ class Voice {
       // A cut posted since the segment was evaluated shortens it: the allocator
       // takes the record wherever the voice is.
       const take = Math.min(this.segLeft, frames - at, this.cut);
-      const wrote = this.renderSegment(outLeft, outRight, at, take, interpolate, engineSampler);
-      if (wrote > 0) {
+      this.renderSegment(outLeft, outRight, at, take, interpolate, engineSampler);
+      if (take > 0) {
         if (begin < 0) begin = at;
-        end = at + wrote;
+        end = at + take;
         // ⚠️ **One span per segment slice, with the send that was live for it.**
         // The buses belong to the mixer, so the voice cannot sum into them
         // itself; reporting what it wrote and at what send is how a moving
         // echo reaches them without the mixer having to know about segments.
-        into?.push({ begin: at, end: at + wrote, echo: this.curEcho, reverb: this.curReverb });
+        into?.push({ begin: at, end: at + take, echo: this.curEcho, reverb: this.curReverb });
       }
-      this.segLeft -= wrote;
-      at += wrote;
-      if (wrote < take) {
-        // Layer 0 ran out of an unlooped sample (`ended` is set).
-        this.segLeft = 0;
-        this.beginTail();
-        continue;
-      }
+      this.segLeft -= take;
+      at += take;
       // The record is given back after the chunk in which its volume or its
-      // release reached zero -- rendered to the end, then gone, whoever sliced
-      // it.
+      // release reached zero, or layer 0 ran out of sample -- rendered to the
+      // end, then gone, whoever sliced it.
       if (
         this.segLeft === 0 &&
-        (this.silentAfter || (this.spec.envelope !== undefined && this.env.finished))
+        (this.silentAfter || this.ranOut || (this.spec.envelope !== undefined && this.env.finished))
       ) {
         this.ended = true;
         this.beginTail();
       }
     }
     return { begin: begin < 0 ? 0 : begin, end };
+  }
+
+  /**
+   * Whether layer 0 has run out of an unlooped sample, as `0x3035`-`0x3069`
+   * asks once the chunk is out: its double converted to float32
+   * (`vcvtsd2ss`) **strictly** above the slot's frame count (`jbe 0x307f`),
+   * the slot unlooped (`+0x80`, the loop's length, zero) and not empty. A
+   * position that lands on the count exactly keeps the record a chunk more;
+   * a later layer never frees it.
+   */
+  private get ranOut(): boolean {
+    const { sample } = this.spec;
+    if (sample.loop !== undefined) return false;
+    const frames = sample.channels[0].length;
+    return frames > 0 && Math.fround(this.layers[0].position) > frames;
   }
 
   /**
@@ -1271,7 +1710,9 @@ class Voice {
   private beginTail(): void {
     if (this.tailFrames === 0 || this.bypass) return;
     // A ramping ladder has walked its coefficients to where the sound ended.
-    if (this.rampFilter) ladderCoefficientsInto(this.freq, this.res, this.coefficients);
+    if (this.rampFilter) {
+      (this.filter32 ? ladderCoefficients32Into : ladderCoefficientsInto)(this.freq, this.res, this.coefficients);
+    }
     this.tailLeft = this.tailFrames;
     this.tailGain = 1;
     this.tailStep = 1 / this.tailFrames;

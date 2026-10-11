@@ -14,6 +14,7 @@
 
 import { createApp, h, watch } from 'vue';
 import Checks from '../controls/Checks.vue';
+import Choice from '../controls/Choice.vue';
 import { render } from '../controls/render.ts';
 import { CONTROLS } from '../controls/kit.ts';
 import { VOICES_UNLIMITED, VOICE_POOL_SIZE } from '@lbptracker/lib/polyphony.ts';
@@ -32,6 +33,9 @@ export function mountRender(opts: { isActive: () => boolean }): void {
     app.provide(CONTROLS, render);
     app.mount(at);
   }
+  const masterApp = createApp({ render: () => h(Choice, { group: 'master' }) });
+  masterApp.provide(CONTROLS, render);
+  masterApp.mount('#rd-opt-master');
   const rangeFields = $<HTMLSpanElement>('rd-rangeFields');
   const fromInput = $<HTMLInputElement>('rd-from');
   const toInput = $<HTMLInputElement>('rd-to');
@@ -368,7 +372,7 @@ export function mountRender(opts: { isActive: () => boolean }): void {
       reverb: render.on('optReverb'),
       echo: render.on('optEcho'),
       clip: render.on('optClip'),
-      master: render.on('optMaster'),
+      master: render.picked('master') === 'ours' ? 'ours' : 'game',
     });
   });
 

@@ -48,14 +48,20 @@ export interface Fader<Id extends string = string> {
   /**
    * What the reader sees, from the engine's number. Never the slider position.
    *
-   * `on` is there for the few labels that depend on a checkbox rather than only
-   * on their own value — the live player's pool size reads `off` when it is
-   * uncapped — so that stays in the spec instead of becoming a second writer of
-   * the label somewhere else.
+   * `on` and `picked` are there for the few labels that depend on another
+   * control rather than only on their own value — the live player's pool size
+   * reads `off` when it is uncapped — so that stays in the spec instead of
+   * becoming a second writer of the label somewhere else.
    */
-  readonly format: (value: number, on: (id: string) => boolean) => string;
+  readonly format: (
+    value: number,
+    on: (id: string) => boolean,
+    picked: (id: string) => string,
+  ) => string;
   /** Greyed out and unusable while this check is on. */
   readonly disabledBy?: string;
+  /** Greyed out and unusable unless this choice holds this value. */
+  readonly onlyWhen?: { readonly choice: string; readonly is: string };
   /** Moving it rebuilds the worklet's output stage. */
   readonly effects?: boolean;
 }
@@ -75,6 +81,9 @@ export interface Choice<Id extends string = string> {
   readonly label: string;
   readonly start: string;
   readonly options: readonly { readonly value: string; readonly label: string }[];
+  readonly title?: string;
+  /** Picking another rebuilds the worklet's output stage. */
+  readonly effects?: boolean;
 }
 
 export interface Group {
@@ -123,6 +132,9 @@ export interface Controls<F extends string, C extends string, S extends string> 
   on(id: C): boolean;
   set(id: C, to: boolean): void;
   picked(id: S): string;
+  choose(id: S, value: string): void;
+  /** Whether a fader is greyed out, by its `disabledBy` or its `onlyWhen`. */
+  disabled(id: F): boolean;
   /** Put one fader back where it started — what a double-click does. */
   reset(id: F): void;
   /**
@@ -134,7 +146,7 @@ export interface Controls<F extends string, C extends string, S extends string> 
    * remembered to extend a watcher — a silent failure, and the exact drift this
    * file exists to remove.
    */
-  effectsSignature(): (number | boolean)[];
+  effectsSignature(): (number | boolean | string)[];
 }
 
 export function createControls<F extends string, C extends string, S extends string>(
@@ -165,7 +177,11 @@ export function createControls<F extends string, C extends string, S extends str
     fader,
     raw: (id) => positions[id]!,
     value: (id) => positions[id]! / fader(id).per,
-    shown: (id) => fader(id).format(positions[id]! / fader(id).per, (c) => !!checked[c]),
+    shown: (id) => fader(id).format(
+      positions[id]! / fader(id).per,
+      (c) => !!checked[c],
+      (c) => chosen[c] ?? '',
+    ),
     setValue: (id, value) => {
       const f = fader(id);
       // Clamped and stepped, because this is fed by a song's own settings and a
@@ -177,12 +193,21 @@ export function createControls<F extends string, C extends string, S extends str
       checked[id] = to;
     },
     picked: (id) => chosen[id]!,
+    choose: (id, value) => {
+      chosen[id] = value;
+    },
+    disabled: (id) => {
+      const f = fader(id);
+      return (!!f.disabledBy && !!checked[f.disabledBy])
+        || (!!f.onlyWhen && chosen[f.onlyWhen.choice] !== f.onlyWhen.is);
+    },
     reset: (id) => {
       positions[id] = fader(id).start;
     },
     effectsSignature: () => [
       ...spec.faders.filter((f) => f.effects).map((f) => positions[f.id]!),
       ...spec.checks.filter((c) => c.effects).map((c) => checked[c.id]!),
+      ...choices.filter((c) => c.effects).map((c) => chosen[c.id]!),
     ],
   };
 }

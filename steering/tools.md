@@ -6,7 +6,7 @@ and the environment variables that steer it. Nothing here is a fact about the ga
 the descriptive files — but several of the traps below are why a fact took a session longer than
 it should have.
 
-`tools/` holds **fourteen Python scripts and five Java ones**, deliberately dependency-light, and
+`tools/` holds **twenty Python scripts and nine Java ones** (counted 2026-10-11), deliberately dependency-light, and
 one PowerShell script that drives Ableton Live (below). Three
 of the Python ones are the ground truth the TypeScript reproduces (`fsb.py`, `lbpres.py`,
 `wavehammer.py`); the rest are instruments for reading the binaries.
@@ -41,6 +41,51 @@ disassembly had proved there was no store to `[reg+0xc0]` — correctly — and 
 all along as `[rbx+0x3c]` through an interior pointer. **An absolute-offset search is only sound if
 every access uses the same base.** The harness is reusable on `fmodsmsreverb.prx` and
 `fmodextinput.prx`, which are the same shape. See *37* in answered-questions.md.
+
+**`prxrun.py` is that harness made general** (2026-10-11): any of the PRXs `prxdis.MODULES` names,
+relocated (`RELATIVE`, `64`, `GLOB_DAT`, `JUMP_SLOT`; TLS to 0) against **the game's own
+`sce_module/libc.prx`** loaded beside them — so `exp2f`, `sinf`, `rand` are the console's, not the
+CRT's — and the eboot itself (`load_eboot`, for the mip builder `v0x3fc2b0` and anything else a
+module calls back into). `call(target, *ints, floats=(), stack=())` is the Windows → SysV thunk,
+checked with capstone; `standard(rand_constant=…)` wires the stack guard and pins `rand()` to a
+constant, so a run is deterministic and our side can be fed the same draw. `prxrun.py selftest`.
+
+**The differential test against the synthesiser** runs on it, in three parts:
+
+| part | what it does |
+|---|---|
+| `packages/lbp-tracker-lib/dev/prx-scene.ts <dir> synth <inst> [variant]` / `level <uid> [s]` | writes the scene as the eboot lays it out (`scene.json`) and our render of it, matched (`ours.f32`). `PARAMS="i=x,y;…"` overrides `Params` on both sides, `TRACKS=` keeps some tracks, `CLOCK=1` renders on the engine's clock |
+| `tools/prxsynth.py <scene.json> <out.f32> …` or `<list.txt>` | runs `fmodextinput.prx` on it: the module's four lanes. `VOICES=a,b` and `POSV=a,b` print the live records and their sample positions over a frame range — comparing `+0x40 + 8i`, all five layers, chunk by chunk with our layers' positions is how a phase drift is told from a level error, and an error that grows 6 dB per doubling of time is a drift. The list file must end in `.txt` |
+| `packages/lbp-tracker-lib/dev/prx-compare.ts <root>` | every scene under a root: the error overall, and the worst window against its own power and against the loudest window |
+
+⚠️ **Three traps, each paid for** (*62* in answered-questions.md): read the worst window against
+the **loudest** one, never its own — a −90 dB tail a block apart reports 0 dB; compare a song on
+the engine's clock (`CLOCK=1`), or every onset off a block boundary is a difference by design; and
+treat every field the scene invents as a claim about the engine — a clip length of `0x7fffffff`
+held rows the game frees and silenced the module mid-song.
+
+**The whole chain in series** (2026-10-11) extends it past the synthesiser — the result is *The
+whole chain, run in series against the modules* in [lbp-audio-engine.md](lbp-audio-engine.md):
+
+| part | what it does |
+|---|---|
+| `prx-scene.ts` with `CHAIN=1` | also renders `ours-reverb.f32` (the reverb's return in, `master: 'none'`, the fold's gain out) and `ours-game.f32` (the whole render, `master: 'game'`), and writes the scene's `reverb` setting |
+| `tools/prxchain.py <scene.json> <dir>` or `<list.txt>` | `prxsynth.py`'s run with every block fed on through `fmodsmsreverb.prx` and `fmodsmswavehammer.prx` in the same image: `prx.f32`, `prx-reverb.f32`, `prx-hammer.f32`, four lanes each. Both DSPs are made, and the preset applied right before the song, by the eboot's own code. `WARM=n` runs the chain n frames on silence first (0, the default, is a session's first song); `REAPPLY=n` applies the preset again every n frames |
+| `tools/prxrevswitch.py <dir> [A:B …]` or `<dir> reapply` | `fmodsmsreverb.prx` alone, made by the eboot's create, set to A before its first block, switched to B after 2,048 frames — or re-applying its own preset every 768 frames on noise — on a signal `reverb.test.ts` regenerates; writes the vectors and prints the per-window digest that test pins `Reverb.reconfigure` to |
+| `packages/lbp-tracker-lib/dev/prx-chain.ts <root>` | each boundary **chained** (synth, + reverb, + WaveHammer against `ours-game.f32` with the fold taken back out, + fold) and each of our stages **local**, fed the module's own input (`Reverb`, `WaveHammer`, `FOLD_CENTRE`), so a mismatch names its stage; the send's level, the WaveHammer's deepest gain and its worst gain error, and lanes 2-3 checked zero. `WINDOW=a,b` |
+| `tools/prxhammer.py` | the WaveHammer alone, made by `prxchain.py`'s `make_hammer` and run against the console's libc, on `compressor.test.ts`'s `signal()`: the gains at its `VECTORS` frames, where `[state+0xf0]` comes to rest after the signal and from reset, the first frame of a fresh module fed 1.0, and the state it computed. Every module number that test pins comes from here, or for `VECTORS` (taken with `runhammer.py`) is reproduced here to 5e-8. Unlike `runhammer.py`, its `powf` and `log10f` are the game's |
+
+- ⚠️ **The WaveHammer `printf`s whenever it rebuilds its table** ("Writing back storage …",
+  "DONE", `0xdd8`/`0xdf8`), and the game's `printf` and `puts` reach libkernel, which `prxrun`
+  does not load: the module dies on an `int3` on its first block, which reads like a stack-guard
+  failure. `prxchain.py` points both at `ret0`, as `runhammer.py` always had.
+- ⚠️ **`WARM` is not neutral for the reverb.** The silence runs on the create's preset 2, and a
+  preset applied after the module has run keeps preset 2's lengths (*SMS Reverb* in
+  lbp-audio-engine.md), while `prx-chain.ts` scores a clean `Reverb` — so with `WARM` only a
+  song on preset 2 is a clean comparison. Its counterpart is `new Reverb(rate, reverbPreset(5))`
+  run on the same silence, then `reconfigure`, which `prx-chain.ts` does not do.
+- A list file's paths are read by Windows Python: write them as `C:\…`, not `/c/…`, which it
+  opens as `C:\c\…`.
 
 ## Getting the game's data out
 
@@ -274,7 +319,8 @@ a gain question out.
 | `LBP_ONLY`, `LBP_SKIP` | `render-level.ts` | comma-separated instrument GUIDs to keep, or to drop |
 | `LBP_SEED` | `render-level.ts` | the PRNG seed. ❗ **Reseeding is the null hypothesis**: a difference smaller than a reseed is a difference a reshuffle could have produced (*15*) |
 | `LBP_VOICES=<n\|off>` | `render-level.ts` | the pool size; `off` is `VOICES_UNLIMITED` |
-| `LBP_COMPRESSOR=1`, `LBP_RELEASE_TAIL=1` | `render-level.ts` | switch on the two measured behaviours that are off by default (*38*, *29* in open-questions.md) |
+| `LBP_RELEASE_TAIL=1` | `render-level.ts` | switch on the measured release tail, off by default (*29* in open-questions.md) |
+| `LBP_MASTER=game\|none\|<0..10>` | `render-level.ts` | the master bus: the game's by default, `none` for the fold's gain alone (the chain before 0.2.43, `-masternone` in the file name), a number for ours at that glue (*42* in open-questions.md) |
 | `LBP_ONESHOT=full\|natural\|gate` | `render-level.ts` | the one-shot rule; `gate` is the engine's (*10*) |
 | `LBP_NO_REVERB=1`, `LBP_NO_ECHO=1`, `LBP_NO_CLIP=1` | `render-level.ts` | drop a stage, for A/B |
 | `LBP_NO_KEYTRACK=1` | `render-level.ts` | force the filter's key tracking to 0 |

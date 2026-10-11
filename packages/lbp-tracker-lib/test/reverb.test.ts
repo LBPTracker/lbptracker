@@ -271,3 +271,112 @@ test('the six the sequencer offers: the names, the order and the presets', () =>
   assert.ok(byName('Cathedral').preDelayMs > byName('Big Hall').preDelayMs,
     'the cathedral is the largest space by pre-delay, which is why it is not the longest tail');
 });
+
+test('the shorter early taps arrive late by what the 256-frame ring adds', () => {
+  // The early line is a ring of `M` frames (the longest tap) in a buffer
+  // rounded up to 1 KB, 256 frames, written block by block: the longest tap is
+  // read `M` behind, the other two `d + (ring - M)` -- measured against
+  // `fmodsmsreverb.prx` running under `tools/prxrun.py`.
+  for (let setting = 1; setting <= 5; setting += 1) {
+    const preset = [...reverbPreset(setting)];
+    preset[PRESET_SLOT.lateLevel] = -10000;
+    const early = REVERB_EARLY_SETS[preset[PRESET_SLOT.earlySet]];
+    const nominal = [0.051, 0.151, 0.078].map((o, i) => Math.trunc((early[i] + o) * (RATE / 1000)));
+    const longest = Math.max(...nominal);
+    const ring = Math.ceil(longest / 256) * 256;
+    const expected = nominal.map((d) => (d === longest ? d : d + ring - longest)).sort((a, b) => a - b);
+    const ir = impulseResponse(preset, ring + 512);
+    const arrivals: number[] = [];
+    for (let i = 0; i < ring + 512; i += 1) {
+      if (ir[i * 2] !== 0 || ir[i * 2 + 1] !== 0) arrivals.push(i);
+    }
+    assert.deepEqual(arrivals, [...new Set(expected)], `setting ${setting}`);
+  }
+});
+
+test('a preset applied to a reverb that has run keeps its lengths, as the module does', () => {
+  // `tools/prxrevswitch.py` runs `fmodsmsreverb.prx` made by the eboot's own
+  // create, setting A applied before the first block, then setting B applied
+  // after 2048 frames the way `applyReverbPreset` applies it, and prints the
+  // stereo RMS of each 1024-frame window of what it writes back. Each scene
+  // pins a part of `reconfigure`, and fails by two to three orders of
+  // magnitude past the tolerance without it: 5 -> 3 the lengths kept
+  // (Cathedral's under Hall's gains); 2 -> 1 the comb Bright Plate's nine taps
+  // never built; 0 -> 0, a burst running through the switch, the input
+  // one-pole's and the notch's state zeroed by the switch.
+  const MODULE: Record<string, number[]> = {
+    '5-3': [
+      0, 0, 0.0075498, 0.022996, 0.028886, 0.015444, 0.035652, 0.041579, 0.022088, 0.020383,
+      0.024554, 0.017439, 0.012975, 0.010683, 0.0092722, 0.0065133, 0.0057482, 0.0046648,
+      0.0046215, 0.003996, 0.0030221, 0.0025279, 0.0025431, 0.0019004, 0.0014412, 0.0013391,
+      0.0011405, 0.0010126, 0.00078913, 0.00083522, 0.00068849, 0.00063096, 0.00044375,
+      0.00045626, 0.00052565, 0.00037612,
+    ],
+    '2-1': [
+      0, 0.019792, 0.1133, 0.13637, 0.084784, 0.064592, 0.060313, 0.050016, 0.035018, 0.028397,
+      0.022434, 0.016892, 0.015483, 0.011161, 0.010791, 0.0080974, 0.0070739, 0.0063018,
+      0.0042706, 0.004767, 0.0033186, 0.0029889, 0.0026236, 0.0021498, 0.0018713, 0.0014395,
+      0.0014394, 0.0011327, 0.00088752, 0.00084767, 0.00066109, 0.00055831, 0.00054522,
+      0.00040906, 0.00035766, 0.00030165,
+    ],
+    '0-0': [
+      0.004444, 0.02586, 0.051964, 0.028406, 0.014998, 0.033926, 0.027424, 0.011238, 0.0067873,
+      0.0044298, 0.0037056, 0.0027536, 0.0021349, 0.0017037, 0.0012321, 0.0009402, 0.00064557,
+      0.00061732, 0.0004141, 0.00035427, 0.00024819, 0.00020896, 0.00012965, 9.2257e-5, 9.656e-5,
+      7.6307e-5, 5.6451e-5, 4.256e-5, 2.8308e-5, 2.2701e-5, 1.6664e-5, 1.4327e-5, 1.041e-5,
+      1.1317e-5, 7.0636e-6, 5.4165e-6,
+    ],
+  };
+  const SWITCH = 2048;
+  const WINDOW = 1024;
+  const frames = WINDOW * 36;
+  // The tool's signal: impulses, and LCG noise in float32, left then right. The
+  // first block is silent, as the game leaves it for every song it starts.
+  const input = new Float32Array(frames * 2);
+  let seed = 12345;
+  const impulse = (at: number) => {
+    input[2 * at] = 0.5;
+    input[2 * at + 1] = 0.25;
+  };
+  const burst = (at: number, n: number) => {
+    for (let i = 2 * at; i < 2 * (at + n); i += 1) {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      input[i] = (seed / 4294967296 - 0.5) * 0.6;
+    }
+  };
+  impulse(256);
+  burst(1000, 300);
+  burst(SWITCH - 400, 800);
+  impulse(SWITCH + 512);
+  burst(SWITCH + 3000, 500);
+
+  for (const [scene, module] of Object.entries(MODULE)) {
+    const [a, b] = scene.split('-').map(Number);
+    const reverb = new Reverb(RATE, reverbPreset(a));
+    const energy = new Array<number>(module.length).fill(0);
+    for (let i = 0; i < frames; i += 1) {
+      if (i === SWITCH) reverb.reconfigure(reverbPreset(b));
+      const out = reverb.process(input[2 * i], input[2 * i + 1]);
+      energy[Math.floor(i / WINDOW)] += out.left ** 2 + out.right ** 2;
+    }
+    const loudest = Math.max(...module);
+    energy.forEach((e, w) => {
+      const rms = Math.sqrt(e / WINDOW);
+      assert.ok(
+        Math.abs(rms - module[w]) <= 1e-4 * (loudest + module[w]),
+        `${scene}, window ${w}: ${rms} against the module's ${module[w]}`,
+      );
+    });
+  }
+});
+
+test('reconfiguring before the first frame is a clean configure, as the module first builds there', () => {
+  const ir = (reverb: Reverb) => {
+    const out: number[] = [];
+    for (let i = 0; i < 48000; i += 1) out.push(reverb.process(i === 300 ? 1 : 0, i === 300 ? 1 : 0).left);
+    return out;
+  };
+  const switched = new Reverb(RATE, reverbPreset(5));
+  switched.reconfigure(reverbPreset(3));
+  assert.deepEqual(ir(switched), ir(new Reverb(RATE, reverbPreset(3))));
+});

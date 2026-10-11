@@ -68,10 +68,10 @@
       <canvas id="vu" width="120" height="10" aria-label="Output level, left and right"></canvas>
       <input id="vol" type="range" min="0" max="1" step="0.01" value="1" aria-label="Volume" autocomplete="off">
     </div>
-    <!-- The master bus, from the bar: the same switch as under Song/Mixer. -->
+    <!-- The master bus, from the bar: the same choice as under Song/Mixer. -->
     <button id="glue" type="button" class="glue" aria-pressed="false"
-            aria-label="Master bus glue: glue and limiter"
-            title="Master bus glue: a compressor and a limiter of this tracker&#39;s own, after everything the game does. Off is what the game would play.">G</button>
+            aria-label="Our master bus, glue and limiter, instead of the game&#39;s"
+            title="Our master bus: a compressor and a limiter of this tracker&#39;s own, instead of the game&#39;s. Off is the game&#39;s own master bus, what the game would play.">G</button>
   </div>
   <span class="spacer"></span>
   <span id="dirty" title="unsaved changes"></span>
@@ -226,6 +226,8 @@
         <span class="sep">&middot;</span>
         <span id="rd-opt-stage" style="display:contents"></span>
         <span id="rd-opt-clip" style="display:contents"></span>
+        <span class="sep">&middot;</span>
+        <span id="rd-opt-master" style="display:contents"></span>
       </div>
       <div id="rd-status">nothing rendered yet</div>
       <div id="rd-bar"><div></div></div>

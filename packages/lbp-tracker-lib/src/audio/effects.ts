@@ -152,13 +152,15 @@ export class Echo {
  * How much of a written pan survives to the game's stereo output:
  * **`2 - Math.SQRT2` = 0.5857864**, as `p' = 0.5 + (p - 0.5) * PAN_WIDTH`.
  *
- * ❌ **This renderer does not apply it, since 2026-09-06.** The narrowing and
- * the knob that swept it were both removed on a listening judgement: the
- * listener wants the file's own pans. Everything below is still measured and
- * still true of the game; it is the *decision* that changed, and
- * {@link FOLD_GAIN} — the other half of the same operator — is still applied.
- * See *39* in `steering/answered-questions.md`, which records the decision and
- * the bug that fixing the gain's placement removed.
+ * ✔ **Applied by the game's master bus, the default since 0.2.43**, and not
+ * per voice: `master-stage.ts` runs the whole fold as the matrix it is, with
+ * {@link FOLD_CENTRE}, after the plugin's clip, the reverb and `SMS
+ * WaveHammer`, which is where FMOD's speaker matrix sits. Narrowing each
+ * voice's pan instead would put the narrowed image in front of the clip and
+ * the compressor's detector, which see the internal one in the game. ⚠️ Our
+ * own master bus and `'none'` still leave it out and keep only
+ * {@link FOLD_GAIN}: the file's own pans, the listening judgement of
+ * 2026-09-06 that *39* in `steering/answered-questions.md` records.
  *
  * ✔ **Measured against the game's own output at four pan values**, and the last
  * two were a *prediction* confirmed out of sample. Two placements at pan 0.40
@@ -188,10 +190,14 @@ export class Echo {
  * ⚠️ **It happens in the stereo fold, not in the sequencer**, and the two halves
  * have different owners. The game renders **7.1**: `v0xa57770`, FMOD's
  * `GetDriverCaps` for its "FMOD Orbis AudioOut Output" driver, reports
- * `FMOD_SPEAKERMODE_7POINT1`, 48 kHz and float, and `setSpeakerMode` is never
- * called. Eight channels leave the game, and folding 7.1 to stereo cross-feeds
+ * `FMOD_SPEAKERMODE_7POINT1`, 48 kHz and float, and the game itself calls
+ * `System::setSpeakerMode(6)` at `v0x3e76d8` -- FMOD's own default is stereo
+ * (`v0xa4fbb4`), so the driver's report alone would not have made it 7.1.
+ * Eight channels leave the game, and folding 7.1 to stereo cross-feeds
  * **only through the centre**, at the ITU-R BS.775 coefficient `1/sqrt2` --
- * which is what `2^-1.5 = 0.7071 * (L+R)/2` is.
+ * which is what `2^-1.5 = 0.7071 * (L+R)/2` is. ⚠️ That fold is the
+ * platform's, not the game's: shadPS4's is `0.7071f` with the LFE dropped;
+ * a real PS4's has not been read.
  *
  * So the centre must carry the mono average, and that part is the *game's*: the
  * sequencer itself cannot do it -- its pan law is exactly `1-p` / `p`
@@ -218,8 +224,8 @@ export class Echo {
  * steering/answered-questions.md.
  *
  * A stereo listener hears this narrowing on hardware or emulator alike, so the
- * game's **internal** image is wider than what a TV plays. This renderer now
- * takes the internal one.
+ * game's **internal** image is wider than what a TV plays. The game's master
+ * bus gives what the TV plays; ours and `'none'` the internal image.
  *
  * ❌ **This used to say "width, not gain", and that was half of a linear
  * operator.** `L = ch0 + k·d·(ch0+ch1)` shrinks the difference by
@@ -239,17 +245,19 @@ export const PAN_WIDTH = 2 - Math.SQRT2;
  * renders everything a flat **−4.645 dB** under the game's own stereo, at every
  * pan: the ratio is 0.585786 at 0, 0.25, 0.5, 0.75 and 1 alike.
  *
- * ❗ **It is applied and the narrowing is not, so this is half that operator,
- * on purpose.** The pan narrowing was removed on 2026-09-06 because the
- * listener wants the file's own image; keeping the gain keeps the level where
- * it was, which is the least surprising half to keep. It is a hybrid: the
- * game's downmixed **level** with the game's internal **image**.
+ * ❗ **On its own it is half that operator, and only the master buses that are
+ * not the game's use it alone.** Ours and `'none'` multiply both channels by
+ * it and keep the file's own image, the listening judgement of 2026-09-06: the
+ * game's downmixed **level** with the game's internal **image**. The game's
+ * bus runs the whole operator through {@link FOLD_CENTRE}, under which the
+ * sum grows by exactly this and the difference not at all.
  *
  * ✔ **Applied where FMOD applies it**: in the speaker matrix, *after* the
  * whole DSP chain — after the plugin's own clip, the reverb and `SMS
- * WaveHammer`. `render.ts` and `mixer-worklet.ts` both multiply it in last. It
- * was once folded into each voice, which put our clip and our compressor
- * 4.645 dB hotter than the game's (*39* in steering/answered-questions.md).
+ * WaveHammer`. `master-stage.ts` applies it last, for `render.ts` and
+ * `mixer-worklet.ts` alike. It was once folded into each voice, which put our
+ * clip and our compressor 4.645 dB hotter than the game's (*39* in
+ * steering/answered-questions.md).
  *
  * ⚠️ **A narrow image is quieter, and that is the pan law rather than this.**
  * `panGains` is linear (`0x2d21`/`0x2d40`), so a voice at the centre carries
@@ -260,6 +268,25 @@ export const PAN_WIDTH = 2 - Math.SQRT2;
  * would run into.
  */
 export const FOLD_GAIN = 1 / PAN_WIDTH;
+
+/**
+ * What each front channel takes of the pair through the centre speaker:
+ * FMOD's `k = 0.5` (`v0xefc008`, the 7.1-by-4-channels case at `v0xa2599f`)
+ * times BS.775's `d = 1/sqrt2`, **`2^-1.5` = 0.3535534**.
+ *
+ * The whole fold a stereo listener hears, as the game's master bus runs it:
+ *
+ * ```
+ *   L' = L + FOLD_CENTRE * (L + R)       the front speaker, and the centre
+ *   R' = R + FOLD_CENTRE * (L + R)       folded into it at -3 dB
+ * ```
+ *
+ * The sum grows by `1 + 2 * FOLD_CENTRE`, which is {@link FOLD_GAIN}, and the
+ * difference is untouched, so the pan narrows by {@link PAN_WIDTH}. A voice
+ * panned hard left comes out with `FOLD_CENTRE / (1 + FOLD_CENTRE)` =
+ * **0.261204** of itself on the right: what the captures measured, 0.261202.
+ */
+export const FOLD_CENTRE = 0.5 * Math.SQRT1_2;
 
 /**
  * The hard clip the sequencer's plugin puts on its own output.
@@ -275,8 +302,8 @@ export const FOLD_GAIN = 1 / PAN_WIDTH;
  * `addDSP` inserts at the head, so the signal path is `Sequencer → Reverb →
  * WaveHammer → mixer`. The reverb is `Reverb` below; the WaveHammer is a
  * compressor (−18 dB, 10:1, a 64-sample mean square, the limiter bypassed),
- * `compressor.ts`, pinned against the module running and **off by default** on
- * a listening judgement — *38* in `steering/open-questions.md`.
+ * `compressor.ts`, pinned against the module running and run by the game's
+ * master bus after the reverb (`master-stage.ts`).
  *
  * ⚠️ **Nor is it the only clip in the plugin.** `0x2e00`-`0x2e2d` clamps each
  * record's summed layers to ±1 before its ladder; see `Voice` in `mixer.ts`.
@@ -455,23 +482,34 @@ const ENGINE_RATE = 48000;
  * Two details a Freeverb-shaped guess gets wrong, and this project did: the
  * value that leaves the comb is the **undamped** delay output, and the gain
  * multiplies the **input as well as** the recirculation.
+ *
+ * `a` and `b` are the comb's own copy (`[rec+0x48]`, `[rec+0x44]`), set with
+ * its length and never again; `gain` (`[rec+0x4c]`) every configure — see
+ * {@link Reverb.reconfigure}.
  */
 class Comb {
   private readonly buffer: Float32Array;
-  private readonly gain: number;
+  gain: number;
+  private readonly a: number;
+  private readonly b: number;
   private index = 0;
   private y = 0;
+  /** What the last step wrote into the line — all a comb never set up reads. */
+  written = 0;
 
-  constructor(lengthSamples: number, gain: number) {
+  constructor(lengthSamples: number, gain: number, a: number, b: number) {
     this.buffer = new Float32Array(Math.max(1, lengthSamples));
     this.gain = gain;
+    this.a = a;
+    this.b = b;
   }
 
   /** Runs one sample and returns the raw delayed value to accumulate. */
-  step(send: number, a: number, b: number): number {
+  step(send: number): number {
     const x = this.buffer[this.index];
-    this.y = a * this.y + b * x;
-    this.buffer[this.index] = this.gain * (this.y + send);
+    this.y = this.a * this.y + this.b * x;
+    this.written = this.gain * (this.y + send);
+    this.buffer[this.index] = this.written;
     this.index = this.index + 1 === this.buffer.length ? 0 : this.index + 1;
     return x;
   }
@@ -555,52 +593,131 @@ class DelayLine {
  * - **No pre-delay from slot 8.** Slot 8 is the notch frequency; the delay in
  *   the reverb is slot 6, and it sits after the combs rather than before them.
  *
- * ## What is still not modelled
+ * ## Checked against the module running
  *
- * - The engine works in 256-frame blocks and rounds every delay buffer up to
- *   1 KB, so a tap shorter than 256 samples cannot behave as a plain per-sample
- *   delay there. Tap set 10's shortest is 5.019 ms = 241 samples, so preset 3
- *   (`ReverbSetting` 0) is the one place this could show.
+ * `tools/prxrun.py` loads `fmodsmsreverb.prx`, the game's own libc and the
+ * eboot, and configures the reverb with the eboot's own code (`v0x3fcc00`, then
+ * `v0x3fcd50` and the setparameter callback `v0x3fd3d0` once per preset slot).
+ * Fed an impulse away from start-up, all six settings agree with this class to
+ * **−111 to −125 dB** of the response; fed steady noise, to −52 to −86 dB, the
+ * float32 kernels drifting from these doubles round the feedback. What that
+ * run showed, and what it retired:
+ *
+ * - the early line's shorter two taps arrive late by the ring's rounding (in
+ *   the constructor below) — fixed 2026-10-11;
+ * - a preset applied after the module has run keeps the first one's lengths —
+ *   {@link Reverb.reconfigure}, since 2026-10-11, −106 to −123 dB from the
+ *   module on all 36 ordered pairs of settings, where a clean `Reverb` is −4.0 to
+ *   +5.6 dB off;
+ * - ❌ *not* "a preset change loses 256 frames of late field", as this said: a
+ *   re-apply zeroes the input one-pole's and the notch's state and nothing
+ *   else, and `reconfigure` does the same;
+ * - a comb reads silence until its ring has been written once round, from the
+ *   module's first block — not modelled, because the game's first block is
+ *   always silent (*SMS Reverb* in steering/lbp-audio-engine.md);
+ * - ✔ a comb shorter than a block is *not* a problem: tap set 10's 241-sample
+ *   comb agrees like the rest, though this file listed it as a residue.
  *
  * The connection gains are not a question: the two DSPs share one buffer, this
  * one reads lanes 2-3 in place and writes `(dry + wet, dry + wet, 0, 0)` back
  * (`0x2335`-`0x235d`), so unity at both ends is what the game does.
  */
 export class Reverb {
-  private readonly monoCombs: Comb[] = [];
-  private readonly leftCombs: Comb[] = [];
-  private readonly rightCombs: Comb[] = [];
-  private readonly outDelayL: DelayLine;
-  private readonly outDelayR: DelayLine;
-  private readonly outDelay: number;
-  private readonly earlyLine: DelayLine;
-  /** Tap delays in samples, and the linear-panned gain pair for each. */
-  private readonly earlyTaps: { delay: number; gainL: number; gainR: number }[] = [];
+  private readonly sampleRate: number;
 
-  /** The shared damping one-pole: `y = a*y + b*x`, `b = 1 - a`. */
-  private readonly dampA: number;
-  private readonly dampB: number;
+  // The geometry: lengths, the combs' own damping, the output delay and the
+  // early taps. `0x0e22`-`0x14ac`, run only while `[state+2]` lags
+  // `[param+2]` -- see `reconfigure`.
+  private monoCombs: Comb[] = [];
+  private leftCombs: Comb[] = [];
+  private rightCombs: Comb[] = [];
+  private outDelayL = new DelayLine(1);
+  private outDelayR = new DelayLine(1);
+  private outDelay = 1;
+  private earlyLine = new DelayLine(1);
+  /** Tap delays in samples, and the linear-panned gain pair for each. */
+  private earlyTaps: { delay: number; gainL: number; gainR: number }[] = [];
+
+  // The coefficients: `0x0b65`-`0x0e08`, on every configure.
+  /** `[state+0x510]`: how many mono combs run, `tapCount - 2` of the last preset. */
+  private monoCount = 0;
+  /** A gain per mono slot, for the slots the geometry never set up. */
+  private readonly ghostGains = new Float64Array(8);
+  /** This frame's write per mono slot, which is what a slot never set up reads. */
+  private readonly written = new Float64Array(8);
+
+  /** The input damping one-pole: `y = a*y + b*x`, `b = 1 - a`. */
+  private dampA = 0;
+  private dampB = 1;
   private inY = 0;
 
-  private readonly notchOn: boolean;
-  private readonly notchA: number;
-  private readonly notchB: number;
-  private readonly notchC: number;
+  private notchOn = false;
+  private notchA = 0;
+  private notchB = 0;
+  private notchC = 0;
   private notchY1 = 0;
   private notchY2 = 0;
 
-  readonly dryLevel: number;
-  readonly lateLevel: number;
-  readonly earlyLevel: number;
+  /** Read by the kernel out of the parameter block at every block. */
+  dryLevel = 0;
+  lateLevel = 0;
+  earlyLevel = 0;
+
+  /** Whether a frame has run: the geometry is built by the first one. */
+  private ran = false;
 
   constructor(sampleRate: number, preset: readonly number[]) {
-    // 0x0ec9-0x0edb: `rate * ms/1000 + 0.5`, then truncate — round to nearest.
-    const samples = (ms: number) => Math.max(1, Math.trunc((ms / 1000) * sampleRate + 0.5));
+    this.sampleRate = sampleRate;
+    this.coefficients(preset);
+    this.geometry(preset);
+  }
 
+  /**
+   * ❗ **What `applyReverbPreset` does to this DSP once it has run: every
+   * coefficient changes and no length does.**
+   *
+   * The plugin's configure `0x0b40` has two halves behind two dirty counters,
+   * `[param+0]` against `[state+0]` and `[param+2]` against `[state+2]`
+   * (`0x151b`-`0x152d`), and the eboot's configure `v0x3fcd50` bumps exactly
+   * one of them: `[param+2]` with its flag set (`v0x3fcfad`), `[param+0]`
+   * without (`v0x3fcfb4`). The flag is set by one caller, the create
+   * (`v0x3fd23b`); the setparameter callback every preset goes through passes
+   * zero (`v0x3fd480`). So the first block after the create builds the
+   * geometry from whatever the parameters are by then, and from then on a
+   * preset only reaches `0x0b65`-`0x0e08`:
+   *
+   * - **changed**: the input one-pole's coefficients, and its state zeroed
+   *   (`0x0b69`); the notch's coefficients and state, when the new preset has
+   *   it on; the number of mono combs that run (`0x0c1d`); every comb's gain,
+   *   from the **new** preset's lengths and decay (`0x0d30`, `0x0d90`); the
+   *   three levels, which the kernel reads from the parameters every block;
+   * - **kept**: every comb's length, its own damping pair (`[rec+0x44]`,
+   *   `+0x48`, written only at `0x0e96`), the output delay, and the early
+   *   taps' lengths, offsets, gains and pans.
+   *
+   * ⚠️ **A mono comb the geometry never built still runs** when the new tap set
+   * is longer: tap set 16 (`Bright Plate`) has nine lengths, the other five
+   * settings' ten. Its ring is zero frames, so `0x670` points its read at its
+   * own write (`0x743`), in the scratch buffer it shares with the slot two
+   * before it (`0x18c0`, alternate buffers): it adds what that comb wrote
+   * this frame, and overwrites it with `gain * send`.
+   *
+   * Before the first frame the module has not built anything yet, so this is
+   * a clean configure — a chain's first song. Checked against the module on
+   * all 36 ordered pairs of settings 0-5, and on a preset re-applied every 768
+   * frames (*SMS Reverb* in steering/lbp-audio-engine.md); `reverb.test.ts`
+   * holds three of them, from `tools/prxrevswitch.py`.
+   */
+  reconfigure(preset: readonly number[]): void {
+    this.coefficients(preset);
+    if (!this.ran) this.geometry(preset);
+  }
+
+  /** `0x0b65`-`0x0e08`: what every configure rewrites. */
+  private coefficients(preset: readonly number[]): void {
     const row = preset[PRESET_SLOT.tapSet];
     const taps = REVERB_TAP_SETS[row] ?? REVERB_TAP_SETS[0];
     const count = Math.min(REVERB_TAP_COUNTS[row] ?? taps.length, taps.length);
-    const early = REVERB_EARLY_SETS[preset[PRESET_SLOT.earlySet]] ?? REVERB_EARLY_SETS[0];
 
     // `[rsi+0x38] * 0.1` at 0x0c5d, and `powf(10, -0.003 * ms / rt60)` at
     // 0x0d30. Both halves come off the writing code; neither is a choice.
@@ -608,7 +725,7 @@ export class Reverb {
     const gainFor = (ms: number) => 10 ** ((-0.003 * ms) / rt60);
 
     // 0x0b65-0x0ba5: with `[param+0x24]` clear the engine stores `b = 1, a = 0`
-    // as one qword, which is a filter that does nothing.
+    // as one qword, which is a filter that does nothing. 0x0b69 zeroes its state.
     if (preset[PRESET_SLOT.dampEnable]) {
       this.dampA = Math.exp((-2 * Math.PI * preset[PRESET_SLOT.dampHz]) / ENGINE_RATE);
       this.dampB = 1 - this.dampA;
@@ -616,33 +733,68 @@ export class Reverb {
       this.dampA = 0;
       this.dampB = 1;
     }
+    this.inY = 0;
 
     // v0x3fce8e-v0x3fcf9f. `r` and `-r*r` are a resonator's pole radius and its
     // square and `a = 2r*cos(w)`; subtracting that resonator from the signal is
-    // a notch.
-    const raw = preset[PRESET_SLOT.notchHz] / ENGINE_RATE;
-    const scaled = raw < 1 / 96 ? raw / 2.2 : raw / 3.3;
-    const f = Math.min(0.49, Math.max(0.0004, scaled));
-    const r = Math.exp(-10 * Math.PI * f);
-    const rr = Math.exp(-20 * Math.PI * f);
-    this.notchA = 2 * r * Math.cos(2 * Math.PI * f);
-    this.notchC = -rr;
-    this.notchB = rr + 1 - this.notchA;
+    // a notch. 0x0bb1-0x0be1 copies them, and zeroes its state, only when on.
     this.notchOn = preset[PRESET_SLOT.notchEnable] !== 0;
+    if (this.notchOn) {
+      const raw = preset[PRESET_SLOT.notchHz] / ENGINE_RATE;
+      const scaled = raw < 1 / 96 ? raw / 2.2 : raw / 3.3;
+      const f = Math.min(0.49, Math.max(0.0004, scaled));
+      const r = Math.exp(-10 * Math.PI * f);
+      const rr = Math.exp(-20 * Math.PI * f);
+      this.notchA = 2 * r * Math.cos(2 * Math.PI * f);
+      this.notchC = -rr;
+      this.notchB = rr + 1 - this.notchA;
+      this.notchY1 = 0;
+      this.notchY2 = 0;
+    }
 
     // The mono bank: lengths idx3..idx(n), which are indices 2..count-1 here
     // since these rows already have the count float stripped off the front.
-    for (let i = 2; i < count; i += 1) {
-      this.monoCombs.push(new Comb(samples(taps[i]), gainFor(taps[i])));
+    this.monoCount = count - 2;
+    for (let k = 0; k < this.monoCount; k += 1) {
+      const comb = this.monoCombs[k];
+      if (comb) comb.gain = gainFor(taps[k + 2]);
+      else this.ghostGains[k] = gainFor(taps[k + 2]);
     }
+    // 0x0d90: the pairs, in the order `geometry` builds them.
+    const pairs = [taps[0], taps[1], taps[0] * REVERB_PAIR_RATIOS[0], taps[1] * REVERB_PAIR_RATIOS[1]];
+    if (this.leftCombs.length) {
+      this.leftCombs[0].gain = gainFor(pairs[0]);
+      this.rightCombs[0].gain = gainFor(pairs[1]);
+      this.leftCombs[1].gain = gainFor(pairs[2]);
+      this.rightCombs[1].gain = gainFor(pairs[3]);
+    }
+
+    this.dryLevel = millibelToLinear(preset[PRESET_SLOT.dryLevel]);
+    this.lateLevel = millibelToLinear(preset[PRESET_SLOT.lateLevel]);
+    this.earlyLevel = millibelToLinear(preset[PRESET_SLOT.earlyLevel]) / 100;
+  }
+
+  /** `0x0e22`-`0x14ac`: what only the first block after the create builds. */
+  private geometry(preset: readonly number[]): void {
+    const sampleRate = this.sampleRate;
+    // 0x0ec9-0x0edb: `rate * ms/1000 + 0.5`, then truncate — round to nearest.
+    const samples = (ms: number) => Math.max(1, Math.trunc((ms / 1000) * sampleRate + 0.5));
+
+    const row = preset[PRESET_SLOT.tapSet];
+    const taps = REVERB_TAP_SETS[row] ?? REVERB_TAP_SETS[0];
+    const count = Math.min(REVERB_TAP_COUNTS[row] ?? taps.length, taps.length);
+    const early = REVERB_EARLY_SETS[preset[PRESET_SLOT.earlySet]] ?? REVERB_EARLY_SETS[0];
+    const rt60 = Math.max(0.05, preset[PRESET_SLOT.decay] * 0.1);
+    const gainFor = (ms: number) => 10 ** ((-0.003 * ms) / rt60);
+    // 0x0e96-0x0ea0: each comb takes its own copy of the input pair.
+    const comb = (ms: number) => new Comb(samples(ms), gainFor(ms), this.dampA, this.dampB);
+
+    this.monoCombs = [];
+    for (let i = 2; i < count; i += 1) this.monoCombs.push(comb(taps[i]));
     // The two stereo pairs. 0x0f70 sizes pair 0 from taps[0] and taps[1];
     // 0x1090 sizes pair 1 from the same two scaled by REVERB_PAIR_RATIOS.
-    this.leftCombs.push(new Comb(samples(taps[0]), gainFor(taps[0])));
-    this.rightCombs.push(new Comb(samples(taps[1]), gainFor(taps[1])));
-    const leftDetuned = taps[0] * REVERB_PAIR_RATIOS[0];
-    const rightDetuned = taps[1] * REVERB_PAIR_RATIOS[1];
-    this.leftCombs.push(new Comb(samples(leftDetuned), gainFor(leftDetuned)));
-    this.rightCombs.push(new Comb(samples(rightDetuned), gainFor(rightDetuned)));
+    this.leftCombs = [comb(taps[0]), comb(taps[0] * REVERB_PAIR_RATIOS[0])];
+    this.rightCombs = [comb(taps[1]), comb(taps[1] * REVERB_PAIR_RATIOS[1])];
 
     // 0x11a9-0x11d0: zero milliseconds still allocates one sample.
     this.outDelay = Math.max(
@@ -656,19 +808,29 @@ export class Reverb {
     // rounding, unlike every other length in the DSP.
     const perMs = sampleRate / 1000;
     const OFFSETS = [0.051, 0.151, 0.078];
-    const delays = [0, 1, 2].map((i) => Math.max(0, Math.trunc((early[i] + OFFSETS[i]) * perMs)));
+    const nominal = [0, 1, 2].map((i) => Math.max(0, Math.trunc((early[i] + OFFSETS[i]) * perMs)));
+    // ❗ **Only the longest tap is read where it says.** The early line is an
+    // SPU-style ring of `M` frames (`M` the longest tap) in a buffer rounded up
+    // to 1 KB, 256 frames (`0x1400`-`0x1407`): each block is written at the
+    // ring's position (`0x590`), the longest tap is read `M` behind it before
+    // the write (`0x670`, at `pos + buf - len`), and the other two are read
+    // *after* it at `pos + (M - d)` (`0x8f0`, offsets `[state+0x500]` and
+    // `+0x504`), which is `buf - (M - d)` behind: `d + (buf - M)`. So the two
+    // shorter reflections arrive `buf - M` frames late — 130, 172, 3 and 92 on
+    // the early sets the six presets use — measured against the module
+    // running (`tools/prxrun.py`).
+    const longest = Math.max(...nominal);
+    const ring = ((longest * 4 + 0x3ff) & ~0x3ff) / 4;
+    const delays = nominal.map((d, i) => (i === nominal.indexOf(longest) ? d : d + ring - longest));
     // The pairing the sort leaves behind for an already-ascending row.
     const PAIRING = [1, 0, 2];
+    this.earlyTaps = [];
     for (let i = 0; i < 3; i += 1) {
       const gain = early[3 + PAIRING[i]];
       const pan = early[6 + PAIRING[i]];
       this.earlyTaps.push({ delay: delays[i], gainL: (1 - pan) * gain, gainR: pan * gain });
     }
     this.earlyLine = new DelayLine(Math.max(1, ...delays) + 1);
-
-    this.dryLevel = millibelToLinear(preset[PRESET_SLOT.dryLevel]);
-    this.lateLevel = millibelToLinear(preset[PRESET_SLOT.lateLevel]);
-    this.earlyLevel = millibelToLinear(preset[PRESET_SLOT.earlyLevel]) / 100;
   }
 
   /**
@@ -678,6 +840,7 @@ export class Reverb {
    * comes back is wet only and is meant to be added to the mix.
    */
   process(left: number, right: number): { left: number; right: number } {
+    this.ran = true;
     // Early reflections. One line stands in for the engine's two: both are read
     // at the same offsets with the same gains, so their taps sum to the taps of
     // `L + R`.
@@ -703,13 +866,22 @@ export class Reverb {
       send -= y;
     }
 
-    const a = this.dampA;
-    const b = this.dampB;
     let accL = 0;
-    for (const comb of this.monoCombs) accL += comb.step(send, a, b);
+    const written = this.written;
+    for (let k = 0; k < this.monoCount; k += 1) {
+      const comb = this.monoCombs[k];
+      if (comb) {
+        accL += comb.step(send);
+        written[k] = comb.written;
+      } else {
+        // A slot the geometry never built: see `reconfigure`.
+        accL += written[k - 2];
+        written[k] = this.ghostGains[k] * send;
+      }
+    }
     let accR = accL;
-    for (const comb of this.leftCombs) accL += comb.step(send, a, b);
-    for (const comb of this.rightCombs) accR += comb.step(send, a, b);
+    for (const comb of this.leftCombs) accL += comb.step(send);
+    for (const comb of this.rightCombs) accR += comb.step(send);
 
     outL += this.lateLevel * this.outDelayL.tap(this.outDelay);
     outR += this.lateLevel * this.outDelayR.tap(this.outDelay);

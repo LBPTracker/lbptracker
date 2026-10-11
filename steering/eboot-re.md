@@ -107,6 +107,13 @@ only**; the `file` column is computed with the `0x8AD0` delta.
 - **Byte-scan for `E8` displacements** landing on a known callee to find its callers, then search
   backwards for `55 48 89 e5` for the caller's prologue — how the channel-banding writer was found.
   `ebxref.py` does it in vaddr space.
+- ⚠️ **A capstone loop over a range needs `md.skipdata = True`.** Without it `disasm` stops at the
+  first byte it cannot decode, and a scan of FMOD's whole range comes back *empty* — which reads
+  as "no such call" (2026-10-11, three empty scans for the speaker mode's writer). Decoding
+  backwards from each byte match of a displacement, as `ebxref.py refs` does, has no such hole.
+- **A field FMOD keeps twice.** The speaker mode is `SystemI+0x9788` and every channel copies it to
+  `ChannelI+0x198`; the matrix builder is handed the copy, so searching for its writer at `+0x198`
+  finds a dozen unrelated structs. Read the copy's source (`v0xa0f017`) and search for that.
 
 ## Anchors already mapped — the eboot
 
@@ -114,7 +121,7 @@ only**; the `file` column is computed with the `0x8AD0` delta.
 |---|---|
 | sequencer module | `v0x1c3000` … `v0x1c7000` (⚠️ linear disassembly from `v0x1c3000` desynchronises on the first instruction; sync from a function start) |
 | `BeginSequencerPlayback__Q5Thingibi` (script binding) → part lookup wrapper → `PSequencer::BeginPlayback` | `v0x854b80` → `v0x9629d0` (reads `[thing+0x50] + 0x128`) → `v0x1c4f00` |
-| **playback start**: fetches the audio state, plays the start sound (`v0x3de390` with 1.5), fills the clip arrays, pushes the settings | `v0x1c5640` (`v0x1c5670` is *inside* it — not a separate "stop others" walk; the walk over every `MusicSequencer` Thing tests `+0x56` at `v0x1c5773`) |
+| **playback start**: fetches the audio state, plays the start sound (`v0x3de390` with 1.5), fills the clip arrays, pushes the settings — between a pause of the sequencer's channel (`v0x1c56cf`) and its unpause (`v0x1c5ef2`), after `v0x3e6c10` at `v0x1c56bd` | `v0x1c5670`, called at `v0x1c64c0` (not a separate "stop others" walk; the walk over every `MusicSequencer` Thing tests `+0x56` at `v0x1c5773`). ⚠️ `v0x1c5640` is a separate 0x2c-byte function before it — pause, `[state+0x1a60] = !arg`, and a tail-jump to the unpause at `v0x1c566b` — which a linear disassembly runs straight past into `v0x1c5670` |
 | the settings push: `Tempo`, `Swing` (`vminss` 0.99), `EchoFeedback`, `EchoTime × 0.5`, `EchoMix`, eight `Volume × 0.75`, `ReverbSetting` → `v0x3e7470` | `v0x1c6250`; the constants at `v0xe60fe4`, `v0xe60fe8`, `v0xe60fec` |
 | world length → steps (`x·32/105`) | `v0x1c5cda` |
 | board position → grid cell (`floor(2x/105 − 0.5)`, `floor(−y/105)`) | `v0x1c4ad0`–`v0x1c4b23`; constants `v0xe60f98`, `v0xe60f9c`, `v0xe60fa8` |
@@ -137,6 +144,9 @@ only**; the `file` column is computed with the `0x8AD0` delta.
 | FMOD code | `v0x9c5da3` … `v0xab6397` |
 | FMOD's output description "FMOD Orbis AudioOut Output", its `GetDriverCaps`, its `Init` | `v0x13e3c78`, `v0xa57770` (`v0xa577f7` rejects any rate but 48000), `v0xa577a0` |
 | `ChannelSoftware::setPan`, `setSpeakerMix`, the channel→speaker matrix, the 7.1×4 case | vtable `+0x98` → `v0xabdf30`, `+0xa8` → `v0xabe160`, `v0xa243a0`, jump tables `v0xa2664c`/`v0xa2670c`, **`v0xa2599f`** (`k = 0.5` at `v0xefc008`); the stereo→7.1 case `v0xa2579c` |
+| the speaker mode: the game's `System::setSpeakerMode(6)`, the public wrapper, `SystemI::setSpeakerMode` (FMOD's ctor default of 2 at `v0xa4fbb4`), its field, `SystemI::init` handing the driver its channel count | `v0x3e76d8`; `v0xa48290`; `v0xa4fed0`; `SystemI+0x9788` (copied to `ChannelI+0x198` at `v0xa0f017`); `v0xa50f99`–`v0xa5101f` — [lbp-audio-engine.md](lbp-audio-engine.md) |
+| a channel's DSP graph: `ChannelSoftware` vtable, its head unit (`+0x88`), the DSP-play slot that adds the "FMOD Resampler Unit" (`+0x490`) and the group connection (`+0x4b8`), `getDSPHead`; `Channel::addDSP` → `ChannelI::addDSP` → the queued insert-between and where it runs | `v0x10c25a0`, `v0xabb790`, `v0xabc6a0`, `v0xabf4f0`; `v0xa07c70` → `v0xa10fc0` → `v0xa27f20`, run by `v0xa28070` from `v0xa53010` |
+| `ChannelI`'s play-time setup, which applies the volume and the pan (mode 0) to the real channel; the path from `SystemI::playDSP` | `v0xa0fbd0` (`setPan` call at `v0xa100b3`); `v0xa54e90` → `v0xa0a350` → `v0xa0a770` |
 | Sony reverb plugin (`aSfxDsp`) entry — **not** the sequencer's reverb | `v0xab51b0` |
 | `PSequencer`, `PInstrument`, `RInstrument`, sample-slot serialisers; the array serialiser with its `movbe` | `v0xd37d10`, `v0xd36c60`, `v0xc68a70`, `v0xcc0e90`; `v0xcc0f20` (`v0xcc0f9d`, `v0xcc1025`) |
 | part-name table; the ordered `R*` resource-type names | file `0xe4e196+`; file `0xe4e405` |

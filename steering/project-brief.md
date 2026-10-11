@@ -25,17 +25,19 @@ the file named is where the measurement lives.
 | 1 | sample data | **bit-exact** | the sequencer's samples are 16-bit PCM RIFF `.smp` files in the FARC archives, with the sound designer's loop points in their `smpl` chunks — [game-assets.md](game-assets.md) |
 | 2 | pitch | **exact** | `exp2f((pitch + fineTune − rootNote)/12)`, `fineTune` in semitones, read out of `fmodextinput.prx` — [synth-engine.md](synth-engine.md). No sample-rate term in it and none in the loader (`v0xb3e520`): the 42 `.smp` at 44.1 kHz play +1.47 semitones in the game, and here (*43*) |
 | 3 | timing: tempo, swing, triplets, loop, start point | **exact** | `720000/tempo` frames per step, alternate steps stretched and squeezed by `swing/2`, positions in thirds of a step — [synth-engine.md](synth-engine.md). ⚠️ Note *onsets* are the one deviation, below |
-| 4 | the synth block: unison stack, ladder filter, two envelopes, three LFOs, drive, level | **exact** | all 27 `Params` named and read instruction by instruction; since 2026-09-08 one ladder pair per record on the ±1-clipped sum of its layers, and every ramp per sample between the chunk's two evaluations — [synth-engine.md](synth-engine.md) |
+| 4 | the synth block: unison stack, ladder filter, two envelopes, three LFOs, drive, level | **exact, and checked running** | all 27 `Params` named and read instruction by instruction; since 2026-09-08 one ladder pair per record on the ±1-clipped sum of its layers, and every ramp per sample between the chunk's two evaluations — [synth-engine.md](synth-engine.md). Since 2026-10-11 checked against `fmodextinput.prx` *running*: 203 of 204 one-instrument scenes below −60 dB of their loudest window, median −92 dB; on the engine's clock, with the record's float32 arithmetic, all of them, median −107 dB (*62*) |
 | 5 | resampling | **exact in arithmetic** | two-tap linear interpolation over ÷2/÷4 mip copies built the engine's way (an int16 pair average). The one operation JavaScript cannot reproduce is the drive shaper's `vrcpps` reciprocal, which lands within an ulp |
 | 6 | volume, pan, mixer channels, sends | **exact** | a linear pan law, rows banded into `NumChannels` channels, both sends read — [synth-engine.md](synth-engine.md) |
 | 7 | echo | **exact** | not an FMOD DSP but a delay inside `fmodextinput.prx`; `EchoTime` is a delay in **beats** — [synth-engine.md](synth-engine.md) |
-| 8 | reverb | **exact** | `fmodsmsreverb.prx`, read end to end — [lbp-audio-engine.md](lbp-audio-engine.md) |
-| 9 | voice pool | **exact in mechanism** | 32 records, steal the quietest; the engine holds a record through the release and this project frees it at the note's end — a decision, below |
-| 10 | compressor | **measured, implemented, off** | `SMS WaveHammer`, last on the sequencer's channel, checked against the module *running* — a decision, below |
-| 11 | output stage | **half** | the game renders 7.1 and a stereo listener hears a fold; the fold's gain is applied and its narrowing is not — a decision, below |
+| 8 | reverb | **exact, and checked running** | `fmodsmsreverb.prx`, read end to end and run, a preset applied after it has run included (`Reverb.reconfigure`) — [lbp-audio-engine.md](lbp-audio-engine.md). The live player re-applies the same setting as the game does, and builds a new one on a changed setting; that is a residue in [open-questions.md](open-questions.md) |
+| 9 | voice pool, and which clips play | **exact in mechanism** | 32 records, steal the quietest; one clip per board row, and the walk's scan stops once rows 0..7 are taken (*Which clips spawn* in [synth-engine.md](synth-engine.md)); the engine holds a record through the release and this project frees it at the note's end — a decision, below. On the engine's clock 16 corpus songs agree with the module to better than −100 dB (*62*) |
+| 10 | compressor | **exact, on** | `SMS WaveHammer`, last on the sequencer's channel, checked against the module *running*; the first half of the game's master bus, the default since 0.2.43 — [lbp-audio-engine.md](lbp-audio-engine.md) |
+| 11 | output stage | **exact, on** | the game renders 7.1 and a stereo listener hears a fold; the game's master bus runs it whole, gain and narrowing, after the WaveHammer, with the channel at the unity `setDefaults` gives it — [lbp-audio-engine.md](lbp-audio-engine.md) |
 
-**Nothing in the signal path is unread.** What is left is five decisions and a handful of measured
-residues nothing models yet, all in [open-questions.md](open-questions.md).
+**Nothing in the signal path is unread.** What is left is three decisions, one question about the
+compressor's input, and a handful of measured residues nothing models yet, all in
+[open-questions.md](open-questions.md). Our own master bus — a glue and a limiter, nothing the game
+does — is a choice beside the game's, never the default (*42*).
 
 ### The deliberate deviations
 
@@ -45,10 +47,13 @@ kept one switch away from the measured behaviour so a capture can settle it.
 | what | the engine | this project | why | where |
 |---|---|---|---|---|
 | release tail | a voice holds its pool record until its envelope reaches zero | the record is freed at the note's written end (`releaseTail` off) | with the tail on, a listener rejects the render at a named timestamp; with it off, accepts it | *29* in open-questions.md |
-| compressor | `SMS WaveHammer` at −18 dB / 10:1 ends the chain | off by default | the listener judged it wrong the first time it ran; what is unsettled is the crest factor reaching it, not the DSP | *38* |
-| stereo narrowing | the centre feed of the 7.1 upmix folds every pan to `2 − √2` of its width for a stereo listener | the file's own pans; the fold's +4.645 dB gain is applied | the listener asked for the file's own image | *39* |
 | a note's end | a release shorter than a chunk lasts one chunk, 5.3 ms, and a freed record's ladder stops in one frame | a release of at least 20 ms and a 20 ms fade on the ladder's tail (`declick` on) | the listener heard both click on *Rhombitruncated*, and heard them go | *61* |
-| note onsets and gates | a note begins, and its gate is read closed, only at the top of a 256-frame chunk | sample-accurate, with the engine's whole-chunk ramp after each | reproducing it rests on the block grid being song-aligned, which is an inference; a capture would settle it | *3* |
+| note onsets and gates | a note begins, and its gate is read closed, only at the top of a 256-frame chunk of a song-aligned grid — measured on the module running | sample-accurate, with the engine's whole-chunk ramp after each; `engineClock` renders the engine's | the default predates the measurement; which one ships is the owner's call | *3* |
+
+⚠️ **The compressor and the stereo narrowing were on this table from 2026-09-06 to 2026-10-11**,
+off by the same kind of listening judgement. The owner then asked for a master bus faithful to the
+game, by default, with ours beside it; both are now the game's master bus
+([lbp-audio-engine.md](lbp-audio-engine.md)), and the old chain is one choice away as `'none'`.
 
 ### The lesson the reverb left behind
 
@@ -76,8 +81,8 @@ two?" was the wrong question for four sessions. The same shape recurs: the synth
   sequencer.
 - Anything to do with the game's SFX, dialogue, or ambience.
 - Emulating the game. We read its data files, we do not run its code — ⚠️ with one deliberate
-  exception: `tools/runhammer.py` loads a DSP plugin into a Windows process as an *oracle* for the
-  model, not as a playback path.
+  exception: `tools/runhammer.py` and `tools/prxrun.py` load the game's DSP plugins (with its own
+  `libc.prx`) into a Windows process as *oracles* for the model, never as a playback path.
 
 ## Assets and licensing
 
@@ -113,6 +118,11 @@ repository contains no game data, which stays true. See [game-assets.md](game-as
   scan is only as strong as the pattern** (*11*, *21*). **An absolute-offset search is only sound
   if every access uses the same base** (*37*). **"Not found" is not "not there"** until the
   population has been enumerated (*37*).
+- **The game's plugin, run, outranks a reading of it** — and the harness around it is a model of
+  the engine too. `tools/prxsynth.py` runs `fmodextinput.prx` on a scene laid out as the eboot
+  lays it; every field that scene invents is a claim, and one invented clip length once made the
+  module look silent mid-song (*62*). The difference is measured against the loudest window, not
+  each window's own.
 - A listening report from the project's owner outranks a static reading where the two disagree,
   and the reading is kept one switch away — that is what the deviations table above is.
 

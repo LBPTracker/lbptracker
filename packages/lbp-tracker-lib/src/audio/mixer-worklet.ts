@@ -11,9 +11,8 @@
  * AudioWorkletGlobalScope and cannot import anything platform-specific.
  */
 
-import { WaveHammer } from './compressor.ts';
-import { MasterBus, type MasterSettings } from './master.ts';
-import { Echo, FOLD_GAIN, Reverb, clipToUnit, reverbPreset } from './effects.ts';
+import { Echo, Reverb, clipToUnit, reverbPreset } from './effects.ts';
+import { MasterStage, type MasterChoice } from './master-stage.ts';
 import { INTERPOLATORS, type InterpolatorName } from './interpolate.ts';
 import { Mixer, type SampleBuffer, type VoiceSpec } from './mixer.ts';
 import { buildMipChain } from './mipmap.ts';
@@ -46,9 +45,9 @@ export type MixerMessage =
    * keyboard can offer exactly what a song can set.
    *
    * ⚠️ **This allocates**, so it runs in the message handler and never in
-   * `process`. Both effects size their delay lines from their parameters, so
-   * changing one means a new instance and a lost tail; that is a bench making a
-   * new sound, not a song being played.
+   * `process`. The echo sizes its delay line from its parameters, so every
+   * message is a new one and a lost tail. The reverb is kept while its setting
+   * is, and the preset re-applied, as the game's setters do; see the handler.
    */
   | {
       type: 'effects';
@@ -60,9 +59,11 @@ export type MixerMessage =
       echoOn: boolean;
       reverbOn: boolean;
       clip: boolean;
-      compressor?: boolean;
-      /** Our own master bus, or null for off. See `audio/master.ts`. */
-      master?: MasterSettings | null;
+      /**
+       * Which master bus ends the chain; the game's when absent. See
+       * `master-stage.ts`.
+       */
+      master?: MasterChoice;
     }
   /** Close the gate on the voices carrying `tag`; see `Mixer.release`. */
   | { type: 'release'; tag: number }
@@ -122,25 +123,16 @@ export class MixerProcessor extends AudioWorkletProcessor {
   private reverbOn = false;
   private clip = true;
   /**
-   * `SMS WaveHammer`, the compressor the game's chain ends in.
+   * The master bus: the game's -- `SMS WaveHammer` and the 7.1 fold -- unless
+   * the page picks ours or none.
    *
-   * It lives here rather than in the caller because its detector and envelope
-   * are stateful across blocks; `packages/lbp-tracker-lib/src/render.ts` runs the same class over
-   * the same signal at the same point, so the two paths agree.
-   *
-   * ❗ **Off unless `compressor` is set, which mirrors the offline default and is
-   * a deviation from the game.** See the `compressor` option in
-   * `packages/lbp-tracker-lib/src/render.ts` for why, and question 38 in
-   * `steering/open-questions.md` for what would settle it.
+   * It lives here rather than in the caller because the WaveHammer's detector
+   * and envelope are stateful across blocks; `render.ts` runs the same class
+   * over the same signal at the same point, so the two paths agree. Built at
+   * the context's own rate: the page's player runs at 48 kHz, the game's, but
+   * the keyboard's context takes the device's.
    */
-  private readonly hammer = new WaveHammer();
-  private compressor = false;
-  /**
-   * **Ours, past the fold**: a glue compressor and a limiter, off unless the
-   * page switches them on. Nothing in the game does this, which is why it is
-   * built only when it is asked for. See `master.ts`.
-   */
-  private master: MasterBus | null = null;
+  private readonly master = new MasterStage(sampleRate);
   /**
    * Frames since the last voice-count report.
    *
@@ -194,10 +186,10 @@ export class MixerProcessor extends AudioWorkletProcessor {
           this.port.postMessage({ type: 'missingSample', id: message.sampleId });
           return;
         }
-        // The file's own pan, untouched. The stereo fold's narrowing used
-        // to be applied here from a `panWidth` message; it was removed on
-        // 2026-09-06 on a listening judgement. `FOLD_GAIN` in
-        // `packages/lbp-tracker-lib/src/render.ts` is the fold's other half and still applies.
+        // The file's own pan, untouched: the plugin takes it as written. The
+        // stereo fold's narrowing used to be applied here from a `panWidth`
+        // message; it is FMOD's, after the clip and the compressor, so the
+        // game's master bus applies it now (`master-stage.ts`).
         this.mixer.play({ ...message.voice, sample, pan: message.voice.pan });
         break;
       }
@@ -211,13 +203,9 @@ export class MixerProcessor extends AudioWorkletProcessor {
         this.echoOn = message.echoOn;
         this.reverbOn = message.reverbOn;
         this.clip = message.clip;
-        this.compressor = message.compressor ?? false;
-        if (message.master) {
-          if (this.master) this.master.set(message.master);
-          else this.master = new MasterBus(sampleRate, message.master);
-        } else {
-          this.master = null;
-        }
+        // ⚠️ Kept, not rebuilt: this message comes on every tempo change, and a
+        // rebuilt WaveHammer would let its envelope go back to unity mid-song.
+        this.master.set(message.master ?? 'game');
         this.echo = message.echoOn
           ? new Echo(
               sampleRate,
@@ -227,9 +215,23 @@ export class MixerProcessor extends AudioWorkletProcessor {
               message.mix,
             )
           : null;
-        this.reverb = message.reverbOn
-          ? new Reverb(sampleRate, reverbPreset(message.reverbSetting))
-          : null;
+        // ⚠️ The reverb is kept too, whatever the setting: this message comes
+        // on every plan load as well, and a new `Reverb` cut the tail each
+        // time. The game re-applies the preset to the chain it has: every
+        // setter of the playing sequencer ends in `v0x1c6250`, which re-applies
+        // it at `v0x1c6405` -- on the same preset that zeroes the input
+        // one-pole's and the notch's state and nothing else, and on another it
+        // changes the coefficients over the lengths the reverb was built with
+        // (*SMS Reverb* in steering/lbp-audio-engine.md). So a changed setting
+        // keeps the first one's room sizes, as in the game: the owner's choice,
+        // 2026-10-12. Only switching the reverb on builds a new one.
+        if (!message.reverbOn) {
+          this.reverb = null;
+        } else if (this.reverb) {
+          this.reverb.reconfigure(reverbPreset(message.reverbSetting));
+        } else {
+          this.reverb = new Reverb(sampleRate, reverbPreset(message.reverbSetting));
+        }
         break;
       case 'release':
         this.mixer.release(message.tag);
@@ -256,16 +258,12 @@ export class MixerProcessor extends AudioWorkletProcessor {
     const left = output[0];
     const right = output.length > 1 ? output[1] : output[0];
 
-    if (!this.echo && !this.reverb && !this.clip && !this.compressor && !this.master) {
+    if (!this.echo && !this.reverb && !this.clip) {
       this.mixer.render(left, right);
-      // The fold's gain is FMOD's speaker matrix, not one of the switchable
-      // effects: it stays on with everything else off, or the level would jump
-      // by 4.645 dB on the last switch.
-      const stereo = right !== left;
-      for (let i = 0; i < left.length; i += 1) {
-        left[i] *= FOLD_GAIN;
-        if (stereo) right[i] *= FOLD_GAIN;
-      }
+      // The master bus is not one of the switchable effects: the fold in it is
+      // FMOD's speaker matrix, and it stays on with everything else off, or the
+      // level would jump by 4.645 dB on the last switch.
+      this.master.run(left, right);
       if (output.length > 1 && right === left) right.set(left);
       this.report(left.length);
       return true;
@@ -301,22 +299,10 @@ export class MixerProcessor extends AudioWorkletProcessor {
       const r = this.reverb?.process(sendL, sendR);
       left[i] = dryL + (r ? r.left : 0);
       right[i] = dryR + (r ? r.right : 0);
-      // `Channel::addDSP` put the WaveHammer after the reverb, so it sees the sum.
-      if (this.compressor) {
-        const g = this.hammer.gainFor(left[i], right[i]);
-        left[i] *= g;
-        right[i] *= g;
-      }
-      // The stereo fold's gain, last, where FMOD's speaker matrix applies it.
-      left[i] *= FOLD_GAIN;
-      right[i] *= FOLD_GAIN;
-      // And ours after it, where the game's chain has ended.
-      if (this.master) {
-        const out = this.master.process(left[i], right[i]);
-        left[i] = out.left;
-        right[i] = out.right;
-      }
     }
+    // After the reverb, where `Channel::addDSP` put the WaveHammer and where
+    // FMOD's speaker matrix folds 7.1 to stereo; `render.ts` does the same.
+    this.master.run(left, right, 0, frames);
     if (output.length > 1 && right === left) right.set(left);
     this.report(left.length);
     return true; // stay alive across silence; the graph decides when to stop

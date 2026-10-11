@@ -30,7 +30,7 @@ import path from 'node:path';
 
 import { buildMipChain } from '../src/audio/mipmap.ts';
 import { Mixer, type SampleBuffer, type VoiceSpec } from '../src/audio/mixer.ts';
-import { allocateVoices, LiveVoicePool, VOICES_UNLIMITED } from '../src/polyphony.ts';
+import { allocateVoices, LiveVoicePool, VOICES_UNLIMITED, type PoolWalks } from '../src/polyphony.ts';
 import { readLevelProject, type LevelProject } from '@lbptracker/cwlib/project.ts';
 import { RATE, renderSequencer, type LoadedInstrument } from '../src/render.ts';
 import { loadResource } from '@lbptracker/cwlib/resource.ts';
@@ -121,6 +121,7 @@ interface Planned {
   /** The note: one entry per note, its layers inside the spec. */
   note: number;
   score: number;
+  walks: PoolWalks;
   /** Frames per step, so a pool decision in steps becomes a cut in frames. */
   index: number;
 }
@@ -151,6 +152,7 @@ const planResult = await renderSequencer(seq, loadInstrument, {
       poolStart: where.poolStart,
       poolEnd: where.poolEnd,
       score: where.score,
+      walks: where.walks,
       index: plan.length,
       at: where.startFrame,
       spec: stripped as unknown as VoiceSpec,
@@ -174,7 +176,7 @@ if (process.env.LBP_LIVEPOOL === '1') {
   // of the one record, and a plan entry is a note with its layers inside.
   const firsts = plan;
   const decided = allocateVoices(
-    firsts.map((p) => ({ start: p.poolStart, end: p.poolEnd, score: p.score })),
+    firsts.map((p) => ({ start: p.poolStart, end: p.poolEnd, score: p.score, walks: p.walks })),
     POOL,
   );
   const cutOf = new Map<number, number>();
@@ -413,6 +415,7 @@ function renderLivePool(): [Float32Array, Float32Array] {
         start: p.poolStart,
         end: p.poolEnd,
         score: p.score,
+        walks: p.walks,
       });
       noteEnd.set(p.note, end);
       const delay = Math.max(0, Math.round(p.at - now));
