@@ -84,6 +84,15 @@ export class EditorState {
    */
   readonly mutedRows = new Set<number>();
   readonly soloRows = new Set<number>();
+  /**
+   * A section of the board to go round while playing, in timeline steps,
+   * dragged out on the board's ruler; null for none.
+   *
+   * ⚠️ Not the song's either: the game's `Loop` is a flag over the whole
+   * song, and this is ours, for listening. Whole cells, like a chip's section,
+   * so its step count is even and the swing lines up between passes (`Player`).
+   */
+  loopRegion: { start: number; end: number } | null = null;
   dirty = false;
 
   private undoStack: Song[] = [];
@@ -114,6 +123,15 @@ export class EditorState {
   toggleSolo(row: number): void {
     if (!this.soloRows.delete(row)) this.soloRows.add(row);
     this.notify('mix');
+  }
+
+  /** Set the loop region, or clear it with null or an empty span. */
+  setLoopRegion(start: number | null, end = 0): void {
+    const next = start !== null && end > start ? { start, end } : null;
+    const was = this.loopRegion;
+    if (next?.start === was?.start && next?.end === was?.end) return;
+    this.loopRegion = next;
+    this.notify('selection');
   }
 
   /** One more row under the last. */
@@ -250,6 +268,7 @@ export class EditorState {
     this.selection.clips = new Set(first ? [first.id] : []);
     this.mutedRows.clear();
     this.soloRows.clear();
+    this.loopRegion = null;
     this.selection.points = new Map();
     this.selection.point = null;
     this.selection.cursor = null;

@@ -22,6 +22,7 @@
  * | empty        | the cursor; drag to draw a chip         | rectangle: the chips it touches (with ctrl: added to the block) | — | — |
  * | a chip       | select it alone and open it; drag it -- and the block it is in -- to move | rectangle; a click: in or out of the block | in or out of the block | open it |
  * | double-click | a four-bar chip where none is anchored  |                                            |                        |             |
+ * | the ruler    | a click seeks, and ends a loop region it lands outside; a drag marks one, whole cells; a click on it removes it | | | |
  *
  * The block is `selection.clips` on the state. The page's keys act on it
  * (`daw/arrange.ts`: Delete, Ctrl+C, X, V, D and A), and a drag of any chip in
@@ -114,6 +115,8 @@ export class BoardView {
   private readonly cb: BoardCallbacks;
   private layout: BoardLayout = { cellW: CELL_W, cellH: CELL_H, gutter: GUTTER, ruler: RULER, cols: 24, rows: 8 };
   private zoomIndex = ZOOM_LEVELS.indexOf(1);
+  /** The pointer is on the loop region's band in the ruler, where a click removes it. */
+  private loopHover = false;
   /** Which part of the corner cell the pointer is over: 0 out, 1 the glass, 2 in; null elsewhere. */
   private cornerHover: 0 | 1 | 2 | null = null;
   /** The playhead, in timeline steps, or null when there is nothing to show. */
@@ -133,6 +136,8 @@ export class BoardView {
     | { kind: 'create'; row: number; startCell: number; endCell: number; startX: number; moved: boolean }
     /** Dragging the song's end: the step it is at now. */
     | { kind: 'end'; step: number; moved: boolean }
+    /** On the ruler: a click seeks to `startX`, a drag marks the cells from the one pressed to the one under the pointer. */
+    | { kind: 'loop'; startX: number; startCell: number; endCell: number; moved: boolean }
     /**
      * A rectangle over the board: the chips it touches become the selection
      * when it is let go -- added to `base`, the selection before, with Ctrl.
@@ -211,6 +216,7 @@ export class BoardView {
       this.hover = null;
       this.gutterHover = null;
       this.cornerHover = null;
+      this.loopHover = false;
       this.schedule();
     });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -542,6 +548,19 @@ export class BoardView {
       ctx.fillText(`${(cells * STEPS_PER_CELL) / 8} bars`, r.x + 8, r.y + r.h / 2);
     }
 
+    // The loop region, or the one being dragged out: the columns it covers,
+    // tinted down the whole board and edged.
+    const loop = this.loopShown();
+    if (loop) {
+      const x0 = boardX(layout, loop.start);
+      const x1 = boardX(layout, loop.end);
+      ctx.fillStyle = 'rgba(111,211,160,0.07)';
+      ctx.fillRect(x0, layout.ruler, x1 - x0, height - layout.ruler);
+      ctx.fillStyle = 'rgba(111,211,160,0.45)';
+      ctx.fillRect(Math.round(x0), layout.ruler, 1, height - layout.ruler);
+      ctx.fillRect(Math.round(x1) - 1, layout.ruler, 1, height - layout.ruler);
+    }
+
     // The cursor: where the next instrument goes.
     const cursor = state.selection.cursor;
     if (cursor && !this.drag) {
@@ -656,6 +675,14 @@ export class BoardView {
     // one per cell -- a cell is two bars -- scrolled with the columns only.
     ctx.fillStyle = '#171b21';
     ctx.fillRect(0, 0, viewW, layout.ruler);
+    if (loop) {
+      const x0 = boardX(layout, loop.start) - sx;
+      const x1 = boardX(layout, loop.end) - sx;
+      ctx.fillStyle = this.loopHover && !this.drag ? 'rgba(111,211,160,0.45)' : 'rgba(111,211,160,0.3)';
+      ctx.fillRect(x0, 0, x1 - x0, layout.ruler - 1);
+      ctx.fillStyle = accent;
+      ctx.fillRect(x0, layout.ruler - 4, x1 - x0, 3);
+    }
     ctx.textAlign = 'left';
     for (let c = 0; c < layout.cols; c += 1) {
       const x = layout.gutter + c * layout.cellW - sx;
@@ -943,6 +970,22 @@ export class BoardView {
     else this.state.selectClip(clip.id);
   }
 
+  /** The loop region to draw: the one being dragged out, else the state's. */
+  private loopShown(): { start: number; end: number } | null {
+    return this.drag?.kind === 'loop' && this.drag.moved ? loopOfDrag(this.drag) : this.state.loopRegion;
+  }
+
+  /** Whether a content x is over the loop region's columns. */
+  private onLoopRegion(x: number): boolean {
+    const r = this.state.loopRegion;
+    return r !== null && x >= boardX(this.layout, r.start) && x < boardX(this.layout, r.end);
+  }
+
+  /** The cell a content x falls in, kept on the board. */
+  private cellOfX(x: number): number {
+    return Math.max(0, Math.min(this.layout.cols - 1, Math.floor((x - this.layout.gutter) / this.layout.cellW)));
+  }
+
   private onDown = (event: PointerEvent): void => {
     const { x, y, cx, cy } = this.at(event);
     if (cy < this.layout.ruler) {
@@ -950,7 +993,13 @@ export class BoardView {
       if (part === 0) this.setZoom(this.zoomIndex - 1);
       else if (part === 1) this.setZoom(ZOOM_LEVELS.indexOf(1));
       else if (part === 2) this.setZoom(this.zoomIndex + 1);
-      else if (cx >= this.layout.gutter) this.cb.onSeek(((x - this.layout.gutter) / this.layout.cellW) * STEPS_PER_CELL);
+      else if (cx >= this.layout.gutter && event.button === 0) {
+        // A click seeks and a drag marks a loop region: which one is known
+        // only when the pointer is let go, so the seek waits for it.
+        const cell = this.cellOfX(x);
+        this.drag = { kind: 'loop', startX: x, startCell: cell, endCell: cell, moved: false };
+        capture(this.canvas, event);
+      }
       return;
     }
     if (cx < this.layout.gutter) {
@@ -1044,6 +1093,16 @@ export class BoardView {
       this.schedule();
       return;
     }
+    if (this.drag?.kind === 'loop') {
+      const starting = !this.drag.moved && Math.abs(x - this.drag.startX) > 6;
+      if (starting) this.drag.moved = true;
+      const cell = this.cellOfX(x);
+      if (cell !== this.drag.endCell || starting) {
+        this.drag.endCell = cell;
+        this.schedule();
+      }
+      return;
+    }
     if (this.drag?.kind === 'end') {
       // Never onto the very start: on a song with chips `setSongEnd` reads a
       // cell as "back to the last chip" anyway, and on an empty one an end at
@@ -1075,15 +1134,18 @@ export class BoardView {
       else if (row >= 0 && row < this.layout.rows && cx < MUTE_X) gutterHover = row;
     }
     const corner = this.cornerPart(cx, cy);
+    const loopHover = cy < this.layout.ruler && cx >= this.layout.gutter && this.onLoopRegion(x);
     const changed = (at?.cell !== this.hover?.cell) || (at?.row !== this.hover?.row)
-      || overEnd !== this.overEnd || gutterHover !== this.gutterHover || corner !== this.cornerHover;
+      || overEnd !== this.overEnd || gutterHover !== this.gutterHover || corner !== this.cornerHover
+      || loopHover !== this.loopHover;
     this.hover = at;
+    this.loopHover = loopHover;
     this.overEnd = overEnd;
     this.gutterHover = gutterHover;
     this.cornerHover = corner;
     const removable = gutterHover !== null && gutterHover === this.state.selection.row && this.layout.rows > 1;
     this.canvas.style.cursor = overEnd ? 'ew-resize'
-      : (corner !== null || (gutterHover !== null && (removable || gutterHover === this.layout.rows))) ? 'pointer'
+      : (corner !== null || loopHover || (gutterHover !== null && (removable || gutterHover === this.layout.rows))) ? 'pointer'
       : at && event.shiftKey ? 'crosshair' : '';
     if (changed) this.schedule();
   };
@@ -1109,6 +1171,18 @@ export class BoardView {
     release(this.canvas, event);
     if (drag.kind === 'end') {
       if (drag.moved) this.cb.onEnd(drag.step);
+    } else if (drag.kind === 'loop') {
+      if (drag.moved) {
+        const loop = loopOfDrag(drag);
+        this.state.setLoopRegion(loop.start, loop.end);
+      } else {
+        // A click on the region's band removes it and leaves the playhead
+        // where it is; a click outside it ends the loop and goes there.
+        const step = ((drag.startX - this.layout.gutter) / this.layout.cellW) * STEPS_PER_CELL;
+        const onRegion = this.onLoopRegion(drag.startX);
+        this.state.setLoopRegion(null);
+        if (!onRegion) this.cb.onSeek(step);
+      }
     } else if (drag.kind === 'move') {
       if (drag.moved && (drag.shift.cells !== 0 || drag.shift.rows !== 0)) this.cb.onMove(drag.clips, drag.shift);
     } else if (drag.kind === 'marquee') {
@@ -1137,6 +1211,13 @@ export class BoardView {
     if (!at || this.anchoredAt(at.cell, at.row)) return;
     this.cb.onCreate({ ...at, steps: DEFAULT_CLIP_STEPS });
   };
+}
+
+/** The steps a ruler drag covers: every cell from the one pressed to the one under the pointer. */
+function loopOfDrag(drag: { startCell: number; endCell: number }): { start: number; end: number } {
+  const first = Math.min(drag.startCell, drag.endCell);
+  const last = Math.max(drag.startCell, drag.endCell);
+  return { start: first * STEPS_PER_CELL, end: (last + 1) * STEPS_PER_CELL };
 }
 
 function roundRect(

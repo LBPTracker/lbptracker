@@ -1165,9 +1165,10 @@ export class Player {
   /**
    * A section to go round instead of the song, in steps; and a row to hear
    * on its own, the others turned down to `focusOthers`. Ours, for working
-   * on one chip in place: the game has neither. Neither touches the plan:
-   * the region is a seek at its end, the focus a factor on each voice's gain
-   * as it is handed over, so the pool steals exactly as before.
+   * on one chip in place or on a region dragged out on the board's ruler:
+   * the game has neither. Neither touches the plan: the region is passes
+   * posted with an offset (`pass` below), the focus a factor on each voice's
+   * gain as it is handed over, so the pool steals exactly as before.
    */
   private region: { start: number; end: number } | null = null;
   private focusRow: number | null = null;
@@ -1200,6 +1201,9 @@ export class Player {
     // meaningless against the new one. Fold before `activeRegion` changes.
     this.foldPass();
     this.region = next;
+    // A clock left past the new section's end goes to its start: see `seek`.
+    const rg = this.regionFrames();
+    if (rg && this.rawPosition() >= rg.endF) this.seek(rg.startF);
   }
 
   clearRegion(): void {
@@ -1221,6 +1225,14 @@ export class Player {
     const was = this.playing;
     if (was) this.stop(false);
     this.cursorFrames = Math.min(this.songFrames, Math.max(0, frames));
+    // ⚠️ **Never past the end of the section being gone round.** The pump
+    // wraps as soon as the next voice is at or past the end, and posts the
+    // second pass at frame + length while the clock is further still: the
+    // whole pass lands at delay 0 in one burst, and `position` folds the
+    // clock into the section from wherever it is. So a seek there goes to the
+    // section's start, as a loop would have.
+    const rg = this.regionFrames();
+    if (rg && this.cursorFrames >= rg.endF) this.cursorFrames = rg.startF;
     // Everything before the cursor is skipped rather than replayed. A voice
     // that straddles the point is not resurrected: the engine has no way to
     // start a note in the middle and neither has this.

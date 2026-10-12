@@ -4,6 +4,17 @@ What changed for the person using LBP Tracker, newest first. The site shows this
 version number in its status bar, so it is written for them: what they can do now that they could
 not before, never how it was done. No `--` or em dash in here; the site's text does without them.
 
+## 0.2.45 (2026-10-12)
+
+- New: loop regions on the board. Drag along the bar numbers to mark a few bars, and the song goes
+  round them while it plays. Click the region on the bar numbers to remove it; click the bar
+  numbers anywhere outside it and the loop ends and the song jumps there. It is only for
+  listening: it is not saved with the song and the game never sees it. Loop this chip takes over
+  from it while it is on, and hands back to it when you turn it off.
+- While a chip is looping, clicking the bar numbers past its end no longer sends a burst of notes
+  all at once and a playhead in the wrong place: the song goes to the start of the chip, as the
+  loop would have.
+
 ## 0.2.44 (2026-10-12)
 
 - Every song now keeps the game's own time. Notes start and stop on the same small grid the game

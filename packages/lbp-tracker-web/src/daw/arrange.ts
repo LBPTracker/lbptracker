@@ -474,7 +474,7 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
     const clip = state.clip(loopingClip);
     loopingClip = null;
     player.setFocus(null);
-    player.clearRegion();
+    applyLoopRegion();
     loopButton.setAttribute('aria-pressed', 'false');
     if (resume && clip && player.hasPlan) {
       player.stop();
@@ -500,6 +500,19 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
     else aimChipLoop(clip, clip.id !== loopingClip);
   });
   window.addEventListener('lbp:stop', () => dropChipLoop());
+
+  // ---------------------------------------------------------- loop region
+  // Dragged out on the board's ruler (`BoardView`), kept on the state, and the
+  // player's section whenever the chip loop above is not armed: the chip's
+  // section outranks it while it is, and it comes back when the chip's goes.
+  // Either one outranks the song's own loop, which is the whole song.
+  const applyLoopRegion = () => {
+    if (loopingClip !== null) return;
+    const r = state.loopRegion;
+    if (r) player.setRegion(r.start, r.end);
+    else player.clearRegion();
+  };
+  state.onChange(applyLoopRegion);
 
   // ------------------------------------------------------------- keyboard
 

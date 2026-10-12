@@ -160,7 +160,11 @@ export const HELP: Readonly<Record<HelpTopic, Topic>> = {
         'turns into an <strong>&times;</strong> under the pointer; a row that holds instruments asks first. ' +
         'The <strong>M</strong> and <strong>S</strong> boxes beside a row mute it or solo it. When the song has more ' +
         'than one mixer channel a white line divides the rows into channels, top to bottom. Click the bar numbers to ' +
-        'jump there; drag the dashed line at the end of the song to make room past the last instrument.'),
+        'jump there; drag the dashed line at the end of the song to make room past the last instrument.') +
+      p('<strong>Drag along the bar numbers</strong> to mark a loop region: the song goes round those bars while it ' +
+        'plays. Click the region\'s band to remove it; clicking the bar numbers outside it ends the loop and jumps ' +
+        'there. It is only for listening, so it is not saved with the song and the game never sees it; ' +
+        '<em>Loop this chip</em> takes over from it while it is on.'),
   },
   notes: {
     title: 'The notes',
