@@ -24,20 +24,20 @@ the file named is where the measurement lives.
 |---|---|---|---|
 | 1 | sample data | **bit-exact** | the sequencer's samples are 16-bit PCM RIFF `.smp` files in the FARC archives, with the sound designer's loop points in their `smpl` chunks — [game-assets.md](game-assets.md) |
 | 2 | pitch | **exact** | `exp2f((pitch + fineTune − rootNote)/12)`, `fineTune` in semitones, read out of `fmodextinput.prx` — [synth-engine.md](synth-engine.md). No sample-rate term in it and none in the loader (`v0xb3e520`): the 42 `.smp` at 44.1 kHz play +1.47 semitones in the game, and here (*43*) |
-| 3 | timing: tempo, swing, triplets, loop, start point | **exact** | `720000/tempo` frames per step, alternate steps stretched and squeezed by `swing/2`, positions in thirds of a step — [synth-engine.md](synth-engine.md). ⚠️ Note *onsets* are the one deviation, below |
+| 3 | timing: tempo, swing, triplets, loop, start point | **exact** | `720000/tempo` frames per step, alternate steps stretched and squeezed by `swing/2`, positions in thirds of a step, onsets and gates on the engine's 256-frame chunks since 2026-10-12, in the render and the live player — [synth-engine.md](synth-engine.md) |
 | 4 | the synth block: unison stack, ladder filter, two envelopes, three LFOs, drive, level | **exact, and checked running** | all 27 `Params` named and read instruction by instruction; since 2026-09-08 one ladder pair per record on the ±1-clipped sum of its layers, and every ramp per sample between the chunk's two evaluations — [synth-engine.md](synth-engine.md). Since 2026-10-11 checked against `fmodextinput.prx` *running*: 203 of 204 one-instrument scenes below −60 dB of their loudest window, median −92 dB; on the engine's clock, with the record's float32 arithmetic, all of them, median −107 dB (*62*) |
 | 5 | resampling | **exact in arithmetic** | two-tap linear interpolation over ÷2/÷4 mip copies built the engine's way (an int16 pair average). The one operation JavaScript cannot reproduce is the drive shaper's `vrcpps` reciprocal, which lands within an ulp |
 | 6 | volume, pan, mixer channels, sends | **exact** | a linear pan law, rows banded into `NumChannels` channels, both sends read — [synth-engine.md](synth-engine.md) |
 | 7 | echo | **exact** | not an FMOD DSP but a delay inside `fmodextinput.prx`; `EchoTime` is a delay in **beats** — [synth-engine.md](synth-engine.md) |
 | 8 | reverb | **exact, and checked running** | `fmodsmsreverb.prx`, read end to end and run, a preset applied after it has run included (`Reverb.reconfigure`) — [lbp-audio-engine.md](lbp-audio-engine.md). The live player re-applies the same setting as the game does, and builds a new one on a changed setting; that is a residue in [open-questions.md](open-questions.md) |
 | 9 | voice pool, and which clips play | **exact in mechanism** | 32 records, steal the quietest; one clip per board row, and the walk's scan stops once rows 0..7 are taken (*Which clips spawn* in [synth-engine.md](synth-engine.md)); the engine holds a record through the release and this project frees it at the note's end — a decision, below. On the engine's clock 16 corpus songs agree with the module to better than −100 dB (*62*) |
-| 10 | compressor | **exact, on** | `SMS WaveHammer`, last on the sequencer's channel, checked against the module *running*; the first half of the game's master bus, the default since 0.2.43 — [lbp-audio-engine.md](lbp-audio-engine.md) |
-| 11 | output stage | **exact, on** | the game renders 7.1 and a stereo listener hears a fold; the game's master bus runs it whole, gain and narrowing, after the WaveHammer, with the channel at the unity `setDefaults` gives it — [lbp-audio-engine.md](lbp-audio-engine.md) |
+| 10 | compressor | **exact, one choice away** | `SMS WaveHammer`, last on the sequencer's channel, checked against the module *running*, its template re-read and FMOD's creation path read for anything that would change it; the first half of the game's master bus — [lbp-audio-engine.md](lbp-audio-engine.md). The page plays ours by default since 2026-10-12, below |
+| 11 | output stage | **exact; its gain on, its narrowing one choice away** | the game renders 7.1 and a stereo listener hears a fold; the game's master bus runs it whole, gain and narrowing, after the WaveHammer, with the channel at the unity `setDefaults` gives it — [lbp-audio-engine.md](lbp-audio-engine.md). Ours keeps the fold's gain and the file's own image |
 
 **Nothing in the signal path is unread.** What is left is three decisions, one question about the
 compressor's input, and a handful of measured residues nothing models yet, all in
 [open-questions.md](open-questions.md). Our own master bus — a glue and a limiter, nothing the game
-does — is a choice beside the game's, never the default (*42*).
+does — is the page's default since 2026-10-12, with the game's one choice away (*42*).
 
 ### The deliberate deviations
 
@@ -48,12 +48,14 @@ kept one switch away from the measured behaviour so a capture can settle it.
 |---|---|---|---|---|
 | release tail | a voice holds its pool record until its envelope reaches zero | the record is freed at the note's written end (`releaseTail` off) | with the tail on, a listener rejects the render at a named timestamp; with it off, accepts it | *29* in open-questions.md |
 | a note's end | a release shorter than a chunk lasts one chunk, 5.3 ms, and a freed record's ladder stops in one frame | a release of at least 20 ms and a 20 ms fade on the ladder's tail (`declick` on) | the listener heard both click on *Rhombitruncated*, and heard them go | *61* |
-| note onsets and gates | a note begins, and its gate is read closed, only at the top of a 256-frame chunk of a song-aligned grid — measured on the module running | sample-accurate, with the engine's whole-chunk ramp after each; `engineClock` renders the engine's | the default predates the measurement; which one ships is the owner's call | *3* |
+| master bus | `SMS WaveHammer` at 10:1 from −21 dBFS, then the fold's gain and narrowing: −20 to −22 LUFS over four whole songs | ours by default: the fold's gain and the file's own image, a 2.5:1 glue and a limiter at −0.3 dBFS, −14 to −16 LUFS; the game's, with or without an AGC after it (*63*), and `'none'` one choice away | heard side by side, the owner found the game's far quieter and worse, after it had been re-read and found as read | *42* |
 
 ⚠️ **The compressor and the stereo narrowing were on this table from 2026-09-06 to 2026-10-11**,
 off by the same kind of listening judgement. The owner then asked for a master bus faithful to the
-game, by default, with ours beside it; both are now the game's master bus
-([lbp-audio-engine.md](lbp-audio-engine.md)), and the old chain is one choice away as `'none'`.
+game, by default, with ours beside it, and on 2026-10-12, having heard both, for ours again: the
+master bus row above. So were the note onsets until 2026-10-12, sample-accurate against the engine's chunk grid while the
+grid's song alignment was an inference; running the module settled it, the owner chose the
+engine's clock, and the tracker's is one switch away (*3 / 3b* in answered-questions.md).
 
 ### The lesson the reverb left behind
 

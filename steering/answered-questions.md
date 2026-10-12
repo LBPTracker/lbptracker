@@ -373,8 +373,7 @@ wrong turns:
   at the top of the list as "−0.2 dB". The comparison reads the worst window against the loudest.
 - **Song comparisons on the tracker's clock.** With onsets on their own frame every song differed
   from the module by more than its own level, and nothing past the first off-grid note could be
-  judged; the engine's clock (*3* in [open-questions.md](open-questions.md)) is what makes a song
-  comparable at all.
+  judged; the engine's clock (*3 / 3b*, above) is what makes a song comparable at all.
 - **Rounding the control points' frames looked like the glide's −27 dB.** It was 0.45 of a frame
   and real, but the cause was the walk-anchored slide; comparing the voice's positions chunk by
   chunk against the record's `+0x40` is what told the two apart.
@@ -462,8 +461,14 @@ live render's call. Advancing the oscillators per call stepped them twice as oft
 render and broke the equality outright — the first thing to fail. ⚠️ **The `frac(4·position)`
 bound is not a musical boundary and reading it as one wastes an hour.** ✔ The `1/3` sub-step and
 the swing interact exactly as `swungFrame` assumed: `floor(position)` cannot change inside a step,
-so a triplet inside a stretched step stretches with it. The onset-on-block reading is the one
-consequence not reproduced — *3* in [open-questions.md](open-questions.md).
+so a triplet inside a stretched step stretches with it.
+
+✔ **And the onsets on the block are reproduced, by default, since 2026-10-12.** The reading was
+confirmed by running the module (*The clock* in [synth-engine.md](synth-engine.md)) and the owner
+chose the engine's clock over onsets on their own frame, for the render and the live player
+alike; the tracker's clock stays one switch away (`RenderOptions.engineClock: false`). It was a
+deviation (*3*) from 2026-09-08: decided against the block grid while the grid's song alignment
+was an inference, and kept once it no longer was, until the owner chose.
 
 ## 30. `durationSteps` — verified against the engine's gate
 

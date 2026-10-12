@@ -35,6 +35,8 @@ import { RATE, renderSequencer, type LoadedInstrument } from '../src/render.ts';
 import { loadResource } from '@lbptracker/cwlib/resource.ts';
 import { readInstrument, usedSlots } from '../src/rinstrument.ts';
 import { swungFrame } from '../src/swing.ts';
+import { engineClock } from '../src/engine-clock.ts';
+import { placeOnClock } from '../src/engine-place.ts';
 import { samplesPerStep } from '../src/voice.ts';
 import { engineSample, readWav } from '../src/wav.ts';
 import { nodeInflate } from '@lbptracker/cwlib/platform/node.ts';
@@ -182,12 +184,28 @@ const turned = { ...seq, tempo, swing: SWING, numChannels: CHANNELS, volumes };
 const stepFrames = samplesPerStep(RATE, tempo);
 const frameOf = (step: number) => Math.round(swungFrame(step, stepFrames, SWING));
 const frames = Math.round(SECONDS * RATE);
+/**
+ * On the engine's clock, the player's own run at the new settings: a voice
+ * placed on it carries its frames and its window of chunks (`placeOnClock`),
+ * which replaces the plan's, drawn on the song's old clock.
+ */
+const clock = engineClock(tempo, SWING, frames + 10 * RATE);
 
 function renderLive(): [Float32Array, Float32Array] {
   const mixer = new Mixer(RATE);
   const left = new Float32Array(frames);
   const right = new Float32Array(frames);
   for (const p of plan) {
+    const placed = placeOnClock(p.spec, p.startStep, p.endStep, clock);
+    if (placed !== undefined) {
+      if (placed.startFrame >= frames) continue;
+      mixer.play({
+        ...p.spec,
+        ...placed,
+        gain: p.baseGain * channelVolume(turned, { gridY: p.row }),
+      });
+      continue;
+    }
     const at = frameOf(p.startStep);
     if (at >= frames) continue;
     const life = p.endStep === undefined ? undefined : Math.max(0, frameOf(p.endStep) - at);

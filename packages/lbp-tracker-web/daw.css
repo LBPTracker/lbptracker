@@ -74,13 +74,6 @@ main { flex: 1 0 auto; width: 100%; box-sizing: border-box; margin: 0; max-width
 .vol { display: flex; flex-direction: column; gap: 3px; width: 7rem; }
 #vu { display: block; width: 100%; height: 10px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px; }
 #vol { width: 100%; margin: 0; }
-/*
- * The master bus, from the bar. It is not one of the game's controls, so it
- * does not take an accent when it is on: the accent in this bar means the
- * song's own state (the loop), and this one is the tracker's own doing.
- */
-#glue { min-width: 2rem; padding: .3rem .5rem; font-weight: 700; }
-#glue.on { color: var(--bg); background: var(--warn); border-color: var(--warn); }
 
 /* The fixed footer: what the app last did, and what the audio thread is holding. */
 .daw-foot {

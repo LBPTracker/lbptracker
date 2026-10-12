@@ -8,9 +8,10 @@
  * steering/lbp-audio-engine.md). This runs *after* all of that, past the
  * stereo fold, where nothing of the game's is left to be faithful to: it is
  * the last thing before the speakers and it exists because a composer asked
- * for a mix that holds together, not because the PS4 does it. It is off unless
- * switched on, and switching it on is a deliberate deviation -- see
- * steering/open-questions.md.
+ * for a mix that holds together, not because the PS4 does it. ❗ The page's
+ * default since 2026-10-12, the owner's choice once the game's own bus had
+ * been re-read and heard beside it: a deliberate deviation, question 42 in
+ * steering/open-questions.md. The library's default stays the game's.
  *
  * The two stages:
  *
@@ -83,15 +84,17 @@ export function glueLevels(amount: number): { thresholdDb: number; makeupDb: num
   return { thresholdDb, makeupDb };
 }
 
-export class MasterBus {
-  private readonly rate: number;
-  private thresholdDb = THRESHOLD_TOP_DB;
-  private makeup = 1;
-  private attack = 0;
-  private release = 0;
+/**
+ * The brickwall half on its own: a lookahead peak limiter with a hard ceiling,
+ * delaying the signal by `LIMITER.lookaheadMs`. `MasterBus` ends in one, and so
+ * does the AGC after the game's bus (`agc.ts`). One frame in, and the frame
+ * that went in `lookahead` frames ago out, in `left` and `right`.
+ */
+export class Limiter {
+  /** The frame out of the last `process`. */
+  left = 0;
+  right = 0;
   private limitRelease = 0;
-  /** The compressor's smoothed gain reduction, as a linear gain. */
-  private env = 1;
   /** The limiter's gain, which falls at once and recovers slowly. */
   private limitGain = 1;
   /** The last `lookahead` target gains, and a deque of their indices, smallest first. */
@@ -100,15 +103,14 @@ export class MasterBus {
   private head = 0;
   private tail = 0;
   private frame = 0;
-  private ceiling = dbToGain(MASTER_DEFAULTS.ceilingDb);
+  private ceiling: number;
   /** The lookahead delay lines, and where the next sample goes. */
   private delayL: Float32Array;
   private delayR: Float32Array;
   private at = 0;
   private readonly lookahead: number;
 
-  constructor(sampleRate: number, settings: MasterSettings = MASTER_DEFAULTS) {
-    this.rate = sampleRate;
+  constructor(sampleRate: number, ceilingDb: number = MASTER_DEFAULTS.ceilingDb) {
     this.lookahead = Math.max(1, Math.round((LIMITER.lookaheadMs / 1000) * sampleRate));
     this.delayL = new Float32Array(this.lookahead);
     this.delayR = new Float32Array(this.lookahead);
@@ -118,21 +120,15 @@ export class MasterBus {
     this.targets = new Float32Array(this.lookahead + 1);
     this.targets.fill(1);
     this.deque = new Int32Array(this.lookahead + 2);
-    this.attack = Math.exp(-1 / ((GLUE.attackMs / 1000) * sampleRate));
-    this.release = Math.exp(-1 / ((GLUE.releaseMs / 1000) * sampleRate));
     this.limitRelease = Math.exp(-1 / ((LIMITER.releaseMs / 1000) * sampleRate));
-    this.set(settings);
+    this.ceiling = dbToGain(ceilingDb);
   }
 
-  set(settings: MasterSettings): void {
-    const { thresholdDb, makeupDb } = glueLevels(settings.amount);
-    this.thresholdDb = thresholdDb;
-    this.makeup = dbToGain(makeupDb);
-    this.ceiling = dbToGain(settings.ceilingDb);
+  setCeiling(ceilingDb: number): void {
+    this.ceiling = dbToGain(ceilingDb);
   }
 
   reset(): void {
-    this.env = 1;
     this.limitGain = 1;
     this.at = 0;
     this.frame = 0;
@@ -141,6 +137,8 @@ export class MasterBus {
     this.delayL.fill(0);
     this.delayR.fill(0);
     this.targets.fill(1);
+    this.left = 0;
+    this.right = 0;
   }
 
   /**
@@ -163,6 +161,56 @@ export class MasterBus {
     const min = this.targets[this.deque[this.head % ring] % size];
     this.frame += 1;
     return min;
+  }
+
+  /** One frame in; the frame `lookahead` frames old out, in `left` and `right`. */
+  process(left: number, right: number): void {
+    // --- into the delay, and out with what went in `lookahead` frames ago
+    const outL = this.delayL[this.at];
+    const outR = this.delayR[this.at];
+    this.delayL[this.at] = left;
+    this.delayR[this.at] = right;
+    this.at = (this.at + 1) % this.lookahead;
+
+    // --- the limiter, on the smallest gain the window asks for
+    const ahead = Math.max(Math.abs(left), Math.abs(right));
+    const need = this.windowMin(ahead > this.ceiling ? this.ceiling / ahead : 1);
+    // ⚠️ Down at once, up slowly. See the note at the top of the file.
+    this.limitGain = need < this.limitGain
+      ? need
+      : need + (this.limitGain - need) * this.limitRelease;
+
+    this.left = outL * this.limitGain;
+    this.right = outR * this.limitGain;
+  }
+}
+
+export class MasterBus {
+  private thresholdDb = THRESHOLD_TOP_DB;
+  private makeup = 1;
+  private attack = 0;
+  private release = 0;
+  /** The compressor's smoothed gain reduction, as a linear gain. */
+  private env = 1;
+  private readonly limiter: Limiter;
+
+  constructor(sampleRate: number, settings: MasterSettings = MASTER_DEFAULTS) {
+    this.limiter = new Limiter(sampleRate, settings.ceilingDb);
+    this.attack = Math.exp(-1 / ((GLUE.attackMs / 1000) * sampleRate));
+    this.release = Math.exp(-1 / ((GLUE.releaseMs / 1000) * sampleRate));
+    this.set(settings);
+  }
+
+  set(settings: MasterSettings): void {
+    const { thresholdDb, makeupDb } = glueLevels(settings.amount);
+    this.thresholdDb = thresholdDb;
+    this.makeup = dbToGain(makeupDb);
+    this.limiter.setCeiling(settings.ceilingDb);
+  }
+
+  reset(): void {
+    this.env = 1;
+    this.limiter.reset();
   }
 
   /** The gain the compressor asks for at this input level, as a linear gain. */
@@ -192,22 +240,7 @@ export class MasterBus {
     this.env = want + (this.env - want) * coeff;
     const glueL = left * this.env * this.makeup;
     const glueR = right * this.env * this.makeup;
-
-    // --- into the delay, and out with what went in `lookahead` frames ago
-    const outL = this.delayL[this.at];
-    const outR = this.delayR[this.at];
-    this.delayL[this.at] = glueL;
-    this.delayR[this.at] = glueR;
-    this.at = (this.at + 1) % this.lookahead;
-
-    // --- the limiter, on the smallest gain the window asks for
-    const ahead = Math.max(Math.abs(glueL), Math.abs(glueR));
-    const need = this.windowMin(ahead > this.ceiling ? this.ceiling / ahead : 1);
-    // ⚠️ Down at once, up slowly. See the note at the top of the file.
-    this.limitGain = need < this.limitGain
-      ? need
-      : need + (this.limitGain - need) * this.limitRelease;
-
-    return { left: outL * this.limitGain, right: outR * this.limitGain };
+    this.limiter.process(glueL, glueR);
+    return { left: this.limiter.left, right: this.limiter.right };
   }
 }

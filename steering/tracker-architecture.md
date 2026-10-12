@@ -46,7 +46,11 @@ of the block, cut short only at its own events (the gate, a cut, our fade) — o
 slice merely continues it (`Voice.segLeft`); and a voice whose envelope ended inside a segment still
 renders that segment to its end before it is dropped, or the ladder's tail would stop at the slice
 boundary (−33 dB when it did). A voice is one of the engine's records and carries its layers inside
-it (`VoiceSpec.layers`), so the pool, the tag and the segment are all per note.
+it (`VoiceSpec.layers`), so the pool, the tag and the segment are all per note. ❗ **On the
+engine's clock, the default since 2026-10-12, the grid is not the voice's own**: it is the song's
+chunks (`VoiceSpec.engineGrid`, *The clock* in [synth-engine.md](synth-engine.md)), blocks counted
+from the clock's start and cut where the step clock cut them, and the gate does not restart it.
+The voice's own grid is the tracker's clock's, kept as an A/B, and the keyboard bench's.
 `packages/lbp-tracker-lib/test/audio.test.ts` pins "the mixer renders the same audio whatever the
 block size", and it catches a grid mistake within a minute of it being made.
 
@@ -383,6 +387,38 @@ ones applied the way the page does, against a render of a sequencer that had the
   its frame, because the tempo can move after a voice was handed over. `live-settings.ts`
   reproduces a slider drag: 0 of 163 notes handed over twice with the fix, 159 of 163 without.
 
+❗ **The engine's clock runs under the transport** (the default since 2026-10-12, *3 / 3b* in
+[answered-questions.md](answered-questions.md)). The plan's voices come from the render with an
+engine record and without its grid -- the render's is the whole song's chunk table, hundreds of
+kilobytes a note -- and `pump` puts each one on a run of the clock as it posts it:
+
+- **A run is the clock restarted at a step, at a transport frame** (`Player.startRun`): at `play`,
+  at a tempo or swing change, and where the passes fold; a fader or an edit leaves it running so
+  the notes after it keep the grid the ones before had. Every later time round a looped section
+  runs on one more run, started at the section's first step at the pass's own frame. The clock is
+  a pure function of tempo, swing and start, so a run made longer when the song grows has the
+  shorter one's chunks to the frame.
+- **`placeOnClock`** (`engine-place.ts`) derives the onset, the gate, the walks' frames and the
+  window of chunks and splits the voice lives in from its musical positions, by the render's own
+  arithmetic; `render.test.ts` holds a windowed placement bit for bit to the render's voice. A
+  theft lands on the walk of the thief's step.
+- **The plan is in the pool's order** (`planOrder`: the pool's start, its rank, the note), which is
+  `allocateVoices`'s: on the engine's clock a step's notes take records at its walk, the last clip
+  first. The look-ahead closes on a note's walk, not its onset, so a sub-step note never holds back
+  one of a later rank.
+- ❗ **Every voice names the context frame it starts at** (`play.at`, and `cutAt.at`/`began` for a
+  theft), and the worklet counts the delay from its own `currentFrame`. Until 2026-10-12 a delay was
+  counted from whichever block the message reached the worklet in, and the look-ahead bursts landed
+  a whole render quantum apart: measured in the browser on `Ascetic`, the live output against an
+  export of the same song was -5 dB median with the lag jumping 0, 128, 256 and 384 frames. Named,
+  -141 dB over the first second and -117 dB median after it, -89 dB at worst of the loudest
+  window: the double ladder (`EngineRecord.ladder64`), which the live plan asks for
+  (`exactLadder: false`) because the audio thread cannot spare the float32 one.
+
+`live-sim.ts` and `live-settings.ts` run on it: the scheduled and live-pool renders are bit for bit
+the direct one at a pool of 8 (1,200 to 2,450 notes stolen on three songs), and tempo, swing,
+channels and faders applied live are bit for bit a render that had them all along.
+
 ✔ **The live path steals exactly what the renderer steals.** `packages/lbp-tracker-lib/dev/live-sim.ts`
 builds the plan as the page does and renders it three ways — all voices at once, in 128-frame
 blocks, and handed over in look-ahead bursts with the pool applied live — and all three are
@@ -513,7 +549,7 @@ the quietest (`polyphony.ts`).
 | where | what |
 |---|---|
 | `packages/cwlib-ts/src/` | `stream.ts` (big-endian reader, varints, `Revision` gates), `serializer.ts`, `resource.ts` (container, dependency table), `thing.ts` + `parts.ts` (the walk, 50 readers), `level.ts` (worlds, plans, chunks, `boardCell`), `project.ts` + `notes.ts` (the sequencer as data), `savearchive.ts`, `psf.ts`, `zip.ts`, `backup.ts`, `platform/` |
-| `packages/lbp-tracker-lib/src/` | `render.ts` (the pipeline), `audio/mixer.ts` (voices, resampling, panning, looping, per-chunk re-derivation), `audio/interpolate.ts` + `mipmap.ts` (default `linear`; `sinc8` kept for A/B), `audio/moog.ts`, `audio/lfo.ts`, `audio/effects.ts` (echo, reverb, fold constants), `audio/compressor.ts`, `audio/master-stage.ts` (the master bus: the game's, or ours in `audio/master.ts`), `audio/mixer-worklet.ts`, `rinstrument.ts` + `instrument.ts` + `voice.ts`, `envelope.ts`, `params.ts`, `polyphony.ts`, `scale.ts`, `swing.ts`, `fsb.ts` + `ima.ts` + `wav.ts`, `midi.ts` + `smf.ts`, `als.ts` + `als-xml.ts` + `als-sampler.ts` (the Ableton Live set and its Samplers), `song.ts` (the editable song and its boundary with the records) |
+| `packages/lbp-tracker-lib/src/` | `render.ts` (the pipeline), `audio/mixer.ts` (voices, resampling, panning, looping, per-chunk re-derivation), `audio/interpolate.ts` + `mipmap.ts` (default `linear`; `sinc8` kept for A/B), `audio/moog.ts`, `audio/lfo.ts`, `audio/effects.ts` (echo, reverb, fold constants), `audio/compressor.ts`, `audio/master-stage.ts` (the master bus: the game's, with the AGC of `audio/agc.ts` or without, the fold's gain alone, or ours in `audio/master.ts`), `audio/mixer-worklet.ts`, `rinstrument.ts` + `instrument.ts` + `voice.ts`, `envelope.ts`, `params.ts`, `polyphony.ts`, `scale.ts`, `swing.ts`, `fsb.ts` + `ima.ts` + `wav.ts`, `midi.ts` + `smf.ts`, `als.ts` + `als-xml.ts` + `als-sampler.ts` (the Ableton Live set and its Samplers), `song.ts` (the editable song and its boundary with the records) |
 | `packages/lbp-tracker-web/` | `index.html` the app; `src/daw.ts` the shell (tabs, transport, files); `src/daw/session.ts` the one song, player and plan; `src/daw/arrange.ts`, `mixer.ts`, `render-view.ts`, `convert-view.ts` (with `als-export.ts` and `plan-export.ts`), `keyboard-view.ts` the views; `src/render-worker.ts`; `src/player.ts` the scheduler; `src/editor/` the board, the roll, the state and the panels; `src/controls/`, `src/widgets/`, `src/assets.ts`, `src/lbparchive.ts`, `src/footer.ts` |
 
 ## Testing against the corpus

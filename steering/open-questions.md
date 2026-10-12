@@ -3,8 +3,9 @@
 Read before planning a work session. Nothing here is a guess dressed up as a fact, and **nothing
 here blocks the build**: the note format, the containers, the level walk, the asset chain and the
 whole signal path are measured, and import, playback and export are built. What is left is three
-*decisions* where the project knowingly departs from the measured engine, a master bus of our own
-beside the game's, one question about what reaches the game's compressor, a short list of measured
+*decisions* where the project knowingly departs from the measured engine — a master bus of our own
+in the game's place among them — an AGC beside it, one question about what reaches the game's
+compressor, a short list of measured
 residues nothing models yet, one loose end left over from the export, three things about the chip
 tint that only Create Mode can answer, whether the Ableton set opens in Live 12, how its Samplers sound, where its
 swing groove puts the notes and whether Live's Delay is the engine's echo, and three
@@ -115,22 +116,23 @@ and, cheaper and needing no console, our own render at −0, −6 and −12 dB f
 with `tools/runhammer.py`, to see how much gain reduction each trim provokes. `LBP_MASTER=none` (or
 `master: 'none'`) renders the chain without it, for the A/B.
 
-## 42. Our master bus — a choice beside the game's, never the default
+## 42. Our master bus — the page's default since 2026-10-12
 
-The master bus is a choice between two (`audio/master-stage.ts`): **the game's**, the default —
-`SMS WaveHammer` and the 7.1 fold, gain and narrowing ([lbp-audio-engine.md](lbp-audio-engine.md),
-*The game's master bus*) — and **ours**. The engine card's `master` choice and the bar's **G**
-pick it live, the Render view's own choice offline, `RenderOptions.master` and `LBP_MASTER` in the
-library.
+The master bus is a choice between four (`audio/master-stage.ts`): **ours**, the page's default,
+**the game's** — `SMS WaveHammer` and the 7.1 fold, gain and narrowing
+([lbp-audio-engine.md](lbp-audio-engine.md), *The game's master bus*) — **the game's with an AGC
+after it** (*63*, below), and **`'none'`**, the fold's gain alone. The engine card's `master` choice
+under Song/Mixer picks it live, the Render view's own choice offline, `RenderOptions.master`
+and `LBP_MASTER` in the library; the library's own default stays the game's, because the
+differential checks compare levels with the modules.
 
-❗ **Ours is the only DSP in this project that is not the game's.** `audio/master.ts` is a glue
+❗ **Ours and the AGC are the only DSP in this project that is not the game's.** `audio/master.ts` is a glue
 compressor (2.5:1, soft knee, threshold moved by one knob from -6 to -22 dBFS) followed by a
 lookahead peak limiter with a -0.3 dBFS ceiling. It takes the game's bus's place: the fold's gain
 alone, the file's own pans and no WaveHammer, then the glue and the limiter, past where the game's
 chain ends. Nothing in LBP does this. It exists because the project's owner asked for a mix that
-holds together, and nothing measured against a capture of the game is affected unless somebody
-picks it. The Ableton export can carry it too, as Live's Compressor and Limiter on the master, off
-by default ([ableton-interchange.md](ableton-interchange.md), *The master bus*).
+holds together. The Ableton export can carry it too, as Live's Compressor and Limiter on the master,
+off by default ([ableton-interchange.md](ableton-interchange.md), *The master bus*).
 
 Measured live on `Ascetic` at the default setting (glue 4), against `'none'` — the fold's gain
 alone, which was the chain without it then: peaks 0.35/0.52 without, 0.56/0.85 with, a lift of
@@ -146,31 +148,72 @@ the delay this very sample, or the one peak it never sees is its own. Both are p
 scale assumes the mix already peaks there; ours does not, and the makeup then adds more than the
 compressor took -- +7.4 dB at the default, against +4.2 dB now.
 
-**What would settle whether it should ever be the default**: nothing measurable. It is a taste
-question, and the answer this project gives — the owner's, again on 2026-10-11 — is that the
-faithful path is the default and this is a choice beside it.
+**Why it is the default**: a taste question, answered by the owner on 2026-10-12, the opposite way
+from 2026-10-11. The game's bus had been the default for a day; heard beside ours it was much
+quieter (*63*) and, to the owner's ear, worse. Before it was set aside it was checked against the
+bytes once more: the WaveHammer's 68-byte template re-read, and FMOD's `createDSP` and `addDSP`
+read for anything that would put the declared defaults back — nothing does (*SMS WaveHammer* in
+[lbp-audio-engine.md](lbp-audio-engine.md)). So the game's bus is the game's as read, and the
+deviation is a choice of sound, not a doubt about the reading. What is still open is whether our
+level into the WaveHammer is the game's, which decides how hard it compresses (*38*): a capture of
+a corpus song would say whether the game really sounds this squeezed. The faithful buses are one
+choice away, under Song/Mixer.
 
-## 3. Note onsets — sample-accurate, where the engine places them on its block
+## 63. The game's bus and an AGC — a choice beside ours
 
-**A note begins at the top of a chunk** ([synth-engine.md](synth-engine.md)): the one after the
-chunk that crossed its step, or the one its sub-step falls in. Reproducing it moves every on-step
-onset later by 0 to 5.33 ms and every sub-step onset earlier by as much. The gate is the same
-deviation: the engine first reads it closed at the next chunk's top, 0 to 5.33 ms late, and the
-tracker closes it on its frame. What the tracker keeps by default is the whole-chunk ramp after
-each of the two events (*60* in [answered-questions.md](answered-questions.md)), so only the timing
-differs, not the shape.
+One of the four master buses is the game's **and then an automatic gain control** (`'agc'` in
+`audio/master-stage.ts`, the AGC in `audio/agc.ts`): BS.1770's K-weighted loudness,
+followed slowly, a gain towards −16 LUFS between −12 and +18 dB, and our limiter at −0.3 dBFS
+(`Limiter` in `audio/master.ts`). Ours, not the game's: the game's shape is kept only as far as a
+slow gain keeps it. Built on 2026-10-12 after the owner heard the game's bus far quieter than ours,
+and the page's default for part of that day, until ours took the place (*42*). Normalising by the
+song's peak — one gain, the shape untouched — was built first the same day and replaced at the
+owner's request: live it needed a render of the whole song after every edit, 11.5 s for the 5:33
+of `Ascetic`.
 
-✔ **What the engine does is no longer an inference.** Run under `tools/prxsynth.py`, the module
-places onsets exactly on the song-aligned 256-frame grid, whatever read size it is given
-(*The clock* in [synth-engine.md](synth-engine.md)), and `RenderOptions.engineClock` reproduces it:
-on it, 16 corpus songs rendered for 20 s each agree with the module to better than −100 dB (*62* in
-[answered-questions.md](answered-questions.md) has the numbers), where on the tracker's clock they
-cannot be compared at all past the first note off a block
-boundary. ⚠️ **What is left is the decision, and it is the owner's**: the game has the sawtooth, the
-tracker's default does not. Turning the default over costs nothing in the offline render; the live
-player and the keyboard schedule voices on their own clocks and would need the engine's clock
-brought into the worklet (*The chunk bounds inside a block*, below). **What would settle it**, if
-a listening judgement is wanted: A/B `engineClock` on a fast unswung drum pattern.
+How quiet the game's bus is, and what the AGC does to it, measured 2026-10-12 on four whole corpus
+songs through `renderSequencer`: integrated loudness by BS.1770 (400 ms blocks, both gates), the
+loudness range as EBU Tech 3342 takes it (3 s blocks every second, a −20 LU relative gate, the 10th
+to the 95th percentile), the sample peak, from a scratch script not kept:
+
+| song | the game's | the game's + AGC | ours, glue 4 |
+|---|---|---|---|
+| `Ascetic` 723339 | −21.7 LUFS, LRA 4.1 LU, −5.6 dBFS | −16.5, 3.9, −0.3 | −14.5, 4.5, −0.3 |
+| `This Is Halloween` 737099 | −20.3, 10.4, −1.7 | −16.1, 5.0, −0.3 | −13.6, 10.8, −0.3 |
+| `Blackfire` 732985 | −21.4, 7.0, −1.0 | −16.3, 6.0, −0.3 | −14.6, 7.1, −0.3 |
+| `Terra` 730116 | −22.3, 5.5, −4.6 | −16.3, 4.5, −0.3 | −15.8, 5.8, −0.3 |
+
+The game's sits 5 to 7 LU under ours. The WaveHammer takes a constant 1.84 dB (its automatic
+make-up times the template's −18 dB output gain, *SMS WaveHammer* in
+[lbp-audio-engine.md](lbp-audio-engine.md)) and compresses 10:1 above −21 dBFS with nothing given
+back; the fold's narrowing costs nothing on a centred voice and 1.7 dB of energy on a hard-panned
+one. Ours goes the other way, make-up and a limiter at −0.3 dBFS. ⚠️ Nothing read after the
+WaveHammer would make the game louder: the channel is at unity and the driver at 0 dB (*The
+sequencer's chain*, *The output stage*). The master channel group's volume and the game's music
+volume option are **not read**; FMOD Ex documents a channel group's volume as 0 to 1, so either
+could only take level away.
+
+⚠️ **An AGC fast enough to sound responsive is a compressor.** With the follower at 1.5 s up and
+6 s down, `This Is Halloween`'s loudness range went from 10.4 LU to 2.9; at the shipped 10 s and
+40 s the four keep 3.9 to 6.0 LU of their 4.1 to 10.4 and land within 0.5 LU of the target. What a
+causal AGC cannot keep is a song whose sections differ a lot, `This Is Halloween`'s quiet opening
+among them: it is set on what it has heard. Three things keep it from pumping, each found by a test
+in `test/agc.test.ts` failing first: the level follows only within 1 LU freely and below that only
+after 1 s (after 4 s more than 10 LU below, BS.1770's relative gate), so a song that stops does
+not drag the gain up through its own tail — +3.9 dB before the band, 0.01 dB after; silence is
+detected on a 50 ms follower, not the 400 ms one, which takes some 4 s to fall from a loud song;
+and after 3 s of silence the next sound warms up again, fast and with no holds, as a new song.
+
+Measured in the browser on `Ascetic`, 2026-10-12: the AGC's gain, reported by the worklet with the
+voice counts and shown in the engine card, settles near +5.4 dB; the live output and the export
+both peak at −0.300 dBFS; 0 dropouts. Live against export it is −66 to −72 dB from 6 s on, where the
+game's bus alone reads −110 to −121: the page was hidden, Chrome fires a hidden page's first timer
+about a second late, and the first second's voices sounded a chunk late; the AGC's slow memory carries
+that as a 0.005 dB gain difference, 0.003 dB by 14 s. An AGC carries any difference at the start,
+such as the song before, for tens of seconds; the WaveHammer forgets in seconds.
+
+**What would settle it**: nothing measurable — it is a listening level. A real PS4's output into a
+TV would say how loud the game is heard, not how loud this page should play.
 
 ## 61. The end of a voice — `RenderOptions.declick`, default **on**
 
@@ -233,49 +276,23 @@ seconds of *Rhombitruncated* from the game. A bongo hit every 0.461 s from 0.257
   built with (the page load, or switching it on in the Engine card) through every later change,
   as the game's editor session does. Whoever changes the reverb mid-song hears part of the old
   room; a fresh one is a page reload or the reverb switched off and on.
-- **The chunk bounds inside a block.** The engine splits a 256-frame block into chunks at the
-  step clock's `frac(4 · position)` bound and evaluates its ramps per chunk; the tracker's
-  segments are whole blocks counted from a note's first frame and from its gate (*60*). A float32
-  transcription of `0x0ba0`–`0x0c4c` run for two minutes splits 4.2% of blocks at 120 bpm (2.1% at
-  60, 8.5% at 240), and because the bound clusters at step boundaries the chunk after a note's end
-  is a whole block only 75% of the time and shorter than 64 frames 6% of it. So in the game a
-  release shorter than a chunk sometimes fades faster than here — the knots matter whenever a
-  stage is shorter than the chunk it lands in. ✔ **Reproduced on the engine's clock**
-  (`engine-clock.ts`'s `splits`, `VoiceSpec.engineGrid`), where it also carries the walk-anchored
-  slides (*The gate and the ramps*); not on the default clock, and not in the live player or the
-  keyboard, which have no sequencer clock in the mixer.
-- **The pool's order on the default clock.** The engine takes a step's records at its walk, clip by
-  clip from the last header (*The voice pool* in [synth-engine.md](synth-engine.md)); the render
-  does so on the engine's clock only, and on its own clock allocates by exact position in schedule
-  order. Moving the default would have to move `LiveVoicePool` with it, or the live player and the
-  render stop being one instrument (`polyphony.test.ts` pins their equivalence). Measured cost on
-  the engine's clock: `Influx` −34.6 dB → −74.8 dB.
-- **Float32 in the rate, off the engine's clock.** The engine forms each layer's rate in float32
-  and only steps it in double (*The pitch* in [synth-engine.md](synth-engine.md)). ✔ **Reproduced
-  on the engine's clock** (`VoiceSpec.engine`): there the synthetic battery's median went from −92
-  to −107 dB and `square_wave`'s chord scene, whose vibrato drifted a read across an odd loop's
-  wrap, from −48.8 to −90.6 dB of its loudest window. The default clock, the live player and the
-  keyboard still form it in double — a drift of 0.0056 frames in four seconds on a held stacked
-  note, about −43 dB of its own level by then; nobody has heard it. Moving them needs the record's walk
-  and the clock's float32 playhead brought into the worklet, as *3* does.
-- **A sub-step record in the middle of a note, off the engine's clock.** The engine takes a record
-  at the walk of its whole step and runs its slide from the playhead's fraction of that step, so a
-  record at `k + 1/3` ramps as if it sat at `k`, and a slide over a third of a step runs on to the
-  next walk (*The gate and the ramps*). ✔ **Reproduced on the engine's clock** and measured: the
-  `gsub` phrase of `prx-scene.ts` agrees with the module at −100 to −111 dB on twelve instruments.
-  The default clock still anchors the ramp at the record's own position, and the live player with
-  it.
-- **The filter in float32, off the engine's clock.** ✔ **Reproduced on the engine's clock**
-  (`VoiceSpec.engine`): the module runs envelope B, the cutoff and resonance at a chunk's two ends,
-  the ramp between them, the coefficients and the ladder all in float32, and what mattered was
-  not the ladder but what drives its cutoff — the ramp's float32 add above all, which loses a slow
-  sweep's step inside a chunk. *The filter* in [synth-engine.md](synth-engine.md) has the reading,
-  what each part is worth and what it costs. The default clock, the live player and the keyboard
-  keep all of it in double, bit for bit as before: there it measures the same. Left: envelope A
-  still runs `advance` in double on the engine's clock, not measured. ⚠️ **If the engine's clock
-  becomes the default**, the float32 ladder comes with it, and it is the costly part that is worth
-  least; float32 inputs around the double ladder are the cheap way. That is the owner's call with
-  the clock's.
+- **The keyboard bench, off the engine's clock.** Since 2026-10-12 the render and the live player
+  both run the engine's clock and its float32 record (*3 / 3b* in
+  [answered-questions.md](answered-questions.md)); the Keyboard view does not. Its notes have no
+  song clock, a key being held for as long as it is held, and it builds its voices at modulation 0
+  with the bench's own overrides of the envelope, the filter and the LFOs, which the engine record
+  would ignore. So it keeps the double voice: its grid from the note's first frame (*60*), a rate
+  formed in double (a drift of 0.0056 frames in four seconds on a held stacked note), a sub-step
+  record's ramp anchored at its own position, and the filter in double. The tracker's clock
+  (`RenderOptions.engineClock: false`) is the same voice, kept as an A/B. Moving the bench means an
+  engine record per key and a clock that starts with it.
+- **Envelope A in double.** The filter runs float32 on the engine's clock: envelope B, the two
+  ends, the ramp, and in an export the ladder (*The filter* in [synth-engine.md](synth-engine.md)).
+  Envelope A still runs `advance` in double there, not measured against the module. The live
+  player plays the ladder itself in double (`EngineRecord.ladder64`), because the audio thread
+  cannot spare +60% for at most 11.6 dB below -107 dB; its output against an export of the same
+  song measured -117 dB median and -89 dB at worst of the loudest window, in the browser on
+  2026-10-12 (*The live player* in [tracker-architecture.md](tracker-architecture.md)).
 - **A one-shot's last block.** ✔ **Settled**: the module renders the chunk a one-shot runs out in
   whole — the other layers and the ladder run on past layer 0's last frame — and frees the record
   after it. The reading and the numbers are in *The voice pool* in

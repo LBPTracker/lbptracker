@@ -66,8 +66,11 @@ self.onmessage = async (event: MessageEvent) => {
     reverb?: boolean;
     echo?: boolean;
     clip?: boolean;
-  /** The game's master bus, or ours at its default glue; the game's when absent. */
-  master?: 'game' | 'ours';
+    /**
+     * The master bus: the game's with the AGC, the game's, the fold's gain
+     * alone, or ours at its default glue; the game's when absent.
+     */
+    master?: 'agc' | 'game' | 'none' | 'ours';
     noKeyTrack?: boolean;
     unpitchedPercussion?: boolean;
     file?: File;
@@ -94,7 +97,9 @@ self.onmessage = async (event: MessageEvent) => {
         ...(message.reverb === undefined ? {} : { reverb: message.reverb }),
         ...(message.echo === undefined ? {} : { echo: message.echo }),
         ...(message.clip === undefined ? {} : { clip: message.clip }),
-        ...(message.master === 'ours' ? { master: MASTER_DEFAULTS } : {}),
+        ...(message.master === 'ours'
+          ? { master: MASTER_DEFAULTS }
+          : message.master === undefined ? {} : { master: message.master }),
         ...(message.noKeyTrack === undefined ? {} : { noKeyTrack: message.noKeyTrack }),
         ...(message.unpitchedPercussion === undefined
           ? {}

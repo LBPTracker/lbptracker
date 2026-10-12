@@ -95,7 +95,7 @@ point in the web package. Imports cross by package name:
 
 - `npm install` — **required**: workspaces resolve the package names through symlinks in
   `node_modules`. Nothing is downloaded for the libraries.
-- `npm test` — `node --test`, all three workspaces at once, from the root (499 tests, 2026-10-11);
+- `npm test` — `node --test`, all three workspaces at once, from the root (512 tests, 2026-10-12);
   `npm test -w @lbptracker/lib` for one package.
 - `npm run typecheck` — fans out to each package's own `typecheck` script: `tsc -p .` in the two
   libraries, `vue-tsc` for the web package. ⚠️ **The web package checks `.vue` through

@@ -372,7 +372,7 @@ export function mountRender(opts: { isActive: () => boolean }): void {
       reverb: render.on('optReverb'),
       echo: render.on('optEcho'),
       clip: render.on('optClip'),
-      master: render.picked('master') === 'ours' ? 'ours' : 'game',
+      master: render.picked('master'),
     });
   });
 

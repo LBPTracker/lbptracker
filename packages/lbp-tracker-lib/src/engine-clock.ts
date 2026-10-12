@@ -2,10 +2,11 @@
  * The sequencer's step clock as `fmodextinput.prx` runs it: where a note
  * starts, where its gate closes and where the walk takes a record, in frames.
  *
- * ❗ **This is the engine's onset grid, not the tracker's default.** The
- * tracker places onsets and gates on their own frame (*3* in
- * steering/open-questions.md); this module is what `RenderOptions.engineClock`
- * switches to, and what a differential test against the module needs. It was
+ * ❗ **The render's and the live player's clock since 2026-10-12** (*3 / 3b*
+ * in steering/answered-questions.md): `RenderOptions.engineClock`, on by
+ * default, places every voice on it, and the player runs it under its
+ * transport (`placeOnClock` in `engine-place.ts`). Off, the tracker places
+ * onsets and gates on their own frame, kept for an A/B. It was
  * measured, not only read: run through `tools/prxrun.py`, the module starts a
  * note on step 2 of a 180 bpm song at frame 8,192 where the step falls at
  * 8,000, and one on step 0 at 256.
@@ -67,6 +68,14 @@ export interface EngineClock {
   readonly splits: readonly number[];
   /** Every chunk and the float32 playhead at its ends: see {@link EngineChunks}. */
   readonly chunks: EngineChunks;
+  /**
+   * `splits` and `chunks` between two frames: what one voice living there
+   * needs, for a caller that posts it across a thread. The chunks run from the
+   * one holding `from` to the first starting at or past `to`; a voice that
+   * outlives them reads the last one's playhead on along it, and segments on
+   * the block grid, which only a long release's last splits would notice.
+   */
+  window(from: number, to: number): { readonly splits: readonly number[]; readonly chunks: EngineChunks };
 }
 
 /**
@@ -157,9 +166,30 @@ export function engineClock(tempo: number, swing: number, frames: number, start 
     const k = Math.round((position - Math.floor(position)) * 3);
     return f(k * THIRD);
   };
+  // The last chunk starting at or before `frame`.
+  const chunkHolding = (frame: number): number => {
+    let lo = 0;
+    let hi = count - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (chunkStart[mid] <= frame) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  };
   return {
     splits,
     chunks: { starts, playheads },
+    window(from, to) {
+      const a = chunkHolding(from);
+      let b = chunkHolding(to);
+      if (b < count && chunkStart[b] < to) b += 1;
+      if (b <= a) b = Math.min(count, a + 1);
+      return {
+        splits: splits.filter((at) => at >= from && at < to),
+        chunks: { starts: starts.slice(a, b + 1), playheads: playheads.slice(a, b + 1) },
+      };
+    },
     walkFrame(step) {
       return chunkEnd[walkChunk(Math.floor(step))];
     },
@@ -182,15 +212,7 @@ export function engineClock(tempo: number, swing: number, frames: number, start 
       return chunkStart[c] + (position - pStart[c]) * lengths[c];
     },
     freedBy(frame) {
-      // The last chunk starting at or before `frame`.
-      let lo = 0;
-      let hi = count - 1;
-      while (lo < hi) {
-        const mid = (lo + hi + 1) >> 1;
-        if (chunkStart[mid] <= frame) lo = mid;
-        else hi = mid - 1;
-      }
-      return Math.floor(pStart[lo]) + 1;
+      return Math.floor(pStart[chunkHolding(frame)]) + 1;
     },
   };
 }

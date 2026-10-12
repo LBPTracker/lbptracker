@@ -6,7 +6,7 @@
  * same way. What follows the reverb is a choice, and it is made here, once, so
  * the two paths cannot disagree about it.
  *
- * ## `'game'`, the default: the game's
+ * ## `'game'`: the game's
  *
  * What the sequencer's channel goes through after the reverb, and nothing else
  * (*The sequencer's chain* and *The output stage* in
@@ -30,11 +30,21 @@
  *      shadPS4's coefficients (`0.7071f`, LFE unread), which the captures
  *      confirm; a real PS4's are unread.
  *
+ * ## `'agc'`: the game's, then an automatic gain control
+ *
+ * The game's bus, then `agc.ts`: one gain ridden slowly towards −16 LUFS, and
+ * our limiter after it, because the game's own level is low -- −20 to −22
+ * LUFS over four whole songs, 5 to 7 LU under ours (*63* in
+ * steering/open-questions.md). Causal, so it runs here in real time for the
+ * render and the worklet alike, and needs nothing measured in advance. Not the
+ * game's: the gain moves, slowly, and the limiter shaves what it lifts past
+ * the ceiling.
+ *
  * ## A `MasterSettings`: ours
  *
  * The fold's gain alone, which keeps the file's own image, no WaveHammer, and
- * then `master.ts`'s glue and limiter. ❗ Not the game's: question 42 in
- * steering/open-questions.md.
+ * then `master.ts`'s glue and limiter. ❗ Not the game's, and the page's
+ * default since 2026-10-12: question 42 in steering/open-questions.md.
  *
  * ## `'none'`
  *
@@ -45,10 +55,11 @@
 
 import { WAVEHAMMER_SHIPPED, WaveHammer } from './compressor.ts';
 import { FOLD_CENTRE, FOLD_GAIN } from './effects.ts';
+import { Agc } from './agc.ts';
 import { MasterBus, type MasterSettings } from './master.ts';
 
 /** Which master bus ends the chain. See the top of this file. */
-export type MasterChoice = 'game' | 'none' | MasterSettings;
+export type MasterChoice = 'game' | 'agc' | 'none' | MasterSettings;
 
 export class MasterStage {
   private readonly rate: number;
@@ -56,12 +67,21 @@ export class MasterStage {
   private hammer: WaveHammer | null = null;
   /** Set exactly when ours is chosen. */
   private ours: MasterBus | null = null;
+  /** The AGC after the game's bus: set exactly when `'agc'` is chosen. */
+  private agc: Agc | null = null;
+  /** The last AGC, kept while another bus plays so picking it again resumes it. */
+  private agcKept: Agc | null = null;
   /** The deepest gain `SMS WaveHammer` has applied, or 1 when it has not run. */
   deepest = 1;
 
   constructor(sampleRate: number, choice: MasterChoice = 'game') {
     this.rate = sampleRate;
     this.set(choice);
+  }
+
+  /** The gain the AGC applied last, before its limiter, or null when it is not chosen. */
+  get agcGain(): number | null {
+    return this.agc ? this.agc.gain : null;
   }
 
   /**
@@ -71,10 +91,14 @@ export class MasterStage {
    * the whole output stage whenever the tempo moves (the echo is in beats), and
    * a WaveHammer rebuilt there would drop its envelope back to unity in the
    * middle of the song. Only a change of kind builds anything, so this may
-   * allocate: call it from a message handler, never from `process`.
+   * allocate: call it from a message handler, never from `process`. The game's
+   * and `'agc'` are one kind: the same WaveHammer runs on, and the AGC is kept
+   * aside while the game's plays alone.
    */
   set(choice: MasterChoice): void {
-    if (choice === 'game') {
+    if (choice === 'agc') this.agcKept ??= new Agc(this.rate);
+    this.agc = choice === 'agc' ? this.agcKept : null;
+    if (choice === 'game' || choice === 'agc') {
       this.hammer ??= new WaveHammer(WAVEHAMMER_SHIPPED, this.rate);
       this.ours = null;
     } else if (choice === 'none') {
@@ -97,6 +121,7 @@ export class MasterStage {
   run(left: Float32Array, right: Float32Array, from = 0, to = left.length): void {
     const hammer = this.hammer;
     if (hammer) {
+      const agc = this.agc;
       for (let i = from; i < to; i += 1) {
         // ⚠️ One gain for both channels: the WaveHammer is stereo-linked, its
         // detector taking the louder of the two (`0x1000`).
@@ -105,8 +130,15 @@ export class MasterStage {
         const l = left[i] * g;
         const r = right[i] * g;
         const centre = FOLD_CENTRE * (l + r);
-        left[i] = l + centre;
-        right[i] = r + centre;
+        if (agc) {
+          // Ours, and last: past the fold, where the game's chain has ended.
+          agc.process(l + centre, r + centre);
+          left[i] = agc.left;
+          right[i] = agc.right;
+        } else {
+          left[i] = l + centre;
+          right[i] = r + centre;
+        }
       }
       return;
     }

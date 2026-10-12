@@ -345,11 +345,14 @@ passes it (`0x1cb9`), up to a chunk *early*. The onset grid is therefore the 256
 180 bpm (4,000 frames a step) notes on steps 0, 2, 4, 6, 8, 10 start at frames 256, 8,192, 16,128,
 24,064, 32,000, 40,192 — the song's first step waits for the restart's chunk — and the read size
 FMOD asks for changes nothing (1,024 and 256 give the same frames), so the grid is the song's.
-`engine-clock.ts` transcribes the clock in float32 and `RenderOptions.engineClock` renders on it;
-**the default is still the tracker's own frame** — the decision is *3* in
-[open-questions.md](open-questions.md). On it, a record's voice also ends its segments at the
-chunks the clock splits (`VoiceSpec.engineGrid`): the ramps are straight between chunk ends, and a
-two-octave glide sampled at other ends drifts in phase. And it does the record's own arithmetic
+`engine-clock.ts` transcribes the clock in float32, and ✔ **since 2026-10-12 it is the default,
+the owner's choice** (*3 / 3b* in [answered-questions.md](answered-questions.md)). The render places
+every onset, gate, walk and theft on it, and a record's voice ends its segments at the chunks the
+clock splits (`VoiceSpec.engineGrid`): the ramps are straight between chunk ends, and a two-octave
+glide sampled at other ends drifts in phase. The live player runs the same clock under its
+transport (*The live player* in [tracker-architecture.md](tracker-architecture.md)). Off
+(`engineClock: false`), onsets and gates sit on their own frame and the voice is the double one,
+kept for an A/B. And it does the record's own arithmetic
 (`VoiceSpec.engine`, `engine-record.ts`): its slides read off the clock's float32 playhead (*The
 gate and the ramps*) and its rate formed in float32 (*The pitch*).
 

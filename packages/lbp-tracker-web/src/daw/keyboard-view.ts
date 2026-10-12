@@ -465,7 +465,7 @@ function panic(): void {
  * Rebuilding an effect drops its tail, so this is called when a control moves
  * and not per note. ❗ The master bus is not the bench's: it is the engine
  * card's choice, so an instrument tried here goes through the same one as the
- * song.
+ * song, the AGC included.
  */
 function pushEffects(): void {
   node?.port.postMessage({

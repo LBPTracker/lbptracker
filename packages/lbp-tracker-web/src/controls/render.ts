@@ -35,18 +35,20 @@ const CHECK_SPECS = [
 ] as const satisfies readonly Check[];
 
 /**
- * ❗ The game's by default, as on the engine card; ours renders at its default
- * glue, `MASTER_DEFAULTS`, not at the engine card's knob. See
- * `master-stage.ts` in the library.
+ * ❗ Ours by default, as on the engine card, at its default glue,
+ * `MASTER_DEFAULTS`, not at the engine card's knob. See `master-stage.ts` in
+ * the library.
  */
 const CHOICE_SPECS = [
   {
     id: 'master',
     group: 'master',
     label: 'master bus',
-    start: 'game',
+    start: 'ours',
     options: [
+      { value: 'none', label: "none: the fold's gain alone" },
       { value: 'game', label: "the game's" },
+      { value: 'agc', label: "the game's + AGC" },
       { value: 'ours', label: 'ours: glue and limiter' },
     ],
   },

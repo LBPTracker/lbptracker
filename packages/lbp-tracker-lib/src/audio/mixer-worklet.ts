@@ -35,7 +35,21 @@ export type MixerMessage =
    * it does not any more. `VoiceSpec.lfoPhase` holds them as three plain
    * numbers, drawn once per note by the render, and an array crosses.
    */
-  | { type: 'play'; sampleId: string; voice: Omit<VoiceSpec, 'sample'> }
+  | {
+      type: 'play';
+      sampleId: string;
+      voice: Omit<VoiceSpec, 'sample'>;
+      /**
+       * The context frame the voice starts at; its `startFrame`, `endFrame`
+       * and `cutFrame` then count from there. ❗ Absent, they count from the
+       * next block the message is handled before -- and a scheduler on the
+       * main thread cannot know which block that is: its look-ahead bursts
+       * landed a whole render quantum apart from one another, 128 frames, by
+       * when the message happened to arrive. On the engine's clock that breaks
+       * the very grid the voices are placed on.
+       */
+      at?: number;
+    }
   // 'engine' is not an interpolator: it selects the game's own sampler, which
   // is linear plus octave mipmaps and is the faithful setting. The named
   // interpolators switch it off so they can be heard against it.
@@ -68,7 +82,18 @@ export type MixerMessage =
   /** Close the gate on the voices carrying `tag`; see `Mixer.release`. */
   | { type: 'release'; tag: number }
   /** Take a tagged voice away after `frames` more of its own sounding time. */
-  | { type: 'cutAt'; tag: number; frames: number }
+  | {
+      type: 'cutAt';
+      tag: number;
+      frames: number;
+      /**
+       * The context frame of the theft, and of the victim's own start: the
+       * frames it still sounds are then counted here, for the same reason as
+       * `play.at`. Absent, `frames` counts from the next block.
+       */
+      at?: number;
+      began?: number;
+    }
   /**
    * Move a sounding voice's live expression; see `Mixer.expression`.
    *
@@ -94,6 +119,8 @@ export type MixerMessage =
   | { type: 'stopAll' };
 
 declare const sampleRate: number;
+/** The frame of the block about to be rendered: the scope's own, read off `globalThis` so a test can run without one. */
+const blockFrame = (): number => (globalThis as { currentFrame?: number }).currentFrame ?? 0;
 declare function registerProcessor(
   name: string,
   processor: typeof MixerProcessor,
@@ -124,7 +151,7 @@ export class MixerProcessor extends AudioWorkletProcessor {
   private clip = true;
   /**
    * The master bus: the game's -- `SMS WaveHammer` and the 7.1 fold -- unless
-   * the page picks ours or none.
+   * the page picks it with the AGC, ours or none.
    *
    * It lives here rather than in the caller because the WaveHammer's detector
    * and envelope are stateful across blocks; `render.ts` runs the same class
@@ -190,7 +217,19 @@ export class MixerProcessor extends AudioWorkletProcessor {
         // stereo fold's narrowing used to be applied here from a `panWidth`
         // message; it is FMOD's, after the clip and the compressor, so the
         // game's master bus applies it now (`master-stage.ts`).
-        this.mixer.play({ ...message.voice, sample, pan: message.voice.pan });
+        // On an absolute frame, the delay is counted here, from this block.
+        const shift = message.at === undefined ? 0 : Math.max(0, Math.round(message.at - blockFrame()));
+        const voice = message.voice;
+        this.mixer.play({
+          ...voice,
+          sample,
+          pan: voice.pan,
+          ...(shift === 0 ? {} : {
+            startFrame: shift + (voice.startFrame ?? 0),
+            endFrame: voice.endFrame === undefined ? undefined : shift + voice.endFrame,
+            cutFrame: voice.cutFrame === undefined ? undefined : shift + voice.cutFrame,
+          }),
+        });
         break;
       }
       case 'interpolator':
@@ -237,7 +276,12 @@ export class MixerProcessor extends AudioWorkletProcessor {
         this.mixer.release(message.tag);
         break;
       case 'cutAt':
-        this.mixer.cutAt(message.tag, message.frames);
+        this.mixer.cutAt(
+          message.tag,
+          message.at === undefined
+            ? message.frames
+            : Math.max(0, Math.round(message.at - Math.max(blockFrame(), message.began ?? -Infinity))),
+        );
         break;
       case 'expression':
         this.mixer.expression(message.tag, message.bend, message.pressure, message.timbre);
@@ -317,7 +361,9 @@ export class MixerProcessor extends AudioWorkletProcessor {
     // The dither's waits are spent only while something is playing.
     this.meter.setActive(total > 0);
     const load = this.meter.report();
-    this.port.postMessage({ type: 'voices', total, sounding, notes, load });
+    // The AGC's gain rides along, for the engine card: null when it is not chosen.
+    const agc = this.master.agcGain;
+    this.port.postMessage({ type: 'voices', total, sounding, notes, load, agc });
   }
 }
 

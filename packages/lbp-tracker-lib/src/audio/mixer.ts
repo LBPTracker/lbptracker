@@ -211,6 +211,14 @@ export interface EngineRecord {
   readonly noKeyTrack?: boolean;
   /** `+0x98`, `+0x9c`, `+0xa0` at the spawn. */
   readonly lfoPhases: readonly [number, number, number];
+  /**
+   * The ladder itself in double, with everything around it -- envelope B, the
+   * two ends, the float32 ramp -- still the module's: what the live player
+   * plays. The float32 ladder is +60% of a render for at most 11.6 dB, all of
+   * it below -107 dB of the module (*The filter* in steering/synth-engine.md);
+   * the worklet cannot spare that, the offline render can.
+   */
+  readonly ladder64?: boolean;
 }
 
 export interface VoiceSpec {
@@ -251,7 +259,8 @@ export interface VoiceSpec {
    * `engineGrid.chunks`, the voice takes its pitch, volume and modulation from
    * these walks and the chunk's playhead instead of `automation` and
    * `morph.points`, and forms every layer's rate the module's way. Unset, the
-   * double-precision voice the default clock and the live player use.
+   * double-precision voice of the tracker's clock (`engineClock: false`) and
+   * of the keyboard bench.
    */
   readonly engine?: EngineRecord;
   /** Output frame at which it stops, or undefined to run to the end of the sample. */
@@ -526,8 +535,10 @@ export interface VoiceSpec {
  * same over a *segment*: a block of the voice's own grid, cut short where its
  * gate, its cut or its caller's buffer end.
  *
- * ❗ **The grid starts at the note's first frame and starts again where its
- * gate closes**, because those are the two events the engine only ever takes
+ * ❗ **On the engine's clock, the default, the grid is the song's chunks**
+ * (`VoiceSpec.engineGrid`) and the paragraph below is the tracker's clock's
+ * and the keyboard bench's. ❗ **There the grid starts at the note's first
+ * frame and starts again where its gate closes**, because those are the two events the engine only ever takes
  * at the top of a chunk: a note found by the walk after one chunk (`0x0eef`,
  * `0x0f1c`) renders from the next chunk's first frame (`0x1cc6`, the onset
  * offset that is always 0), and a gate closed by the walk (`0x3a4b`) or at a
@@ -535,8 +546,8 @@ export interface VoiceSpec {
  * a stage shorter than a chunk -- `triangle_wave`'s 0.8 ms release, its 0.3 ms
  * attack -- is ramped across the whole chunk after the event, 5.3 ms, and
  * never clicks. ❌ Until 2026-10-05 the grid was the mixer's running clock:
- * with onsets and gates placed to the frame (*3* in
- * steering/open-questions.md) that made the ramp after an event as long as
+ * with onsets and gates placed to the frame (the tracker's clock, *3 / 3b*
+ * in steering/answered-questions.md) that made the ramp after an event as long as
  * the distance to the next block boundary, 1 to 256 frames, and short notes
  * clicked at both ends.
  *
@@ -700,6 +711,8 @@ class Voice {
    * in double -- *The filter* in steering/synth-engine.md has why.
    */
   private readonly filter32: boolean;
+  /** `filter32` with the module's own ladder and coefficients: see `EngineRecord.ladder64`. */
+  private readonly ladder32: boolean;
   private readonly secondsPerFrame: number;
   /** Frames rendered since this voice started: the automation's clock. */
   private elapsed = 0;
@@ -826,8 +839,9 @@ class Voice {
     this.layers = layerSpecs.map((layer) => new Layer(layer, draw));
     if (spec.engine !== undefined) this.enginePhase.set(spec.engine.lfoPhases);
     this.filter32 = spec.engine !== undefined && spec.engineGrid?.chunks !== undefined;
-    this.ladderL = this.filter32 ? new MoogLadder32() : new MoogLadder();
-    this.ladderR = this.filter32 ? new MoogLadder32() : new MoogLadder();
+    this.ladder32 = this.filter32 && spec.engine?.ladder64 !== true;
+    this.ladderL = this.ladder32 ? new MoogLadder32() : new MoogLadder();
+    this.ladderR = this.ladder32 ? new MoogLadder32() : new MoogLadder();
 
     // What a voice with no morph derives once and reads for both ends.
     const f = this.fixed;
@@ -1287,7 +1301,9 @@ class Voice {
       if (this.filter32) {
         this.freqStep = rampStep32(freqS, freqE, n);
         this.resStep = rampStep32(resS, resE, n);
-        if (!this.bypass && !this.rampFilter) ladderCoefficients32Into(freqS, resS, this.coefficients);
+        if (!this.bypass && !this.rampFilter) {
+          (this.ladder32 ? ladderCoefficients32Into : ladderCoefficientsInto)(freqS, resS, this.coefficients);
+        }
       } else {
         this.freqStep = (freqE - freqS) * invN;
         this.resStep = (resE - resS) * invN;
@@ -1570,8 +1586,9 @@ class Voice {
           // step under half an ulp of the cutoff is lost, so a slow sweep stands
           // still inside a chunk. Accumulated in double, `woodpecker` was -78 dB
           // against the module and `synth_strings`' gover -58 (synth-engine.md).
+          const into = this.ladder32 ? ladderCoefficients32Into : ladderCoefficientsInto;
           for (let i = 0; i < take; i += 1) {
-            ladderCoefficients32Into(freq, res, coefficients);
+            into(freq, res, coefficients);
             sL[i] = this.ladderL.process(sL[i], coefficients);
             sR[i] = this.ladderR.process(sR[i], coefficients);
             freq = Math.fround(freq + freqStep);
@@ -1711,7 +1728,7 @@ class Voice {
     if (this.tailFrames === 0 || this.bypass) return;
     // A ramping ladder has walked its coefficients to where the sound ended.
     if (this.rampFilter) {
-      (this.filter32 ? ladderCoefficients32Into : ladderCoefficientsInto)(this.freq, this.res, this.coefficients);
+      (this.ladder32 ? ladderCoefficients32Into : ladderCoefficientsInto)(this.freq, this.res, this.coefficients);
     }
     this.tailLeft = this.tailFrames;
     this.tailGain = 1;

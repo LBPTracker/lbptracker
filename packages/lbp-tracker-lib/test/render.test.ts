@@ -203,8 +203,11 @@ test('a glide is linear in steps, so under swing it bends at every step it cross
   });
   let automation: readonly { frame: number; pitch: number; gain: number }[] | undefined;
   let steps: readonly number[] = [];
+  // The tracker's clock: on the engine's the voice reads its slides off the
+  // clock's playhead instead (`engine` in the next tests).
   await renderSequencer(seq, loader, {
     planOnly: true,
+    engineClock: false,
     onVoice: (voice, where) => {
       automation = voice.automation;
       steps = where.pointSteps;
@@ -229,7 +232,12 @@ test('a glide is linear in steps, so under swing it bends at every step it cross
 async function planOf(
   tracks: readonly { gridX?: number; gridY?: number; notes: Parameters<typeof import('@lbptracker/cwlib/notes.ts').groupNotes>[0] }[],
   options: Parameters<typeof renderSequencer>[2] = {},
-  slot: { pitched?: boolean; numStack?: number; startOffset?: number; frames?: number; loop?: { start: number; end: number } } = {},
+  slot: {
+    pitched?: boolean; numStack?: number; startOffset?: number; frames?: number; loop?: { start: number; end: number };
+    /** A sine of this period in frames instead of a constant, for a test that listens. */
+    period?: number;
+    params?: Readonly<Record<number, { x: number; y: number }>>;
+  } = {},
   tempo = 120,
 ) {
   const { groupNotes, encodeNotes } = await import('@lbptracker/cwlib/notes.ts');
@@ -252,8 +260,12 @@ async function planOf(
   params[13] = { x: 1, y: 1 };
   params[24] = { x: 1, y: 1 };
   params[2] = { x: slot.startOffset ?? 0, y: slot.startOffset ?? 0 };
+  for (const [i, value] of Object.entries(slot.params ?? {})) params[Number(i)] = value;
   const frames = slot.frames ?? 4800;
   const channel = new Float32Array(slot.loop ? Math.max(frames, slot.loop.end + 16) : frames).fill(0.5);
+  if (slot.period !== undefined) {
+    for (let i = 0; i < channel.length; i += 1) channel[i] = 0.5 * Math.sin((2 * Math.PI * i) / slot.period);
+  }
   const loader = async () => ({
     inst: {
       slots: [{ ...DEFAULT_SLOT, pitched: slot.pitched ?? true }], sampleGuids: [1],
@@ -269,12 +281,17 @@ async function planOf(
     track: number;
     startFrame: number;
     walks: import('../src/polyphony.ts').PoolWalks;
+    startStep: number;
+    endStep?: number;
   }[] = [];
   await renderSequencer(seq, loader, {
     planOnly: true,
     ...options,
     onVoice: (voice, where) =>
-      voices.push({ voice, track: where.track, startFrame: where.startFrame, walks: where.walks }),
+      voices.push({
+        voice, track: where.track, startFrame: where.startFrame, walks: where.walks,
+        startStep: where.startStep, endStep: where.endStep,
+      }),
   });
   return voices;
 }
@@ -355,18 +372,21 @@ test('on the engine’s clock a voice carries the walk the module runs, and its 
   assert.deepEqual(engine.walks.map((w) => [w.pitch, w.pitchSlide]), [[60, 6], [66, 6], [72, 0], [72, 0]]);
   assert.equal(engine.walks[0].frame, 0);
   assert.equal(voices[0].startFrame + engine.walks[3].frame, endFrame, 'the closing walk is the gate');
-  const plain = await planOf([{ notes: [hit(0, 60, false), hit(2, 72, true)] }], {}, {}, 180);
+  const plain = await planOf([{ notes: [hit(0, 60, false), hit(2, 72, true)] }], { engineClock: false }, {}, 180);
   assert.equal(plain[0].voice.engine, undefined, 'the tracker’s clock keeps the double voice');
+  const live = await planOf([{ notes: [hit(0, 60, false), hit(2, 72, true)] }], { exactLadder: false }, {}, 180);
+  assert.equal(live[0].voice.engine?.ladder64, true, 'the live player’s plan asks for the double ladder');
 });
 
 test('records bunched inside a step close the gate a walk late', async () => {
   // 6, 6⅓, 6⅔ and 8: the cursor reaches the end record at walk 9 and the
   // module closes at walk 10 (`closingWalk`), not at the end's step plus one.
   const at = (subStep: 0 | 1 | 2, step: number, end = false) => ({ ...hit(step, 60, end), subStep });
-  const voices = await planOf([{ notes: [at(0, 6), at(1, 6), at(2, 6), at(0, 8, true)] }]);
+  // On the tracker's clock, where the gate is the step's own frame.
+  const voices = await planOf([{ notes: [at(0, 6), at(1, 6), at(2, 6), at(0, 8, true)] }], { engineClock: false });
   assert.equal(voices[0].voice.endFrame, 10 * 6000);
   // 6, 6⅓ and 8: the cursor is on the end record by walk 8, in time.
-  const spread = await planOf([{ notes: [at(0, 6), at(1, 6), at(0, 8, true)] }]);
+  const spread = await planOf([{ notes: [at(0, 6), at(1, 6), at(0, 8, true)] }], { engineClock: false });
   assert.equal(spread[0].voice.endFrame, 9 * 6000, 'a gap lets the cursor catch up');
 });
 
@@ -375,6 +395,51 @@ test('on the engine’s clock a voice starts and is gated where the module does'
   assert.deepEqual(voices.map((v) => v.startFrame), [256, 8192]);
   assert.deepEqual(voices.map((v) => v.voice.endFrame), [4096, 12032]);
   assert.equal(voices[1].voice.engineGrid?.origin, 8192);
-  const ours = await planOf([{ notes: [hit(0), hit(2)] }], {}, {}, 180);
-  assert.deepEqual(ours.map((v) => v.startFrame), [0, 8000], 'the tracker’s own clock is the default');
+  const byDefault = await planOf([{ notes: [hit(0), hit(2)] }], {}, {}, 180);
+  assert.deepEqual(byDefault.map((v) => v.startFrame), [256, 8192], 'the engine’s clock is the default');
+  const ours = await planOf([{ notes: [hit(0), hit(2)] }], { engineClock: false }, {}, 180);
+  assert.deepEqual(ours.map((v) => v.startFrame), [0, 8000], 'the tracker’s own clock, one switch away');
+});
+
+test('a voice placed on the clock with its window plays exactly as the render’s', async () => {
+  // What the live player posts: the frames re-derived from the note's steps on
+  // a clock of its own, and only the chunks the voice lives in.
+  const { engineClock } = await import('../src/engine-clock.ts');
+  const { placeOnClock } = await import('../src/engine-place.ts');
+  const { Mixer } = await import('../src/audio/mixer.ts');
+  const at = (subStep: 0 | 1 | 2, step: number, pitch: number, end = false) => ({ ...hit(step, pitch, end), subStep });
+  // 130 bpm, where the clock splits blocks; a glide across two octaves, a
+  // sub-step, and a resonant filter that a frame off would ring differently.
+  const voices = await planOf(
+    [{ notes: [at(0, 1, 48), at(1, 3, 72), at(0, 5, 60, true), at(2, 7, 55, true)] }],
+    {},
+    { period: 109, loop: { start: 0, end: 4800 }, params: { 3: { x: 0.5, y: 0.5 }, 4: { x: 0.6, y: 0.6 }, 14: { x: 0.2, y: 0.2 } } },
+    130,
+  );
+  const frames = Math.round((32 * 720000) / 130) + 6 * RATE;
+  const clock = engineClock(130, 0, frames);
+  assert.equal(voices.length, 2);
+  for (const v of voices) {
+    const placed = placeOnClock(v.voice, v.startStep, v.endStep, clock)!;
+    assert.equal(placed.startFrame, v.voice.startFrame);
+    assert.equal(placed.endFrame, v.voice.endFrame);
+    assert.deepEqual(placed.engine.walks, v.voice.engine!.walks);
+    assert.ok(placed.engineGrid.chunks!.starts.length < clock.chunks.starts.length / 4, 'a window, not the song');
+    const render = (spec: import('../src/audio/mixer.ts').VoiceSpec) => {
+      const mixer = new Mixer(RATE);
+      mixer.play(spec);
+      const left = new Float32Array(10 * RATE);
+      const right = new Float32Array(10 * RATE);
+      mixer.render(left, right);
+      return left;
+    };
+    const whole = render(v.voice);
+    const windowed = render({ ...v.voice, ...placed });
+    let peak = 0;
+    for (let i = 0; i < whole.length; i += 1) {
+      peak = Math.max(peak, Math.abs(whole[i]));
+      assert.equal(windowed[i], whole[i], `frame ${i}`);
+    }
+    assert.ok(peak > 0.01, 'it sounds');
+  }
 });

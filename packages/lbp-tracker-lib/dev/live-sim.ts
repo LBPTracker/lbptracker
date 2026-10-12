@@ -37,6 +37,8 @@ import { loadResource } from '@lbptracker/cwlib/resource.ts';
 import { readInstrument, usedSlots } from '../src/rinstrument.ts';
 import { engineSample, readWav } from '../src/wav.ts';
 import { swungFrame } from '../src/swing.ts';
+import { engineClock } from '../src/engine-clock.ts';
+import { spawnStep } from '../src/engine-place.ts';
 import { nodeInflate } from '@lbptracker/cwlib/platform/node.ts';
 
 const LEVELS =
@@ -117,6 +119,10 @@ interface Planned {
   cut?: number;
   /** What the voice pool needs, in its own units. */
   poolStart: number;
+  /** `PooledNote.rank`: the walk's order inside a step, on the engine's clock. */
+  rank: number;
+  /** The note's own step, for the walk that takes it. */
+  startStep: number;
   poolEnd: number;
   /** The note: one entry per note, its layers inside the spec. */
   note: number;
@@ -131,6 +137,8 @@ const planResult = await renderSequencer(seq, loadInstrument, {
   // Uncapped on purpose: the point of the exercise is to apply the pool live,
   // so the plan must not have its cuts baked in.
   voiceLimit: VOICES_UNLIMITED,
+  // The plan the player builds: see `exactLadder`.
+  exactLadder: false,
   onVoice: (voice, where) => {
     // ⚠️ **The spec's `random` must not reach the mixers.** Handing the same
     // spec to three of them would have each `new Voice` draw from one shared
@@ -150,6 +158,8 @@ const planResult = await renderSequencer(seq, loadInstrument, {
     plan.push({
       note: where.note,
       poolStart: where.poolStart,
+      rank: where.poolRank,
+      startStep: where.startStep,
       poolEnd: where.poolEnd,
       score: where.score,
       walks: where.walks,
@@ -161,12 +171,23 @@ const planResult = await renderSequencer(seq, loadInstrument, {
     });
   },
 });
-plan.sort((a, b) => a.at - b.at);
+// ❗ In the pool's own order, as the player posts it (`planOrder` in
+// `packages/lbp-tracker-web/src/player.ts`): on the engine's clock a step's
+// notes take records at its walk, the last clip first, sub-step or not.
+plan.sort((a, b) => a.poolStart - b.poolStart || a.rank - b.rank || a.note - b.note);
 const stepFrames = planResult.framesPerStep;
 const POOL = Number(process.env.LBP_POOL ?? 8);
 const swing = seq.swing;
-/** A pool decision, which the allocator gives in steps, as an absolute frame. */
-const cutFrameAt = (step: number) => Math.round(swungFrame(step, stepFrames, swing));
+const engine = plan.length > 0 && plan[0].spec.engine !== undefined;
+/** The render's own clock: the same tempo, swing and start give the same chunks. */
+const clock = engine
+  ? engineClock(seq.tempo, seq.swing, Math.round((seq.lengthSteps + 64) * stepFrames) + 10 * RATE)
+  : undefined;
+/** A pool decision, which the allocator gives in steps, as an absolute frame: the walk's, on the engine's clock. */
+const cutFrameAt = (step: number) =>
+  clock ? clock.walkFrame(spawnStep(step)) : Math.round(swungFrame(step, stepFrames, swing));
+/** When the player hands a planned voice over: at its walk on the engine's clock, else at its start. */
+const dueOf = (p: Planned) => (clock ? clock.walkFrame(spawnStep(p.startStep)) : p.at);
 
 // The reference: the cuts `allocateVoices` would have baked in for this pool,
 // applied to the uncapped plan. `renderDirect` then renders exactly what the
@@ -176,7 +197,7 @@ if (process.env.LBP_LIVEPOOL === '1') {
   // of the one record, and a plan entry is a note with its layers inside.
   const firsts = plan;
   const decided = allocateVoices(
-    firsts.map((p) => ({ start: p.poolStart, end: p.poolEnd, score: p.score, walks: p.walks })),
+    firsts.map((p) => ({ start: p.poolStart, rank: p.rank, end: p.poolEnd, score: p.score, walks: p.walks })),
     POOL,
   );
   const cutOf = new Map<number, number>();
@@ -241,7 +262,7 @@ function renderScheduled(): [Float32Array, Float32Array] {
   for (let now = 0; now < frames; now += QUANTUM) {
     if (now >= nextTick) {
       const until = now + LOOKAHEAD * RATE;
-      while (next < plan.length && plan[next].at < until) {
+      while (next < plan.length && dueOf(plan[next]) < until) {
         const p = plan[next];
         const delay = Math.max(0, Math.round(p.at - now));
         mixer.play({
@@ -409,10 +430,11 @@ function renderLivePool(): [Float32Array, Float32Array] {
     }
     nextTick += block;
     const until = now + LOOKAHEAD * RATE;
-    while (next < plan.length && plan[next].at < until) {
+    while (next < plan.length && dueOf(plan[next]) < until) {
       const p = plan[next];
       const { end, stole } = pool.add(p.note, {
         start: p.poolStart,
+        rank: p.rank,
         end: p.poolEnd,
         score: p.score,
         walks: p.walks,

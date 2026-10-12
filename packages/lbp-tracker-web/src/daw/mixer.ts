@@ -2,7 +2,8 @@
  * The Song/Mixer view: one card with the song's settings (`MixerPanel.vue`),
  * and an "Engine" card with the switches that are not in the file
  * (`controls/engine.ts`, drawn by the shared control panel) and the live
- * meters -- notes sounding, dropouts, voices the pool has taken back.
+ * meters -- notes sounding, dropouts, voices the pool has taken back, and the
+ * gain the AGC after the game's master bus is applying.
  */
 
 import { createApp, h } from 'vue';
@@ -31,18 +32,27 @@ export function mountMixer(): void {
   let stolen = 0;
   let notes = 0;
   let dropouts = 0;
+  /** The AGC's gain as the worklet last reported it; null when it is not the bus. */
+  let agcGain: number | null = null;
+  const agc = (): string[][] => {
+    if (agcGain === null) return [];
+    const db = 20 * Math.log10(agcGain);
+    return [['AGC', `${db >= 0 ? '+' : ''}${db.toFixed(1)} dB`]];
+  };
   const show = () => {
     meters.innerHTML = [
       ['voices planned', player.plan.length.toLocaleString()],
       ['notes sounding', String(notes)],
       ['stolen so far', String(stolen)],
       ['dropouts', String(dropouts)],
+      ...agc(),
     ].map(([k, v]) => `<span>${k} <b style="color:var(--ink);font-weight:500">${v}</b></span>`).join('');
   };
   onPlayer({
     health: (h) => {
       notes = h.notes;
       dropouts = h.dropouts;
+      agcGain = h.agcGain;
       show();
     },
     stolen: (total) => {

@@ -5,8 +5,10 @@
  * WaveHammer's own constant (*The static curve* in
  * steering/lbp-audio-engine.md, from the module running) and the cross-feed a
  * hard-panned voice has in a capture, 0.261202 (*22* in
- * steering/answered-questions.md). The other two are checked against what the
- * tracker did before there was a choice, so that picking them changes nothing.
+ * steering/answered-questions.md). The game's with the AGC is checked to be
+ * the game's bus and then `audio/agc.ts`, nothing else (the AGC itself is
+ * `test/agc.test.ts`'s). The other two are checked against what the tracker
+ * did before there was a choice, so that picking them changes nothing.
  */
 
 import { strict as assert } from 'node:assert';
@@ -15,6 +17,7 @@ import test from 'node:test';
 import { WaveHammer } from '../src/audio/compressor.ts';
 import { FOLD_CENTRE, FOLD_GAIN, PAN_WIDTH } from '../src/audio/effects.ts';
 import { MasterBus, MASTER_DEFAULTS } from '../src/audio/master.ts';
+import { Agc } from '../src/audio/agc.ts';
 import { MasterStage } from '../src/audio/master-stage.ts';
 import { RATE, renderSequencer } from '../src/render.ts';
 import { DEFAULT_CHIP_COLOUR } from '@lbptracker/cwlib/chips.ts';
@@ -106,7 +109,7 @@ test('ours is the fold\'s gain and then the glue and the limiter, as before', ()
 
 test('a mono output takes each gain once, not once per channel', () => {
   // ⚠️ The live page's fast path once multiplied "both" channels of one array.
-  for (const choice of ['game', 'none', MASTER_DEFAULTS] as const) {
+  for (const choice of ['game', 'agc', 'none', MASTER_DEFAULTS] as const) {
     const [input] = signal(4800, 0.9);
     const mono = Float32Array.from(input);
     const left = Float32Array.from(input);
@@ -130,7 +133,8 @@ test('choosing the same bus again keeps its state, so a tempo change does not re
   assert.deepEqual(split1, whole1);
 });
 
-test('a render ends in the game\'s master bus unless asked otherwise', async () => {
+/** One voice, hard left, no echo and no reverb, and a loader with its one sample. */
+async function hardLeft() {
   const { groupNotes } = await import('@lbptracker/cwlib/notes.ts');
   const { DEFAULT_SLOT } = await import('../src/instrument.ts');
   const rec = (step: number, end: boolean) => ({
@@ -163,6 +167,11 @@ test('a render ends in the game\'s master bus unless asked otherwise', async () 
       base: 60,
     }],
   });
+  return { seq, loader };
+}
+
+test('a render ends in the game\'s master bus unless asked otherwise', async () => {
+  const { seq, loader } = await hardLeft();
   const options = { secondsArg: 1 };
   const plain = await renderSequencer(seq, loader, options);
   const game = await renderSequencer(seq, loader, { ...options, master: 'game' });
@@ -179,4 +188,79 @@ test('a render ends in the game\'s master bus unless asked otherwise', async () 
   for (let i = loud; i < loud + 4800; i += 97) {
     assert.ok(Math.abs(game.right[i] / game.left[i] - 0.261204) < 1e-5, `frame ${i}`);
   }
+});
+
+/**
+ * Frames through the game's bus alone, then through a fresh AGC: what `'agc'`
+ * must be, to float32 rounding -- the stage hands the AGC the fold's sum in
+ * double, and this one rounds it into the array first.
+ */
+function largestDifference(a: Float32Array, b: Float32Array): number {
+  let most = 0;
+  for (let i = 0; i < a.length; i += 1) most = Math.max(most, Math.abs(a[i] - b[i]));
+  return most;
+}
+
+function gameThenAgc(input: [Float32Array, Float32Array]): [Float32Array, Float32Array] {
+  const [left, right] = copy(input);
+  new MasterStage(RATE, 'game').run(left, right);
+  const agc = new Agc(RATE);
+  for (let i = 0; i < left.length; i += 1) {
+    agc.process(left[i], right[i]);
+    left[i] = agc.left;
+    right[i] = agc.right;
+  }
+  return [left, right];
+}
+
+test("the game's with the AGC is the game's bus and then the AGC, nothing else", () => {
+  const input = signal(RATE, 0.9);
+  const [left, right] = copy(input);
+  const stage = new MasterStage(RATE, 'agc');
+  stage.run(left, right, 0, RATE / 3);
+  stage.run(left, right, RATE / 3, RATE);
+  const [l, r] = gameThenAgc(input);
+  assert.ok(largestDifference(left, l) < 1e-6 && largestDifference(right, r) < 1e-6);
+  // A loud signal: the AGC ran, and took its starting +6 dB back down.
+  assert.ok(stage.agcGain !== null && stage.agcGain < 1.9, `${stage.agcGain}`);
+  assert.equal(new MasterStage(RATE, 'game').agcGain, null);
+});
+
+test("the game's and the game's with the AGC are one kind: a switch keeps the WaveHammer and the AGC", () => {
+  const input = signal(RATE, 0.9);
+  const [whole0, whole1] = copy(input);
+  new MasterStage(RATE, 'agc').run(whole0, whole1);
+  const [split0, split1] = copy(input);
+  const stage = new MasterStage(RATE, 'agc');
+  stage.run(split0, split1, 0, RATE / 2);
+  stage.set('agc');
+  stage.run(split0, split1, RATE / 2, RATE);
+  assert.deepEqual(split0, whole0);
+  assert.deepEqual(split1, whole1);
+  // Away to the game's alone and back: the AGC resumes where it was.
+  const before = stage.agcGain;
+  stage.set('game');
+  assert.equal(stage.agcGain, null);
+  stage.set('agc');
+  assert.equal(stage.agcGain, before);
+});
+
+test("a render with the AGC is the game's render through the AGC", async () => {
+  const { seq, loader } = await hardLeft();
+  const options = { secondsArg: 1 };
+  const game = await renderSequencer(seq, loader, { ...options, master: 'game' });
+  const agc = await renderSequencer(seq, loader, { ...options, master: 'agc' });
+  const [left, right] = (() => {
+    const l = Float32Array.from(game.left);
+    const r = Float32Array.from(game.right);
+    const a = new Agc(RATE);
+    for (let i = 0; i < l.length; i += 1) {
+      a.process(l[i], r[i]);
+      l[i] = a.left;
+      r[i] = a.right;
+    }
+    return [l, r];
+  })();
+  assert.ok(largestDifference(agc.left, left) < 1e-6 && largestDifference(agc.right, right) < 1e-6);
+  assert.equal(agc.compressorGain, game.compressorGain);
 });

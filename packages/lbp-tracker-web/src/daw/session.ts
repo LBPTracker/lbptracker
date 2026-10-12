@@ -145,13 +145,14 @@ export const player = new Player({
 export const poolSize = (): number => (engine.on('optNoCap') ? VOICES_UNLIMITED : engine.raw('voices'));
 
 /**
- * The master bus the engine card asks for: the game's, or ours at its glue.
- * The keyboard's worklet follows the same choice (`daw/keyboard-view.ts`).
+ * The master bus the engine card asks for: the game's, with the AGC or
+ * without, the fold's gain alone, or ours at its glue. The keyboard's worklet
+ * follows the same choice (`daw/keyboard-view.ts`).
  */
 export function masterChoice(): MasterChoice {
-  return engine.picked('master') === 'ours'
-    ? { amount: engine.raw('masterAmount'), ceilingDb: MASTER_DEFAULTS.ceilingDb }
-    : 'game';
+  const picked = engine.picked('master');
+  if (picked === 'ours') return { amount: engine.raw('masterAmount'), ceilingDb: MASTER_DEFAULTS.ceilingDb };
+  return picked === 'game' || picked === 'none' ? picked : 'agc';
 }
 
 export function pushEffects(): void {

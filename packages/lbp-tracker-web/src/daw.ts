@@ -38,8 +38,6 @@ import { mountRender } from './daw/render-view.ts';
 import { mountConvert } from './daw/convert-view.ts';
 import { mountKeyboard } from './daw/keyboard-view.ts';
 import { mountMediaKeys } from './daw/media-keys.ts';
-import { engine } from './controls/engine.ts';
-import { watch } from 'vue';
 import type { Health } from './player.ts';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -99,7 +97,7 @@ const volSlider = $<HTMLInputElement>('vol');
 const tempoBox = $<HTMLInputElement>('tempoBox');
 
 let health: Health = {
-  sounding: 0, notes: 0, queued: 0, audioLoad: null, dropouts: 0, lostMs: 0,
+  sounding: 0, notes: 0, queued: 0, audioLoad: null, dropouts: 0, lostMs: 0, agcGain: null,
 };
 /**
  * When the meter turns yellow: half a core on average. ❗ A decision, not a
@@ -192,25 +190,6 @@ loopButton.addEventListener('click', () => {
 });
 volSlider.addEventListener('input', () => player.setVolume(Number(volSlider.value)));
 
-/**
- * The G in the bar is the master bus's own choice, not a second setting: it
- * reads and writes the engine card's `master`, so the Song/Mixer card and this
- * button can never disagree. Lit, it is ours, the glue and the limiter; unlit,
- * the game's own, `SMS WaveHammer` and the 7.1 fold, which is where it starts.
- */
-const glueButton = $<HTMLButtonElement>('glue');
-const paintGlue = () => {
-  const on = engine.picked('master') === 'ours';
-  glueButton.setAttribute('aria-pressed', String(on));
-  glueButton.classList.toggle('on', on);
-};
-glueButton.addEventListener('click', () => {
-  engine.choose('master', engine.picked('master') === 'ours' ? 'game' : 'ours');
-  paintGlue();
-});
-// The card under Song/Mixer moves the same switch; follow it.
-watch(engine.effectsSignature, paintGlue);
-paintGlue();
 player.setVolume(Number(volSlider.value));
 
 /**

@@ -34,7 +34,7 @@ The views are:
 |---|---|---|
 | Home | `index.html` only | a presentation of the app, reached by the brand in the top bar; a view like the others, so the song and the transport stay as they are |
 | Arrange | `daw/arrange.ts` | the board filling the page (its scroller ending at the panel's top edge when the panel is open, so the horizontal scrollbar stays reachable) (a chip shows its sound's own line icon from `editor/icons.ts`, one per `.rinst` file, ours and not the game's art; the family glyph is the fallback), with a "+" strip under its last row for another and the selected row's number turning into an "×" under the pointer to remove it (no wider gutter for it), chips and row numbers lit for 260 ms as their notes start (found by scanning the song between two playhead positions, drawn every frame while playing), between the bar and the footer; the roll and the chip and point inspector in a panel that rises over the board's lower part when a chip is clicked or drawn (not when the playhead merely moves the selection), resizable by its top edge, closed by its button or Esc |
-| Song/Mixer | `daw/mixer.ts`, `daw/MixerPanel.vue` | the song's name, tempo, swing, channels and faders, board rows, echo, reverb, loop — the song's own fields — in one card, and an "Engine" card with the switches that are not in the file (`controls/engine.ts`) and the meters, including the **master bus**, which is the one piece of DSP here that is not the game's at all (off by default, question 42 in [open-questions.md](open-questions.md)); the name in the top bar is read-only |
+| Song/Mixer | `daw/mixer.ts`, `daw/MixerPanel.vue` | the song's name, tempo, swing, channels and faders, board rows, echo, reverb, loop — the song's own fields — in one card, and an "Engine" card with the switches that are not in the file (`controls/engine.ts`) and the meters, including the **master bus** — ours, a glue and a limiter, by default (question 42 in [open-questions.md](open-questions.md)), or the game's at its own level, the game's with an AGC (question 63, its gain in the meters' line as the worklet reports it), or the fold's gain alone; the name in the top bar is read-only |
 | Render | `daw/render-view.ts` | hands `sequencerFromSong(song)` to the render worker and plays the WAV back |
 | Import/Export | `daw/convert-view.ts` | exports it as MIDI, as an Ableton Live set (`daw/als-export.ts`) and as a `.plan`, each re-run while the view is shown; a MIDI file in *replaces* it, through `openSong` |
 | Keyboard | `daw/keyboard-view.ts` | the instrument bench, following the chip selected on the board |
@@ -106,12 +106,10 @@ updates each over 183 frames in three seconds, against the tick's ~30.
 
 
 
-The **G** beside the volume is the engine card's `master` choice from the bar — unlit the game's
-master bus, lit ours — reading and writing the same choice as the Song/Mixer card, so the two
-cannot disagree; ⚠️ it is deliberately **not** given the accent colour the loop button takes,
-because the accent in that bar means the song's own state and ours is the tracker's own doing
-(question 42). The Keyboard view's worklet follows the same choice (`masterChoice` in
-`daw/session.ts`); the Render view has its own, which renders ours at its default glue.
+The master bus has **no control in the bar**: the engine card under Song/Mixer is the one place
+the page picks it (question 42), so nothing can disagree with it. The Keyboard view's worklet
+follows the same choice (`masterChoice` in `daw/session.ts`), the AGC included; the Render view has
+its own, which renders ours at its default glue.
 
 song travels with the render request.
 

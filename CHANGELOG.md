@@ -4,6 +4,25 @@ What changed for the person using LBP Tracker, newest first. The site shows this
 version number in its status bar, so it is written for them: what they can do now that they could
 not before, never how it was done. No `--` or em dash in here; the site's text does without them.
 
+## 0.2.44 (2026-10-12)
+
+- Every song now keeps the game's own time. Notes start and stop on the same small grid the game
+  uses, a few milliseconds after the step rather than exactly on it, and their glides, swells and
+  filter sweeps follow the game's own arithmetic. Played or exported, a song now matches what the
+  game's synthesiser produces from the same notes, to well below anything you could hear.
+- Playing a song in the tracker and exporting it now give the same sound. Groups of notes used to
+  land a few milliseconds early or late against each other while playing, depending on when the
+  computer got round to them.
+- Exporting takes longer, about half again, to compute the filter exactly as the game does.
+- Our own master bus, the glue and the limiter, is where every song starts again. The game's own
+  is still one choice away: it is what the game would play, and it is quiet, 5 to 7 dB below ours.
+- The master bus has four choices, under Song/Mixer and in the Render view: none, game, AGC and
+  glue. The G beside the volume is gone; Song/Mixer is the one place to pick it.
+- New: AGC, the game's own master bus with an automatic volume after it, which turns a song
+  towards a comfortable level as it plays and keeps it from going over the top. It finds a song's
+  level in its first seconds and then moves slowly, so the quiet and loud parts of a song mostly
+  stay as they were. The Song/Mixer card shows how far it is turning the sound up.
+
 ## 0.2.43 (2026-10-11)
 
 - The master bus is now the game's own, and it is where every song starts: the compressor the

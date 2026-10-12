@@ -189,24 +189,39 @@ export interface RenderOptions {
   /** Run the echo. Default true. Same reasoning as `reverb`. */
   readonly echo?: boolean;
   /**
-   * Place onsets, gates and steals where the engine's step clock puts them:
-   * on its 256-frame blocks, a chunk after the step (`engine-clock.ts`).
+   * Place onsets, gates and steals where the engine's step clock puts them --
+   * on its 256-frame blocks, a chunk after the step (`engine-clock.ts`) -- and
+   * play every voice with the record's own float32 arithmetic.
    *
-   * ⚠️ **Default off, which is not the engine's.** The tracker starts a note on
-   * its own frame -- *3* in steering/open-questions.md, a decision with the
-   * capture that would settle it -- and this is the engine as measured, for
-   * a differential test against the module and for an A/B.
+   * ✔ **Default on, since 2026-10-12, the owner's choice** (*3 / 3b* in
+   * steering/answered-questions.md): 16 corpus songs agree with the module at
+   * -102 to -127 dB on it. Off is the tracker's clock: onsets on their own
+   * frame, voices in double, kept for an A/B.
    */
   readonly engineClock?: boolean;
+  /**
+   * On the engine's clock, the module's own float32 ladder. Default true.
+   *
+   * Off, the ladder runs in double with everything around it still the
+   * module's (`EngineRecord.ladder64`): +4% of a render where the float32
+   * ladder is +60%, for at most 11.6 dB of difference, all of it below -107 dB
+   * of the module. The live player plans with it off, because the audio thread
+   * cannot spare the cost; an export keeps it on.
+   */
+  readonly exactLadder?: boolean;
   /**
    * The master bus: what follows `SMS Reverb`, where the sequencer's chain ends
    * (`audio/master-stage.ts`).
    *
    * ✔ **Default `'game'`, the game's**: `SMS WaveHammer` as the game ships it,
    * then the 7.1 fold a stereo listener hears, its gain and its narrowing.
-   * Settings put **ours** there instead -- the fold's gain, then the glue and
-   * the limiter of `audio/master.ts`, nothing the game does (question 42 in
-   * steering/open-questions.md). `'none'` is the fold's gain alone, the
+   * `'agc'` is that, then an automatic gain control and our limiter
+   * (`audio/agc.ts`, *63* in steering/open-questions.md). Settings put
+   * **ours** there instead -- the fold's gain, then the glue and the limiter of
+   * `audio/master.ts`, nothing the game does: the page's default and
+   * `render-level.ts`'s (question 42 in steering/open-questions.md). This
+   * library keeps the game's as its own default, because the differential
+   * checks compare levels against the modules. `'none'` is the fold's gain alone, the
    * file's own image and no compressor: this renderer's default until 0.2.43.
    *
    * ⚠️ The game's bus compresses whatever crest factor reaches it, and whether
@@ -245,6 +260,13 @@ export interface RenderOptions {
       poolStart: number;
       poolEnd: number;
       score: number;
+      /**
+       * `PooledNote.rank`: the order among notes with the same `poolStart`. On
+       * the engine's clock the walk spawns a step's notes from the last clip
+       * to the first, and a live pool has to take them in that order to decide
+       * what the render decides; 0 on the tracker's clock.
+       */
+      poolRank: number;
       /**
        * The score after each walk the note sees, in the same steps as
        * `poolStart` -- `PooledNote.walks`, which a live pool needs beside
@@ -329,7 +351,7 @@ export interface RenderResult {
   readonly clippedFrames: number;
   /**
    * The deepest gain `SMS WaveHammer` applied, its constant −1.84 dB included,
-   * or 1 when the master bus is not the game's.
+   * or 1 when the master bus has none (`'none'`, ours).
    */
   readonly compressorGain: number;
   readonly peak: number;
@@ -384,7 +406,8 @@ export async function renderSequencer(
     declick: withDeclick = true,
     reverb: withReverb = true,
     echo: withEcho = true,
-    engineClock: withEngineClock = false,
+    engineClock: withEngineClock = true,
+    exactLadder = true,
     master: masterChoice = 'game',
     onVoice,
     planOnly = false,
@@ -996,6 +1019,7 @@ export async function renderSequencer(
         params: p,
         ...(noKeyTrack ? { noKeyTrack } : {}),
         lfoPhases: basePhase,
+        ...(exactLadder ? {} : { ladder64: true }),
       };
     })();
 
@@ -1135,7 +1159,9 @@ export async function renderSequencer(
       zone,
       track: event.track,
       startFrame: voice.startFrame ?? 0,
-      poolStart: event.step,
+      // The pool's own start and rank, as `allocateVoices` was given them.
+      poolStart: clock ? Math.floor(event.step + fromStep) - fromStep : event.step,
+      poolRank: clock ? -event.track : 0,
       poolEnd: event.step + (prep.occupancySteps ?? event.durationSteps),
       // The same two factors as the pool above, and for the same reason.
       score: channelVolume(seq, track) * track.level * velocityGain(event.volume),

@@ -20,8 +20,8 @@ const GROUP_SPECS = [
   // What each does is in the help (src/help.ts, 'engine'), not beside the faders.
   { key: 'pool', title: 'voice pool' },
   { key: 'stage', title: 'output stage' },
-  // The game's by default; ours, the one thing here that is not the game's, is
-  // the other choice.
+  // Ours, the glue and the limiter, by default; the game's, with an AGC or at
+  // its own level, and the fold's gain alone beside it.
   { key: 'master', title: 'master bus' },
 ] as const satisfies readonly Group[];
 
@@ -42,20 +42,26 @@ const CHECK_SPECS = [
 ] as const satisfies readonly Check[];
 
 /**
- * ❗ **The game's is the default and it stays that way**: `SMS WaveHammer` and
- * the 7.1 fold, `master-stage.ts` in the library. Ours, the glue and the
- * limiter, is nothing the game does (question 42 in steering/open-questions.md).
- * The bar's G flips the same choice, so the two cannot disagree.
+ * ❗ **Ours is the default since 2026-10-12, the owner's choice** (question 42
+ * in steering/open-questions.md): the fold's gain, then the glue and the
+ * limiter, nothing the game does. The game's is `SMS WaveHammer` and the 7.1
+ * fold, `master-stage.ts` in the library; the game's + AGC is that with a slow
+ * automatic gain towards −16 LUFS and our limiter after it (`audio/agc.ts`,
+ * question 63); none is the fold's gain alone, the tracker's default until
+ * 0.2.43. This card is the one place the page picks it; the Render view has
+ * its own.
  */
 const CHOICE_SPECS = [
   {
     id: 'master',
     group: 'master',
     label: 'which',
-    start: 'game',
+    start: 'ours',
     effects: true,
     options: [
+      { value: 'none', label: "none: the fold's gain alone" },
       { value: 'game', label: "the game's" },
+      { value: 'agc', label: "the game's + AGC" },
       { value: 'ours', label: 'ours: glue and limiter' },
     ],
   },

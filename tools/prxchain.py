@@ -23,7 +23,7 @@ allocated here at the sizes it asks for:
 - the reverb by its create `v0x3fcfe0`: preset row 2 into the slots with slot 0 pinned at -800
   (`v0x3fd1ad`-`v0x3fd1eb`), then `v0x3fcc00` and `v0x3fcd50` with the configure flag set;
 - the WaveHammer by its create `v0x3fd6c0`: the 0x44-byte template at `v0x1062850` into the
-  parameter block (`rep movsd` at `v0x3fd8cb`), the stores of `v0x3fd8dc`-`v0x3fda47`, and the
+  parameter block (`rep movsd` at `v0x3fd8da`), the stores of `v0x3fd8dc`-`v0x3fda47`, and the
   template marshalled into the kernel's config by the eboot's `setparameter` `v0x3fda80`, which
   repeats the create's marshal instruction for instruction and differs only in which dirty
   counters it bumps -- put back as the create leaves them;

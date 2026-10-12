@@ -89,9 +89,6 @@ export const HELP: Readonly<Record<HelpTopic, Topic>> = {
         'long the song is, the BPM box changes the tempo as it plays, the fader sets the volume, and the two bars ' +
         'above it are the left and right output levels. The status bar at the bottom says how many notes are ' +
         'sounding, how busy the audio is, and whether it has dropped out.') +
-      p('The <strong>G</strong> beside the volume picks the master bus from the bar: the same choice as under ' +
-        'Song/Mixer, so the two always agree. Unlit it is the game’s own, what the game would play; lit it is ' +
-        'ours, a glue and a limiter instead.') +
       p('The keys a transport usually answers to, from any view: <kbd>Space</kbd> plays and pauses where it is, ' +
         '<kbd>Home</kbd> or <kbd>Enter</kbd> go back to the start without stopping, <kbd>End</kbd> jumps to the ' +
         'end of the song, and <kbd>Ctrl+S</kbd> saves it. On the Arrange view, <kbd>L</kbd> turns the loop on ' +
@@ -254,15 +251,23 @@ export const HELP: Readonly<Record<HelpTopic, Topic>> = {
       p('<strong>echo</strong>, <strong>reverb</strong> and <strong>output clip</strong> switch those parts of the sound ' +
         'off to hear the song without them. Below them: how many notes are sounding, how many times the audio could ' +
         'not keep up, and how many notes the pool has cut so far.') +
-      p('The <strong>master bus</strong> is the last thing the sound goes through, and there are two. ' +
-        '<strong>The game’s</strong>, where it starts, is what the game itself does after the reverb: the ' +
-        'compressor it ends every song with, which brings the loudest moments down, and the way a television ' +
-        'folds the game’s surround sound into two speakers, which also pulls every instrument a little towards ' +
-        'the middle, so nothing is ever panned hard to one side.') +
-      p('<strong>Ours</strong> is the one thing here that is not the game: a compressor and a limiter of this ' +
-        'tracker’s own, which even the loud parts out against the quiet ones and stop anything going over the top, ' +
-        'the way a mix is usually finished, and keep each instrument’s pan as the song wrote it. ' +
-        '<strong>glue</strong> is how much of it. With ours, what you hear is no longer what the game would play.'),
+      p('The <strong>master bus</strong> is the last thing the sound goes through, and there are four. ' +
+        '<strong>The game’s</strong> is what the game itself does after the reverb: the compressor it ends every ' +
+        'song with, which brings the loudest moments down, and the way a television folds the game’s surround ' +
+        'sound into two speakers, which also pulls every instrument a little towards the middle, so nothing is ' +
+        'ever panned hard to one side. It is quiet: the game plays its songs well below full volume.') +
+      p('<strong>The game’s + AGC</strong> is the same sound with a slow automatic volume ' +
+        'after it, which turns a song up or down towards a comfortable level as it plays, the way you would ' +
+        'ride the volume yourself, and stops anything going over the top. It settles on a song within its ' +
+        'first seconds and then moves slowly, over tens of seconds, so a song keeps most of its quiet and loud ' +
+        'parts; one that starts very quietly and gets loud is evened out a little. The line below the switches ' +
+        'says how far it is turning the sound up.') +
+      p('<strong>none</strong> skips the compressor and the folding and keeps only the folding’s volume: what ' +
+        'this tracker played before it had the game’s. <strong>Ours</strong>, where it starts, is the one thing ' +
+        'here that is not the game: a compressor and a limiter of this tracker’s own, which even the loud parts ' +
+        'out against the quiet ones and stop anything going over the top, the way a mix is usually finished, and ' +
+        'keep each instrument’s pan as the song wrote it. <strong>glue</strong> is how much of it. With ours, ' +
+        'what you hear is no longer what the game would play.'),
   },
   render: {
     title: 'Rendering',
@@ -270,8 +275,8 @@ export const HELP: Readonly<Record<HelpTopic, Topic>> = {
       p('<strong>Render</strong> writes the whole song, or just a section, to a WAV file at studio quality, through ' +
         'the same engine you hear live. Tick <strong>just a section</strong> and give it a start and an end as ' +
         'minutes:seconds. The switches beside it are the same as the engine\'s: the size of the voice pool, ' +
-        'whether the echo, the reverb and the output clip are in, and which master bus ends it, the game’s or ' +
-        'ours at its usual glue.') +
+        'whether the echo, the reverb and the output clip are in, and which master bus ends it: ours at its ' +
+        'usual glue, the game’s with its automatic volume, the game’s at its own volume, or none.') +
       p('When it is done the waveform appears: click it to seek, <kbd>Space</kbd> plays, the arrow keys scrub. ' +
         '<strong>Download WAV</strong> saves it, and the cards below say what the render contained.'),
   },

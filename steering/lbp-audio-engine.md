@@ -376,8 +376,9 @@ it**: the compressor section runs; the limiter section is bypassed.
 **The game configures it without `DSP::setParameter`.** `ebxref.py calls 0xa23970` finds fifteen
 sites in the binary, nine of them `applyReverbPreset` and none this DSP, and `refs 0x132aac0` finds
 the only four paths to the handle, all create/add/teardown. The create callback `v0x3fd6c0` ends
-with a `rep movsd` at `v0x3fd8cb` of a **static 0x44-byte template at `v0x1062850`** into the
-plugin's parameter block, overriding eight of the sixteen declared defaults:
+with a `rep movsd` of 17 dwords (`lea rsi` at `v0x3fd8cb`, the copy at `v0x3fd8da`) of a **static
+0x44-byte template at `v0x1062850`** into the plugin's parameter block, overriding eight of the
+sixteen declared defaults (the 68 bytes re-read on 2026-10-12, the values below):
 
 | # | parameter | unit | default | **shipped** | |
 |---|---|---|---|---|---|
@@ -396,7 +397,15 @@ The parameter block is a plain C struct in declaration order — bools as bytes,
 **int32** — at offsets `0x00, 0x01, 0x04, 0x08, 0x0c, 0x10, 0x14, 0x18, 0x1c, 0x1d, 0x1e, 0x1f,
 0x20, 0x24, 0x28, 0x2c`, confirmed three ways: the offsets `setparameter` (`v0x3fda80`) marshals
 from, the type sequence of the paramdescs at `v0x10783c0` (`numparameters` = 16), and the kernel's
-own arithmetic. `setparameter` copies that block into a kernel-facing config laid out as
+own arithmetic. ✔ **And nothing in FMOD puts the declared defaults back** (read 2026-10-12): `SystemI::createDSP`
+`v0xa52560` copies the description and calls the plugin factory `v0xa3d4e0`, whose tail for a
+description DSP (vtable `v0x10bd760`, `DSPFilter`) is the object's `alloc` at `v0xa3dcc6` — a copy
+of the description — and the description's `create` at `v0xa3dd07`, then a return, with no loop
+over the parameters. The one place FMOD calls a plugin's `setparameter`, `DSPI::setParameter`
+`v0xa284c0` (vtable `+0x68`, a clamp to the paramdesc's range and a jump through `[dsp+0x118]`),
+has no direct call and no reference; `Channel::addDSP`'s deferred half (`v0xa53010` → `v0xa531f5`)
+only inserts the unit, calls the description's `reset`, which the game leaves null, and sets the
+unit's active bit. So the template is what the kernel runs, from the first block. `setparameter` copies that block into a kernel-facing config laid out as
 `[compressor, limiter]` pairs — ratio at `+0x10/+0x14`, threshold at `+0x18/+0x1c`, output gain at
 `+0x20/+0x24` — inverts both bypasses into `enabled` flags at `+0x00` (limiter) and `+0x01`
 (compressor), and bumps two 16-bit dirty counters at `+0x40/+0x42`, which the kernel compares
@@ -649,7 +658,9 @@ game's ever is, engaging on material the game passes untouched (0.05% of frames 
 
 Everything above, from the reverb's write-back to the listener's fold, is one stage with no free
 parameter, and `packages/lbp-tracker-lib/src/audio/master-stage.ts` runs it for the offline render
-and the live worklet alike, **by default since 0.2.43**:
+and the live worklet alike: the library's default since 0.2.43, and the page's from 0.2.43 until
+2026-10-12, when the owner made ours the page's default (*42* in
+[open-questions.md](open-questions.md)):
 
 ```
 (dry + reverb wet, L R) ─► SMS WaveHammer as shipped ─► × 1.0 (the channel) ─► 7.1 matrix ─► BS.775 fold
@@ -663,11 +674,14 @@ game, so a pan narrowed upstream would feed both a different signal. ✔ `test/m
 holds a hard-left voice's right channel at **0.261204** of its left through a whole render, the
 captures' 0.261202.
 
-Two other buses sit beside it, chosen on the page's engine card (and its **G**), on the Render view,
-or with `RenderOptions.master` / `LBP_MASTER`:
+Three other buses sit beside it, chosen on the page's engine card under Song/Mixer, on the Render
+view, or with `RenderOptions.master` / `LBP_MASTER`:
 
-- **ours** — the fold's gain alone, which keeps the file's own image, then `audio/master.ts`'s glue
-  and limiter: *42* in [open-questions.md](open-questions.md);
+- **ours**, the page's default since 2026-10-12 — the fold's gain alone, which keeps the file's own
+  image, then `audio/master.ts`'s glue and limiter: *42* in [open-questions.md](open-questions.md);
+- **`'agc'`** — this one, then `audio/agc.ts`: a slow automatic gain towards −16 LUFS and our
+  limiter, ours and not the game's, because the game's own level is −20 to −22 LUFS over four
+  whole songs. *63* in [open-questions.md](open-questions.md);
 - **`'none'`** — the fold's gain alone and nothing after it: the tracker's default from 2026-09-06
   to 0.2.43, the hybrid of the game's downmixed level with its internal image, kept because the
   listening decisions were judged against it.

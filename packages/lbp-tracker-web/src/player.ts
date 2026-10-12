@@ -53,6 +53,8 @@ import { stepLength, swungFrame } from '@lbptracker/lib/swing.ts';
 import { samplesPerStep } from '@lbptracker/lib/voice.ts';
 import type { MasterChoice } from '@lbptracker/lib/audio/master-stage.ts';
 import { RATE, renderSequencer, type InstrumentLoader } from '@lbptracker/lib/render.ts';
+import { engineClock, type EngineClock } from '@lbptracker/lib/engine-clock.ts';
+import { placeOnClock, spawnStep } from '@lbptracker/lib/engine-place.ts';
 
 /**
  * One scheduled voice: when it starts, which sample it plays, and its spec.
@@ -125,7 +127,13 @@ export interface Planned {
    */
   readonly pointSteps: readonly number[];
   readonly sampleId: string;
-  readonly voice: Omit<VoiceSpec, 'sample' | 'random' | 'startFrame' | 'endFrame' | 'cutFrame'>;
+  /**
+   * ⚠️ **Without `engineGrid`.** The render's is the whole song's chunk table
+   * on its own clock, hundreds of kilobytes that would be copied with every
+   * note posted; `pump` puts the voice on the player's clock and posts the
+   * window of chunks it lives in (`placeOnClock`).
+   */
+  readonly voice: Omit<VoiceSpec, 'sample' | 'random' | 'startFrame' | 'endFrame' | 'cutFrame' | 'engineGrid'>;
   /**
    * What the voice pool needs, in its own units.
    *
@@ -137,6 +145,8 @@ export interface Planned {
    * bit-identical at pools of 2, 4, 8 and 32.
    */
   readonly poolStart: number;
+  /** `PooledNote.rank`: the order the walk spawns notes of one step in. See `planOrder`. */
+  readonly poolRank: number;
   readonly poolEnd: number;
   readonly score: number;
   readonly index: number;
@@ -181,6 +191,11 @@ export interface Health {
   readonly dropouts: number;
   /** How much sound those cost, in milliseconds. */
   readonly lostMs: number;
+  /**
+   * The gain the AGC after the game's bus is applying (`audio/agc.ts`), as
+   * the worklet last reported it; `null` when another master bus is chosen.
+   */
+  readonly agcGain: number | null;
 }
 
 /** The song's output stage, as the worklet takes it minus the step length. */
@@ -194,7 +209,7 @@ export interface EffectSettings {
   readonly clip: boolean;
   /**
    * Which master bus ends the chain: the game's -- `SMS WaveHammer` and the
-   * 7.1 fold -- when absent, or ours. See `master-stage.ts`.
+   * 7.1 fold -- when absent, with the AGC, ours or none. See `master-stage.ts`.
    */
   readonly master?: MasterChoice;
 }
@@ -233,6 +248,33 @@ export interface Loaded {
  */
 const LOOKAHEAD = 0.35;
 const TICK = 100;
+
+/**
+ * How far past the song's end, in seconds, a run of the engine's clock is
+ * simulated: the last notes' gates and releases are placed on it too.
+ */
+const RUN_TAIL = 10;
+
+/**
+ * The order the plan is posted and pooled in: the pool's start, then its rank,
+ * then the note. ❗ It is `allocateVoices`'s own sort, which is what lets
+ * `LiveVoicePool` decide what the render decides: on the engine's clock a step's
+ * notes take records at its walk, the last clip first, sub-step or not.
+ */
+const planOrder = (a: Planned, b: Planned): number =>
+  a.poolStart - b.poolStart || a.poolRank - b.poolRank || a.note - b.note;
+
+/**
+ * One run of the engine's clock under the transport: the clock restarted at a
+ * step, and the transport frame its frame 0 sits at.
+ */
+interface ClockRun {
+  readonly origin: number;
+  readonly clock: EngineClock;
+  /** The step it started at, and the frames it was simulated for, to grow it. */
+  readonly start: number;
+  readonly frames: number;
+}
 
 /** Tags below this are the player's own one-off voices, never a plan note's. */
 const AUDITION_TAG_BASE = -1_000_000;
@@ -316,10 +358,19 @@ export class Player {
   /** Voices the pool has taken back since the last seek, counted as it goes. */
   stolen = 0;
   private health: Health = {
-    sounding: 0, notes: 0, queued: 0, audioLoad: null, dropouts: 0, lostMs: 0,
+    sounding: 0, notes: 0, queued: 0, audioLoad: null, dropouts: 0, lostMs: 0, agcGain: null,
   };
   private readonly lost = new DropoutCounter();
   private auditionTag = AUDITION_TAG_BASE;
+  /**
+   * The engine's clock as the transport runs it, from where it last started:
+   * `play`, a tempo or swing change, a fold of the passes (see `startRun`).
+   */
+  private run: ClockRun | null = null;
+  /** The clock every later time round a looped section runs on, origin aside. */
+  private passRun: ClockRun | null = null;
+  /** A track's key -> its rank in the whole song's walk, for a re-planned track. */
+  private readonly rankOf = new Map<number, number>();
 
   constructor(events: PlayerEvents = {}) {
     this.events = events;
@@ -352,7 +403,7 @@ export class Player {
     node.port.onmessage = (event: MessageEvent) => {
       const data = event.data as {
         type: string; id?: string; total?: number; sounding?: number; notes?: number;
-        load?: number | null;
+        load?: number | null; agc?: number | null;
       };
       if (data.type === 'missingSample') this.events.missingSample?.(data.id ?? '?');
       // The only place that knows what is actually sounding is the audio thread.
@@ -369,6 +420,7 @@ export class Player {
           audioLoad: data.load ?? null,
           dropouts: this.health.dropouts + lost.dropouts,
           lostMs: this.health.lostMs + lost.lostMs,
+          agcGain: data.agc ?? null,
         };
         this.events.health?.(this.health);
       }
@@ -482,12 +534,15 @@ export class Player {
     const sent = this.sent;
     let samples = 0;
 
-    const result = await this.collect(seq, loader, node, built, 0, (i) => keys?.[i] ?? i);
+    const keyOf = (i: number) => keys?.[i] ?? i;
+    this.rankOf.clear();
+    original.tracks.forEach((_, i) => this.rankOf.set(keyOf(i), -i));
+    const result = await this.collect(seq, loader, node, built, 0, keyOf, (rank) => rank);
     this.noteBase = built.reduce((m, v) => Math.max(m, v.note + 1), 0);
 
-    // Sorted by musical position, which is the order they will be posted in at
-    // any tempo: swing is monotonic in the step.
-    built.sort((a, b) => a.startStep - b.startStep);
+    // Sorted by the pool's own order, which is also the order they are posted
+    // in: by the walk that takes them, at any tempo.
+    built.sort(planOrder);
     this.plan = built;
     this.stepFrames = result.framesPerStep;
     this.liveTempo = seq.tempo;
@@ -506,6 +561,9 @@ export class Player {
       this.cursorFrames = Math.min(this.songFrames, stepBefore * this.stepFrames);
       if (this.context) this.startedAt = this.context.currentTime;
       this.playing = wasPlaying;
+      // The transport went on where it was, but its frames may not have: a
+      // section folded, or a tempo the run was not started at.
+      if (this.playing) this.startRun();
       this.repoint();
       this.events.tick?.();
     }
@@ -530,12 +588,16 @@ export class Player {
     built: Planned[],
     noteBase: number,
     keyOf: (index: number) => number,
+    /** The render's `poolRank` to the whole song's: the same, unless one track was planned alone. */
+    rankOf: (rank: number) => number,
   ): Promise<{ played: number; skipped: number; framesPerStep: number }> {
     const sent = this.sent;
     const result = await renderSequencer(seq, loader, {
       planOnly: true,
       // ❗ And no cap: the pool is applied live, per note. See `Planned`.
       voiceLimit: VOICES_UNLIMITED,
+      // The audio thread cannot spare the float32 ladder: see `exactLadder`.
+      exactLadder: false,
       onVoice: (voice, where) => {
         const sampleId = `g${where.guid}z${where.zone}`;
         if (!sent.has(sampleId)) {
@@ -554,7 +616,7 @@ export class Player {
           });
         }
         const {
-          sample: _s, random: _r, startFrame: _f, endFrame: _e, cutFrame: _c, ...rest
+          sample: _s, random: _r, startFrame: _f, endFrame: _e, cutFrame: _c, engineGrid: _g, ...rest
         } = voice;
         built.push({
           startStep: where.startStep,
@@ -574,6 +636,7 @@ export class Player {
           sampleId,
           voice: rest,
           poolStart: where.poolStart,
+          poolRank: rankOf(where.poolRank),
           note: where.note + noteBase,
           poolEnd: where.poolEnd,
           score: where.score,
@@ -612,7 +675,9 @@ export class Player {
     // an empty sequencer has none: give it the song's end, which is never
     // before this track's.
     const one: Sequencer = { ...seq, tracks: [track], lengthSteps: Math.max(seq.lengthSteps, endStep) };
-    await this.collect(one, loader, node, fresh, this.noteBase, () => key);
+    // Alone in its sequencer the track ranks 0; the walk ranks it by its place
+    // in the song, which `load` recorded.
+    await this.collect(one, loader, node, fresh, this.noteBase, () => key, () => this.rankOf.get(key) ?? 0);
     this.noteBase = fresh.reduce((m, v) => Math.max(m, v.note + 1), this.noteBase);
     // The whole track out, the whole fresh plan of it in. `repoint` keeps the
     // scheduler past `handedUntilStep`, so nothing before the frontier is
@@ -642,7 +707,7 @@ export class Player {
 
   /** A changed plan under the running clock: sorted, re-indexed, the end refreshed, the scheduler re-pointed. */
   private splice(merged: Planned[], seq: Sequencer, endStep: number): void {
-    merged.sort((a, b) => a.startStep - b.startStep);
+    merged.sort(planOrder);
     this.plan = merged.map((p, i) => ({ ...p, index: i }));
     this.songSteps = Math.max(endStep, seq.lengthSteps);
     this.songFrames = Math.round(swungFrame(this.songSteps, this.stepFrames, this.swing));
@@ -691,6 +756,84 @@ export class Player {
   /** The tempo now in force. */
   get tempo(): number {
     return this.liveTempo;
+  }
+
+  // ------------------------------------------------------ the engine's clock
+
+  /**
+   * Start the engine's clock again where the transport is: a restart, as the
+   * engine's own is when a song starts (`0x1a48`) -- the first chunk renders
+   * nothing new and the step it started in is walked at its end.
+   *
+   * ❗ **Only where the transport's frames stop following the clock**: `play`,
+   * a tempo or swing change, a fold of the passes. A fader or an edit leaves
+   * the clock running, so the notes after it keep the chunk grid the ones
+   * before it had. The voices already handed over keep the run they were
+   * placed on; the one-chunk seam a restart leaves is between them and the
+   * notes after the frontier, never inside a note.
+   */
+  private startRun(): void {
+    this.run = this.newRun(this.cursorFrames, this.stepAt(this.cursorFrames));
+    this.passRun = null;
+  }
+
+  private newRun(origin: number, start: number, frames?: number): ClockRun {
+    const span = frames ?? Math.max(0, this.songFrames - origin) + RUN_TAIL * RATE;
+    return { origin, start, frames: span, clock: engineClock(this.liveTempo, this.swing, span, start) };
+  }
+
+  /**
+   * The run a voice of pass `pass` is placed on, simulated at least as far as
+   * `step`: pass 0 runs from where the transport started; every later time
+   * round a section restarts at its first step, at the pass's own frame.
+   */
+  private runFor(pass: number, step: number): ClockRun {
+    const r = pass > 0 ? this.activeRegion() : null;
+    const rg = pass > 0 ? this.regionFrames() : null;
+    if (r === null || rg === null) {
+      this.run ??= this.newRun(this.cursorFrames, this.stepAt(this.cursorFrames));
+      this.run = this.covering(this.run, step);
+      return this.run;
+    }
+    if (this.passRun === null || this.passRun.start !== r.start) {
+      this.passRun = this.newRun(0, r.start, rg.len + RUN_TAIL * RATE);
+    }
+    this.passRun = this.covering(this.passRun, step);
+    return { ...this.passRun, origin: rg.startF + pass * rg.len };
+  }
+
+  /**
+   * The same run simulated further when `step` is past its end -- a song made
+   * longer while it plays. The clock is a pure function of its tempo, swing
+   * and start, so the longer one has the shorter one's chunks to the frame.
+   */
+  private covering(run: ClockRun, step: number): ClockRun {
+    const heads = run.clock.chunks.playheads;
+    if (heads[heads.length - 1] > step + 2) return run;
+    const ahead = (step + 4 - run.start) * this.stepFrames + RUN_TAIL * RATE;
+    return { ...run, ...this.newRun(run.origin, run.start, Math.max(2 * run.frames, ahead)), origin: run.origin };
+  }
+
+  /** A position in pass-space steps -- `passStep`'s -- on the run its pass is placed on. */
+  private passPlace(step: number): { run: ClockRun; local: number } {
+    const r = this.pass > 0 ? this.activeRegion() : null;
+    if (r === null) return { run: this.runFor(0, step), local: step };
+    const span = r.end - r.start;
+    const k = Math.max(0, Math.min(this.pass, Math.floor((step - r.start) / span)));
+    const local = step - k * span;
+    return { run: this.runFor(k, local), local };
+  }
+
+  /** The transport frame of the walk that takes the records of the whole step holding `step`. */
+  private walkTransport(step: number): number {
+    const { run, local } = this.passPlace(step);
+    return run.origin + run.clock.walkFrame(spawnStep(local));
+  }
+
+  /** The transport frame a note at `step` is first rendered at. */
+  private onsetTransport(step: number): number {
+    const { run, local } = this.passPlace(step);
+    return run.origin + run.clock.onsetFrame(local);
   }
 
   // --------------------------------------------------------- live settings
@@ -803,12 +946,17 @@ export class Player {
     // Where we are in the music, not in seconds: a tempo change moves one and
     // not the other, and the music is what a listener is following.
     const stepNow = this.stepFrames > 0 ? this.position() / this.stepFrames : 0;
+    const folded = this.pass > 0;
     this.rebasePass();
     if (settings.tempo !== undefined) this.stepFrames = samplesPerStep(RATE, settings.tempo);
     this.songFrames = Math.round(this.songSteps * this.stepFrames) + this.tailFrames;
     this.songSeconds = this.songFrames / RATE;
     this.cursorFrames = Math.min(this.songFrames, Math.round(stepNow * this.stepFrames));
     if (this.context) this.startedAt = this.context.currentTime;
+    // The engine reads the tempo every chunk; a new one, or a fold, is a new run.
+    if (this.playing && (folded || settings.tempo !== undefined || settings.swing !== undefined)) {
+      this.startRun();
+    }
     const now = this.position();
     // ❗ **`nextIndex` must never go BACKWARDS.** `pump` posts a look-ahead
     // window to the worklet, and those voices are already there and already
@@ -889,6 +1037,15 @@ export class Player {
     return rg.startF + ((raw - rg.startF) % rg.len);
   }
 
+  /**
+   * The audio context's frame for a transport frame: where the worklet plays
+   * it, whatever block the message reaches it in (`play.at` in
+   * `mixer-worklet.ts`).
+   */
+  private contextFrame(transport: number): number {
+    return Math.round(this.startedAt * RATE + (transport - this.cursorFrames));
+  }
+
   /** The clock as it runs: past the end of a looped section, not folded. */
   private rawPosition(): number {
     if (!this.playing || !this.context) return this.cursorFrames;
@@ -963,6 +1120,7 @@ export class Player {
     this.rebasePass();
     this.cursorFrames = Math.min(this.songFrames, folded);
     if (this.playing && this.context) this.startedAt = this.context.currentTime;
+    if (this.playing) this.startRun();
     const want = this.plan.findIndex((p) => this.frameOf(p) >= folded);
     this.nextIndex = Math.max(this.nextIndex, want < 0 ? this.plan.length : want);
     this.rebuildPoolTo(this.nextIndex);
@@ -1088,6 +1246,7 @@ export class Player {
     this.resetHealth();
     this.startedAt = this.context.currentTime;
     this.playing = true;
+    this.startRun();
     this.events.playing?.(true);
     this.pump();
   }
@@ -1104,7 +1263,7 @@ export class Player {
       this.node?.port.postMessage({ type: 'stopAll' });
       this.health = {
         sounding: 0, notes: 0, queued: 0,
-        audioLoad: this.health.audioLoad, dropouts: 0, lostMs: 0,
+        audioLoad: this.health.audioLoad, dropouts: 0, lostMs: 0, agcGain: this.health.agcGain,
       };
       this.events.health?.(this.health);
     }
@@ -1114,9 +1273,10 @@ export class Player {
   /**
    * Post everything that starts inside the look-ahead window.
    *
-   * `startFrame` is a delay the worklet counts down, so a voice posted early is
-   * still sample-accurate; the window only has to be wide enough that the next
-   * tick is never late.
+   * A voice names the context frame it starts at (`play.at`) and the worklet
+   * counts its delay down from there, so a voice posted early is sample-
+   * accurate whichever block its message lands in; the window only has to be
+   * wide enough that the next tick is never late.
    */
   private pump = (): void => {
     const node = this.node;
@@ -1154,8 +1314,16 @@ export class Player {
       // ❗ Frames and gain derived HERE, from the tempo, swing and faders as
       // they stand this instant. Everything else about the voice was decided
       // once.
-      const at = this.passFrame(p);
-      if (at >= until) break;
+      //
+      // On the engine's clock the voice is placed on the run of its pass, and
+      // the window closes on its WALK, not its onset: the walk takes a step's
+      // notes together, in the pool's order, and a sub-step note placed later
+      // than one of a later rank must not hold that one back past its own time.
+      const run = p.voice.engine !== undefined ? this.runFor(this.pass, p.startStep) : null;
+      const placed = run === null ? undefined : placeOnClock(p.voice, p.startStep, p.endStep, run.clock);
+      const at = run === null || placed === undefined ? this.passFrame(p) : run.origin + placed.startFrame;
+      const due = run === null ? at : run.origin + run.clock.walkFrame(spawnStep(p.startStep));
+      if (due >= until) break;
       if (!this.audible(p)) {
         // Consumed without a record, as the engine consumes it.
         this.handed.set(p.index, p.startStep);
@@ -1163,11 +1331,11 @@ export class Player {
         this.nextIndex += 1;
         continue;
       }
-      const life = this.lifeOf(p);
-      // The delay this voice waits before it starts, and its own end rebased
-      // onto that delay so the mixer's `endFrame - startFrame` is still its
-      // length.
-      const delay = Math.max(0, Math.round(at - now));
+      const life = placed === undefined
+        ? this.lifeOf(p)
+        : placed.endFrame === undefined ? undefined : placed.endFrame - placed.startFrame;
+      // Its end and cut as durations from its start: the worklet puts the
+      // start on the context frame `at` names and counts them from there.
       const tag = this.tagOf(p);
       const passSteps = this.passStep(p) - p.startStep;
       const poolEnd = p.poolEnd + passSteps;
@@ -1181,21 +1349,32 @@ export class Player {
       });
       this.noteEnd.set(tag, end);
       if (!this.noteStart.has(tag)) this.noteStart.set(tag, this.passStep(p));
-      const cut = end < poolEnd ? this.cutFrameAt(end) - at : undefined;
+      // A theft is at the walk of the thief's step, on the engine's clock.
+      const cut = end < poolEnd
+        ? (placed === undefined ? this.cutFrameAt(end) : this.walkTransport(end)) - at
+        : undefined;
       node.port.postMessage({
         type: 'play',
         sampleId: p.sampleId,
+        // ❗ On the context's own frame, so a burst lands where it was meant to
+        // whichever block the message reaches the worklet in; `startFrame` and
+        // the rest count from it.
+        at: this.contextFrame(at),
         voice: {
-          ...this.onClock(p),
+          // An engine voice reads its slides off its walks and its window of
+          // chunks; the automation's frames are the tracker's clock's.
+          ...(placed === undefined
+            ? this.onClock(p)
+            : { ...p.voice, engine: placed.engine, engineGrid: placed.engineGrid }),
           gain: this.gainOf(p),
           // ❗ **Tagged by NOTE, not by layer.** A stacked instrument's layers
           // all came out of one of the engine's records, so they are taken away
           // together, expressed together, and counted together -- which is also
           // what lets the worklet report notes beside voices.
           tag,
-          startFrame: delay,
-          endFrame: life === undefined ? undefined : delay + life,
-          cutFrame: cut === undefined ? undefined : delay + cut,
+          startFrame: 0,
+          endFrame: life,
+          cutFrame: cut,
         },
       });
       this.handed.set(p.index, p.startStep);
@@ -1209,12 +1388,15 @@ export class Player {
         // now.
         const startStep = this.noteStart.get(stole.index);
         if (startStep !== undefined) {
+          const engine = placed !== undefined;
+          const theft = engine ? this.walkTransport(stole.at) : this.cutFrameAt(stole.at);
+          const began = engine ? this.onsetTransport(startStep) : this.cutFrameAt(startStep);
           node.port.postMessage({
             type: 'cutAt',
             tag: stole.index,
-            frames: Math.max(
-              0, this.cutFrameAt(stole.at) - Math.max(now, this.cutFrameAt(startStep)),
-            ),
+            frames: Math.max(0, theft - Math.max(now, began)),
+            at: this.contextFrame(theft),
+            began: this.contextFrame(began),
           });
         }
       }
@@ -1265,6 +1447,7 @@ export class Player {
     await renderSequencer(seq, loader, {
       planOnly: true,
       voiceLimit: VOICES_UNLIMITED,
+      exactLadder: false,
       onVoice: (voice, where) => {
         const sampleId = `g${where.guid}z${where.zone}`;
         if (!this.sent.has(sampleId)) {
@@ -1283,12 +1466,21 @@ export class Player {
       },
     });
     const first = voices.reduce((m, v) => Math.min(m, v.startStep), Infinity);
+    // On the engine's clock the render placed every voice on its own clock;
+    // its frames are relative to the first one's, and its chunk table is the
+    // tiny sequencer's.
+    const firstFrame = voices.reduce((m, v) => Math.min(m, v.voice.startFrame ?? 0), Infinity);
     for (const { sampleId, voice, startStep, endStep } of voices) {
       const { sample: _s, random: _r, startFrame: _f, endFrame: _e, cutFrame: _c, ...rest } = voice;
-      const delay = Math.round(swungFrame(startStep - first, stepFrames, seq.swing));
-      const life = endStep === undefined
+      const engine = voice.engine !== undefined;
+      const delay = engine
+        ? (voice.startFrame ?? 0) - firstFrame
+        : Math.round(swungFrame(startStep - first, stepFrames, seq.swing));
+      const life = endStep === undefined || voice.endFrame === undefined
         ? undefined
-        : Math.max(0, Math.round(swungFrame(endStep - first, stepFrames, seq.swing)) - delay);
+        : engine
+          ? Math.max(0, voice.endFrame - (voice.startFrame ?? 0))
+          : Math.max(0, Math.round(swungFrame(endStep - first, stepFrames, seq.swing)) - delay);
       node.port.postMessage({
         type: 'play',
         sampleId,
