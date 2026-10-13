@@ -116,8 +116,9 @@ export async function loaderFor(
       const s = smpIndex.get(sampleGuid);
       if (!s) continue;
       const wav = readWav(await bytes(asset(`fixtures/smp/${s.file}`)));
-      // The loader's loop region and its 16-frame patch: see `engineSample`.
-      const engine = engineSample(wav);
+      // The loader's loop region and its 16-frame patch, and the smoothed loop
+      // a voice reads with `declick`: see `engineSample`.
+      const engine = engineSample(wav, sampleGuid);
       slots.push({
         base: slot.baseNote,
         wav: {
@@ -125,6 +126,9 @@ export async function loaderFor(
           sampleRate: wav.sampleRate,
           loop: engine.loop,
           mips: engine.channels.map((c) => buildMipChain(c)),
+          ...(engine.smoothed
+            ? { smoothed: { channels: engine.smoothed, mips: engine.smoothed.map((c) => buildMipChain(c)) } }
+            : {}),
         } satisfies SampleBuffer,
       });
     }

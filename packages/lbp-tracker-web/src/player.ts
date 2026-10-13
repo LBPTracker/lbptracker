@@ -612,6 +612,7 @@ export class Player {
               channels: sample.channels.map((c) => new Float32Array(c)),
               sampleRate: sample.sampleRate,
               loop: sample.loop,
+              smoothed: sample.smoothed?.channels.map((c) => new Float32Array(c)),
             },
           });
         }
@@ -1471,6 +1472,7 @@ export class Player {
               channels: voice.sample.channels.map((c) => new Float32Array(c)),
               sampleRate: voice.sample.sampleRate,
               loop: voice.sample.loop,
+              smoothed: voice.sample.smoothed?.channels.map((c) => new Float32Array(c)),
             },
           });
         }

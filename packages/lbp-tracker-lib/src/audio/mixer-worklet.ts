@@ -24,6 +24,8 @@ export interface SamplePayload {
   readonly channels: Float32Array[];
   readonly sampleRate: number;
   readonly loop?: { start: number; end: number };
+  /** `SampleBuffer.smoothed`'s channels, when the sample has them. */
+  readonly smoothed?: Float32Array[];
 }
 
 export type MixerMessage =
@@ -203,6 +205,9 @@ export class MixerProcessor extends AudioWorkletProcessor {
           // 50% more memory per sample and buys the engine's own anti-aliasing
           // above one octave up. See packages/lbp-tracker-lib/src/audio/mipmap.ts.
           mips: message.sample.channels.map((c) => buildMipChain(c)),
+          ...(message.sample.smoothed
+            ? { smoothed: { channels: message.sample.smoothed, mips: message.sample.smoothed.map((c) => buildMipChain(c)) } }
+            : {}),
         });
         break;
       case 'play': {

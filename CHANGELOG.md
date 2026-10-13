@@ -4,6 +4,13 @@ What changed for the person using LBP Tracker, newest first. The site shows this
 version number in its status bar, so it is written for them: what they can do now that they could
 not before, never how it was done. No `--` or em dash in here; the site's text does without them.
 
+## 0.2.48 (2026-10-13)
+
+- The harp holds its notes more naturally. Shortly after each pluck the harp's sound used to
+  freeze into a short repeating loop, and you could hear the moment it did. Now the plucked string
+  settles into the held sound gradually, and the held sound no longer flickers. Only the harp
+  changes; the game itself still plays the loop as it is.
+
 ## 0.2.47 (2026-10-13)
 
 - Fixed: a click once into each note of some instruments, the first time their sound loops round.

@@ -1,6 +1,6 @@
 {
   "name": "@lbptracker/lib",
-  "version": "0.2.47",
+  "version": "0.2.48",
   "type": "module",
   "description": "LittleBigPlanet 3's Music Sequencer as an engine: the sampler, the DSP chain and the render pipeline, measured against the game.",
   "license": "MIT",

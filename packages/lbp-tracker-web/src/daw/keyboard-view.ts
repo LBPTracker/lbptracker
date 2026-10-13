@@ -202,8 +202,9 @@ async function loadInstrument(row: ManifestRow): Promise<void> {
 
   const worklet = await ensureAudio();
   slots.forEach((s, i) => {
-    // The loader's loop region and its 16-frame patch: see `engineSample`.
-    const engine = engineSample(s.wav);
+    // The loader's loop region and its 16-frame patch, and the smoothed loop
+    // its voices read with `declick`: see `engineSample`.
+    const engine = engineSample(s.wav, s.guid);
     worklet.port.postMessage({
       type: 'load',
       sample: {
@@ -211,6 +212,7 @@ async function loadInstrument(row: ManifestRow): Promise<void> {
         channels: engine.channels,
         sampleRate: s.wav.sampleRate,
         loop: engine.loop,
+        smoothed: engine.smoothed,
       },
     });
   });

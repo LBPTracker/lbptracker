@@ -66,6 +66,16 @@ export interface SampleBuffer {
    * and why they converge on real material.
    */
   readonly mips?: readonly MipChain[];
+  /**
+   * The same sample with its loop smoothed (`smoothLoop` in `wav.ts`), for the
+   * few `LOOP_SMOOTHING` lists. **Ours**: a voice reads it instead of
+   * `channels` and `mips` only with `declick`, so without it the engine's own
+   * sample plays.
+   */
+  readonly smoothed?: {
+    readonly channels: readonly Float32Array[];
+    readonly mips?: readonly MipChain[];
+  };
 }
 
 /**
@@ -1480,7 +1490,9 @@ class Voice {
     engineSampler: boolean,
   ): void {
     const { sample } = this.spec;
-    const chans = sample.channels;
+    // Ours, with `declick`: a loop `smoothLoop` reshaped, where there is one.
+    const body = this.spec.declick === true && sample.smoothed !== undefined ? sample.smoothed : sample;
+    const chans = body.channels;
     const mono = chans.length === 1;
     const srcL = chans[0];
     const srcR = mono ? chans[0] : chans[1];
@@ -1488,7 +1500,7 @@ class Voice {
     // With the engine sampler off the voice falls back to `interpolate` over
     // the full-rate channels, which is the A/B path: it is how a different
     // interpolator can be heard against the game's own.
-    const mips = engineSampler ? sample.mips : undefined;
+    const mips = engineSampler ? body.mips : undefined;
     const mipL = mips?.[0];
     const mipR = mips === undefined ? undefined : (mips[1] ?? mips[0]);
     const driveK = this.driveK;

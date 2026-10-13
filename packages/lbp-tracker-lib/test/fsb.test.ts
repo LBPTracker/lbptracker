@@ -333,6 +333,40 @@ test('patchLoop puts the loop\'s first 16 frames after its end, so the wrap read
   assert.ok(Math.abs(readMipped(chain, 31, 0, loop) - data[11]) < 1e-9);
 });
 
+// Ours, read with `declick`: the harp's loops made to repeat one shape and to be
+// entered gradually (`LOOP_SMOOTHING`), the attack left as recorded.
+test('smoothLoop repeats one period and fades the recording into it', async () => {
+  const { smoothLoop, engineSample, LOOP_SMOOTHING } = await import('../src/wav.ts');
+  // A sine of period 10 whose loop [100, 140) holds four periods, each a little
+  // louder than the last, after a 40-frame stretch of other material.
+  const frames = 140;
+  const data = Float32Array.from({ length: frames }, (_, i) =>
+    i < 60 ? 0.3 : Math.sin((2 * Math.PI * i) / 10) * (i < 100 ? 0.5 : 0.4 + 0.02 * Math.floor((i - 100) / 10)));
+  const loop = { start: 100, end: 140 };
+  const out = smoothLoop(data, loop, 4);
+  // Inside the loop every period is the average of the four.
+  for (let j = 0; j < 10; j += 1) {
+    const mean = Math.sin((2 * Math.PI * j) / 10) * 0.43;
+    for (let m = 0; m < 4; m += 1) {
+      assert.ok(Math.abs(out[100 + 10 * m + j] - mean) < 1e-6, `period ${m}, frame ${j}`);
+    }
+  }
+  // Before it, two loop lengths crossfade from the recording into the loop:
+  // the first frame still the recording, the last almost all loop.
+  assert.equal(out[19], data[19], 'nothing before the crossfade moves');
+  assert.ok(Math.abs(out[20] - data[20]) < 1e-6, 'the crossfade starts on the recording');
+  assert.ok(Math.abs(out[99] - Math.sin((2 * Math.PI * 99) / 10) * 0.43) < 0.01, 'and ends on the loop');
+  // `engineSample` builds it only for a listed sample, patched as the loader patches.
+  const wav = { channels: [data], sampleRate: 48000, bitsPerSample: 16, loop: { start: 100, end: 139, type: 0 } };
+  assert.equal(engineSample(wav).smoothed, undefined);
+  assert.equal(engineSample(wav, 1).smoothed, undefined);
+  const [guid] = LOOP_SMOOTHING.keys();
+  const listed = engineSample(wav, guid);
+  assert.ok(listed.smoothed !== undefined);
+  assert.deepEqual(listed.channels[0], engineSample(wav).channels[0], 'the engine\'s own sample is untouched');
+  assert.equal(listed.smoothed[0][140], listed.smoothed[0][100], 'the smoothed loop is patched too');
+});
+
 // ❌ Until 2026-09-08 this test asserted that shifting the loop down by one
 // frame joined more smoothly than the literal reading -- which it does, and
 // which is not what the game plays: the loader takes `smpl` as written and

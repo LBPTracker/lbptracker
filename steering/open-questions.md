@@ -243,6 +243,21 @@ engine's rather than a design, and asked for it gone. Measured on those four cli
 first wraps go from +20 … +21 dB of high-frequency energy over the median to −1.8 … −8.6 dB, and
 with `declick` off the render still matches the module to −105.8 dB.
 
+`declick` also plays the **harp's loops smoothed** (since 0.2.48). The three harp samples pass from
+a plucked string that still beats — `harp_fsharp4`'s level swings 0.17–0.22 every ~1,300 frames,
+period by period off the file — into a loop of 9, 9 and 4 periods whose level is flat to a
+thousandth; the owner heard the passage as a jump on every note of Indigo's opening arpeggio. The
+loader keeps the game's sample and builds a second one beside it (`LOOP_SMOOTHING`, `smoothLoop`
+and `engineSample` in `wav.ts`; `SampleBuffer.smoothed`), which a voice reads only with `declick`:
+inside the loop every period is the average of its periods, and over the two loop lengths before
+it the recording crossfades on a smoothstep into the loop's own continuation. The attack and the
+loop's place are the game's. Chosen by ear against the shipped sample on Indigo's harp, dry; the
+tracker's render of it equals the approved prototype to the bit, and with `declick` off the harp
+still matches the module to −105.8 dB. ⚠️ **Two other ways were judged worse by the owner, and
+should not come back**: a longer loop taken from the sustained part and crossfaded (it keeps the
+beating, now repeated every 55 ms), and a plucked-string tail grown from the last period
+(Karplus–Strong; the loop is nearly a sine by then, so it only fades).
+
 ⚠️ **Not every engine click is a candidate.** The owner's line, 2026-10-13: an accident of the
 engine's goes (this gap); a behaviour a composer can work with stays. A clip's `sine_wave` notes
 thump at each join because the engine starts each note from rest, ladders and all, beside the old

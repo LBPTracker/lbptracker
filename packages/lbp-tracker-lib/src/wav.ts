@@ -81,22 +81,97 @@ export function patchLoop(
 }
 
 /**
+ * The samples whose loop is smoothed (`smoothLoop`), by sample GUID, with the
+ * number of periods of the note each loop holds. **Ours, not the game's.**
+ *
+ * The harp's three samples pass from a plucked string that still beats --
+ * `harp_fsharp4`'s level swings between 0.17 and 0.22 every ~1,300 frames --
+ * into a loop of a few periods whose level is flat to a thousandth, and the
+ * project's owner heard that passage as a jump on every note (Indigo's
+ * opening arpeggio, 4451115). The periods are read off the notes the files
+ * are named for, F#3, F#4 and F#5 at 48 kHz: 2,339, 1,169 and 260 frames are
+ * 9, 9 and 4 periods of 259.9, 129.9 and 65.0. ⚠️ A longer loop taken from the
+ * sustained part, crossfaded, and a plucked-string tail grown from the last
+ * period were both tried and both judged worse by ear (2026-10-13).
+ */
+export const LOOP_SMOOTHING: ReadonlyMap<number, number> = new Map([
+  [139000, 9], // harp_fsharp3
+  [139002, 9], // harp_fsharp4
+  [139001, 4], // harp_fsharp5
+]);
+
+/**
+ * A loop made to repeat one shape and to be entered gradually. **Ours.**
+ *
+ * Inside `[start, end)` every period becomes the average of the loop's
+ * `periods` -- read at fractional offsets, since a period need not be a whole
+ * number of frames -- so the loop repeats one waveform rather than a pattern
+ * of slightly different ones. Over the two loop lengths before `start`, the
+ * recorded sound is crossfaded on a smooth curve into the loop's own
+ * continuation backwards, which is in phase because the loop is whole
+ * periods, so the string's beating dies away into the loop instead of
+ * stopping where it starts. The attack before that is untouched. Works on the
+ * unpatched channel; `engineSample` patches the result as the loader would.
+ */
+export function smoothLoop(
+  channel: Float32Array,
+  loop: { readonly start: number; readonly end: number },
+  periods: number,
+): Float32Array {
+  const { start, end } = loop;
+  const span = end - start;
+  const out = new Float32Array(channel);
+  if (span <= 1 || periods < 1) return out;
+  const period = span / periods;
+  // The loop read as a periodic signal at any offset from its start.
+  const loopAt = (source: Float32Array, x: number): number => {
+    const u = ((x % span) + span) % span;
+    const i = Math.floor(u);
+    const f = u - i;
+    const a = source[start + i];
+    const b = source[start + ((i + 1) % span)];
+    return a + (b - a) * f;
+  };
+  for (let j = 0; j < span; j += 1) {
+    let sum = 0;
+    for (let m = 0; m < periods; m += 1) sum += loopAt(channel, j + m * period);
+    out[start + j] = sum / periods;
+  }
+  const fade = Math.min(2 * span, start);
+  for (let i = start - fade; i < start; i += 1) {
+    const t = (i - (start - fade)) / fade;
+    const w = t * t * (3 - 2 * t);
+    out[i] = (1 - w) * channel[i] + w * loopAt(out, i - start);
+  }
+  return out;
+}
+
+/**
  * A decoded sample as the engine holds it: the loader's loop region, and the
  * channels with its 16-frame patch applied. What every `SampleBuffer` built
  * from a `.smp` should start from.
+ *
+ * Given the sample's GUID, it also returns `smoothed`, the same channels
+ * through `smoothLoop` and patched, for a sample `LOOP_SMOOTHING` lists:
+ * ours, read by a voice only with `declick` (`SampleBuffer.smoothed`).
  */
-export function engineSample(wav: WavData): {
+export function engineSample(wav: WavData, sampleGuid?: number): {
   readonly channels: Float32Array[];
   readonly loop: { readonly start: number; readonly end: number; readonly frames: number } | undefined;
+  readonly smoothed?: Float32Array[];
 } {
   const frames = wav.channels[0].length;
   const loop = wav.loop ? loopRegion(wav.loop, frames) : undefined;
   const looped = loop !== undefined && loop.end > loop.start;
   const channels = wav.channels.map((c) => (looped ? patchLoop(c, loop) : c));
+  const periods = sampleGuid === undefined ? undefined : LOOP_SMOOTHING.get(sampleGuid);
+  const smoothed = looped && periods !== undefined
+    ? wav.channels.map((c) => patchLoop(smoothLoop(c, loop, periods), loop))
+    : undefined;
   // `frames` rides on the loop because only a looped buffer is longer than the
   // sample: the patch puts 16 frames past the loop's end, and the sampler still
   // tests its index against the slot's own length (`readMipped`).
-  return { channels, loop: looped ? { ...loop, frames } : undefined };
+  return { channels, loop: looped ? { ...loop, frames } : undefined, ...(smoothed ? { smoothed } : {}) };
 }
 
 /**
