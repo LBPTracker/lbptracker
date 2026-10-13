@@ -4,6 +4,14 @@ What changed for the person using LBP Tracker, newest first. The site shows this
 version number in its status bar, so it is written for them: what they can do now that they could
 not before, never how it was done. No `--` or em dash in here; the site's text does without them.
 
+## 0.2.46 (2026-10-13)
+
+- Fixed: in some songs whole instruments on the lower rows of the board went silent for a few
+  bars at a time, since 0.2.43. It happened where the first eight rows were all playing at once,
+  and only for chips the level happened to list before theirs. The game decides which chips play
+  by where they sit on the board, and now the tracker does too: in Abrupt, rows 9 and 10 play
+  again from bar 109.
+
 ## 0.2.45 (2026-10-12)
 
 - New: loop regions on the board. Drag along the bar numbers to mark a few bars, and the song goes

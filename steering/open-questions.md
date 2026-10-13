@@ -324,21 +324,20 @@ seconds of *Rhombitruncated* from the game. A bongo hit every 0.461 s from 0.257
   whether the flutter survives the envelope has not been re-measured. A sustained F5 captured from
   the game, run through the same modulation measurement, settles it: if the game flutters too the
   artefact is in the asset.
-- **`PInstrument + 0x60`.** Copied into the engine's clip as its length in steps and not named by
-  the serialiser walk ([sequencer-data-model.md](sequencer-data-model.md)); what serialises it, if
-  anything, is unread — `readInstrumentPart` reads nothing for it, so it is derived at load. The
-  project's owner reports from the game's editor that a placed instrument's grid is four bars and
-  grows by two at a time, and the corpus's chip spacing makes the bar 8 steps (*The tile* in
-  [sequencer-data-model.md](sequencer-data-model.md)), so the editor derives 32, 48 … 128 from
-  the notes (`clipStepsFor` in [editor.md](editor.md)) — a rule consistent with the data, not a
-  reading of the length. ⚠️ **It reaches the sound since 2026-10-11**: the header carries it too
-  (`+0x08`), and the walk's row scan keeps a clip on its row until the length runs out (*Which
-  clips spawn* in [synth-engine.md](synth-engine.md)), so it decides when a finished clip lets its
-  row go and, through the scan's stop at eight rows, whether a clip on row 8 or below spawns at
-  all. `render.ts` takes the editor's rule for it. **What would settle it**: find the writer of
-  `+0x60` in the eboot — the likeliest sources are the component's `scaleX` on the board and the
-  highest `x` in `Notes` — or save a level with an empty six-bar grid and see what changes in the
-  file.
+- **`PInstrument + 0x60`.** Copied into the engine's clip and its header as the length in steps.
+  ✔ **Its writer is read** (2026-10-13): the instrument walk `v0x1c49e0` computes it from the
+  chip's drawn width at every playback start, `16·(max(round(scaleX / scaleY), 1) + 1)` — the
+  arithmetic is in *Which clips spawn* in [synth-engine.md](synth-engine.md). The editor derives
+  32, 48 … 128 from the notes instead (`clipStepsFor` in [editor.md](editor.md)), and `render.ts`
+  takes that, because on all 3,724 measured components `scaleX` is the multiple of `scaleY` that
+  the highest record implies (`CHIP_WIDTHS` in `write-plan.ts`). What is left is the case that
+  measurement cannot reach: a chip whose width disagrees with its notes — stretched past them in
+  the game, or whose last notes were deleted — would keep its row for its drawn length in the game
+  and for its notes' here. ⚠️ It reaches the sound: the walk's row scan keeps a clip on its row
+  until the length runs out, so it decides when a finished clip lets its row go and, through the
+  scan's stop at eight rows, whether a clip on row 8 or below spawns at all. **What would settle
+  it**: carry `scaleX / scaleY` out of the placement into `Track` and count the corpus chips where
+  it disagrees with the notes; none means the rule is exact on the data there is.
 
 ## 40. What a new SEQUENCER starts at — the editor's defaults are the corpus's modes
 

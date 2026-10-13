@@ -78,6 +78,32 @@ import { pitchRatio, samplesPerStep, velocityGain } from './voice.ts';
 /** The output rate. The engine's own is hard-coded to this too. */
 export const RATE = 48000;
 
+/**
+ * The order the engine's clip headers are in: indices into `tracks`, sorted
+ * by board column and then by row, both ascending.
+ *
+ * ❗ **Not the file's order.** The eboot's instrument walk `v0x1c49e0` collects
+ * the board's `PInstrument`s, writes each one's `gridX` (`+0x58`) and `gridY`
+ * (`+0x5c`), and ends by sorting the list (`v0x1c4d62`, a tail-jump to
+ * `v0xb39cf0`) with the comparator at `v0x1c6220`: `gridX` first, `gridY` on a
+ * tie, each a `setb` -- an unsigned compare, so a negative column sorts after
+ * every other. `v0x1c5670` then fills the headers in that order. Since the
+ * walk's row scan (`0x0280`) runs from the last header to the first and stops
+ * at eight rows, the order decides which clips spawn. ⚠️ From 0.2.43 to 0.2.45
+ * the scan ran over the file's order, and a level whose rows 9 and 10 were stored
+ * before its rows 0..7 lost them from the moment the eight rows filled -- song
+ * 726268 from bar 109.
+ *
+ * Two clips on one cell of one row tie, and whether `v0xb39cf0` keeps them in
+ * the walk's order is unread; this keeps the file's.
+ */
+export function clipHeaderOrder(tracks: readonly { gridX: number; gridY: number }[]): number[] {
+  return tracks
+    .map((_, i) => i)
+    .sort((a, b) =>
+      (tracks[a].gridX >>> 0) - (tracks[b].gridX >>> 0) || (tracks[a].gridY >>> 0) - (tracks[b].gridY >>> 0));
+}
+
 // The stereo fold's two constants live in `packages/lbp-tracker-lib/src/audio/effects.ts` so the
 // AudioWorklet can reach them without importing this module's level stack.
 export { FOLD_GAIN, PAN_WIDTH } from './audio/effects.ts';
@@ -458,7 +484,8 @@ export async function renderSequencer(
   const walkAt = (step: number): number =>
     clock ? clock.walkFrame(step + fromStep) : Math.round(swungFrame(step, framesPerStep, seq.swing));
   // ❗ **Which clips the walk lets spawn** (`0x0280`). It scans the clip
-  // headers from the LAST to the first with a mask of the rows already taken,
+  // headers -- in the eboot's order, `clipHeaderOrder` above, and never the
+  // file's -- from the LAST to the first with a mask of the rows already taken,
   // starting empty (`0x0f15`): a clip on a taken row is skipped (`0x035d`),
   // as is one not yet started or past its length (`0x036e`, `0x0393`), and an
   // active one takes its row (`0x05d9`) -- one clip per row, the later header
@@ -467,14 +494,17 @@ export async function renderSequencer(
   // busy a clip on row 8 or below that the scan has not reached yet never
   // spawns: measured on song 179190, whose row 8 the module drops from step
   // 128, where rows 0, 1, 5 and 7 come in. The length is `PInstrument+0x60`,
-  // which nothing reads yet (steering/open-questions.md); the editor's rule
-  // from the highest record stands in for it.
-  const clipSpan = seq.tracks.map((track) => {
+  // which `v0x1c49e0` writes from the chip's shape and nothing here reads yet
+  // (steering/open-questions.md); the editor's rule from the highest record
+  // stands in for it.
+  const headers = clipHeaderOrder(seq.tracks);
+  const clipSpan = headers.map((index) => {
+    const track = seq.tracks[index];
     let highest = 0;
     for (let i = 0; i + 4 <= track.records.length; i += 4) {
       highest = Math.max(highest, track.records[i] & 0x7f);
     }
-    return { start: Math.max(0, track.gridX) * 16, length: clipStepsFor(highest), row: track.gridY };
+    return { index, start: Math.max(0, track.gridX) * 16, length: clipStepsFor(highest), row: track.gridY };
   });
   const activeAt = new Map<number, Set<number>>();
   const spawns = (trackIndex: number, step: number): boolean => {
@@ -483,12 +513,12 @@ export async function renderSequencer(
       active = new Set<number>();
       let mask = 0;
       for (let k = clipSpan.length - 1; k >= 0; k -= 1) {
-        const { start, length, row } = clipSpan[k];
+        const { index, start, length, row } = clipSpan[k];
         const bit = 1 << (row & 31);
         if ((mask & bit) !== 0) continue;
         const rel = step - start;
         if (rel < 0 || rel >= length) continue;
-        active.add(k);
+        active.add(index);
         mask = (mask | bit) >>> 0;
         if (mask === 0xff) break;
       }

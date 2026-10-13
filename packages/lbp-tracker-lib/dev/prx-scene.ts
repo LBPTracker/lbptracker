@@ -45,15 +45,16 @@
  *
  * Ours runs as the module does: no declick, no reverb return, no master bus,
  * and `random` the harness's constant `rand()` scaled as the engine scales it.
- * ⚠️ A clip's length (`PInstrument+0x60`) is unread; the scene takes the
- * editor's rule, as the render's row scan does.
+ * ⚠️ A clip's length (`PInstrument+0x60`) is the chip's drawn width in the
+ * game (`v0x1c49e0`); the scene takes the editor's rule from the notes, as the
+ * render's row scan does, which agrees with it on every chip measured.
  */
 
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { buildMipChain } from '../src/audio/mipmap.ts';
-import { FOLD_GAIN, renderSequencer, type LoadedInstrument } from '../src/render.ts';
+import { FOLD_GAIN, clipHeaderOrder, renderSequencer, type LoadedInstrument } from '../src/render.ts';
 import { readInstrument, usedSlots, type RInstrument } from '../src/rinstrument.ts';
 import { clipStepsFor } from '../src/song.ts';
 import { engineSample, readWav } from '../src/wav.ts';
@@ -227,7 +228,10 @@ const channelOf = (gridY: number) =>
   rows > 0
     ? Math.min(count - 1, Math.max(0, Math.floor(gridY / Math.max(Math.floor(rows / count), 1))))
     : ((gridY % count) + count) % count;
-const clips = seq.tracks.filter((t) => instIndex.has(t.guid)).map((t) => {
+// ❗ The headers go in the eboot's order, sorted by column and then row
+// (`clipHeaderOrder`), not the file's: the module's row scan reads that order.
+const headers = clipHeaderOrder(seq.tracks).filter((i) => instIndex.has(seq.tracks[i].guid));
+const clips = headers.map((i) => seq.tracks[i]).map((t) => {
   const words: number[] = [];
   for (let i = 0; i + 4 <= t.records.length; i += 4) {
     const w = (t.records[i] | (t.records[i + 1] << 8) | (t.records[i + 2] << 16) | (t.records[i + 3] << 24)) >>> 0;
@@ -249,9 +253,7 @@ await writeFile(path.join(outdir, 'scene.json'), JSON.stringify({
   volumes: seq.volumes, numChannels: seq.numChannels, reverb: seq.reverb, rand: RAND, frames, clips, instruments,
 }));
 
-const clipOf = new Map(
-  seq.tracks.map((t, i) => [i, t] as const).filter(([, t]) => instIndex.has(t.guid)).map(([i], k) => [i, k]),
-);
+const clipOf = new Map(headers.map((i, k) => [i, k]));
 const [poolFrom, poolTo] = (process.env.POOL ?? '').split(',').map(Number);
 const pool: string[] = [];
 const seen = new Map<string, number>();

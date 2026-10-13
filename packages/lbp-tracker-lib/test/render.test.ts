@@ -301,19 +301,29 @@ const hit = (step: number, pitch = 60, end = true) => ({
 });
 
 test('the walk takes one clip per row and stops once rows 0..7 are taken', async () => {
-  // Nine rows, row 8 first in the clip array: the walk scans from the LAST
-  // header (`0x0300`), so rows 7..0 fill the mask to 0xff before it reaches
-  // row 8, and `0x05dc` ends the scan there.
-  const rows = [8, 0, 1, 2, 3, 4, 5, 6, 7];
-  const dropped = await planOf(rows.map((r) => ({ gridY: r, notes: [hit(0)] })));
-  assert.deepEqual(dropped.map((v) => v.track).sort(), [1, 2, 3, 4, 5, 6, 7, 8]);
-  // Row 8 last in the array is scanned first, its bit keeps the mask off
-  // 0xff, and every row plays.
-  const kept = await planOf([...rows.slice(1), 8].map((r) => ({ gridY: r, notes: [hit(0)] })));
-  assert.equal(kept.length, 9);
-  // Two clips on one row at once: the later header wins the row.
+  // Row 8's clip starts a cell before rows 0..7's, so it sorts first among the
+  // headers (`v0x1c6220`: column, then row) and the walk, scanning from the
+  // LAST header (`0x0300`), fills the mask to 0xff with rows 7..0 before it
+  // reaches row 8; `0x05dc` ends the scan there. Wherever the file keeps it.
+  const late = [0, 1, 2, 3, 4, 5, 6, 7].map((r) => ({ gridX: 1, gridY: r, notes: [hit(0)] }));
+  const early = { gridX: 0, gridY: 8, notes: [hit(16)] };
+  for (const tracks of [[early, ...late], [...late, early]]) {
+    const voices = await planOf(tracks);
+    assert.equal(voices.length, 8);
+    assert.ok(voices.every((v) => tracks[v.track] !== early), 'row 8 is never reached');
+  }
+  // In the same cell row 8 sorts last, is scanned first, its bit keeps the
+  // mask off 0xff, and every row plays -- first in the file or not. This is
+  // song 726268 at bar 109, whose rows 9 and 10 the file stores first.
+  for (const tracks of [[{ ...early, gridX: 1, notes: [hit(0)] }, ...late], [...late, { ...early, gridX: 1, notes: [hit(0)] }]]) {
+    assert.equal((await planOf(tracks)).length, 9);
+  }
+  // Two clips on one row at once: the later header -- the later column --
+  // wins the row, and in one cell the file's order breaks the tie.
   const shared = await planOf([{ gridY: 2, notes: [hit(0)] }, { gridY: 2, notes: [hit(0, 64)] }]);
   assert.deepEqual(shared.map((v) => v.track), [1]);
+  const columns = await planOf([{ gridX: 1, gridY: 2, notes: [hit(0)] }, { gridX: 0, gridY: 2, notes: [hit(16, 64)] }]);
+  assert.deepEqual(columns.map((v) => v.track), [0]);
 });
 
 test('the pool scores a held note at its current point, walk by walk', async () => {

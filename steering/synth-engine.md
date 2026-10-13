@@ -102,14 +102,41 @@ with a mask of the rows already taken:
 0x05dc  cmp esi, 0xff ; jne   ; ❗ rows 0..7 all taken: stop scanning
 ```
 
-So **one clip sounds per row** — where two overlap, the later header wins — and, a quirk, **once
+❗ **The headers are sorted by board position, not kept in the file's order.** The eboot's
+instrument walk `v0x1c49e0` — over `PMicrochip.components` (`v0x1c4c1c`), or over the board's
+child Things (`[thing+0x78]` first child, `[thing+0x80]` next sibling, `v0x1c4a64`) while the board
+is open — writes each `PInstrument`'s `gridX` at `+0x58`, `gridY` at `+0x5c` and its length at
+`+0x60`, then sorts the list (`v0x1c4d62`, a tail-jump to `v0xb39cf0`) with the comparator
+`v0x1c6220`: `gridX`, then `gridY`, each by `setb`, so **ascending and unsigned** — a negative
+column sorts last. `v0x1c5670` fills the headers in that order (`v0x1c5ae7`–`v0x1c5b7f`, the clip
+index advancing only when `v0x1c4420` succeeds). The scan from the last header is therefore
+**latest column first, and the lowest row last within a column**. Whether `v0xb39cf0` keeps two
+clips anchored on one cell of one row in the walk's order is unread; `clipHeaderOrder` in
+`render.ts` keeps the file's.
+
+So **one clip sounds per row** — where two overlap, the later column wins — and, a quirk, **once
 rows 0..7 are all taken the scan ends**, so a clip on row 8 or below that the scan has not reached
-yet never spawns. Measured on song 179190 (rows 0..8, row 8 first in the array): the module drops
-row 8 from step 128, where rows 0, 1, 5 and 7 come in, and the render played it, −7 dB against the
-module; with the scan in `render.ts`, −84.5 dB (2026-10-11). The scan needs each clip's length, and
-`+0x60` is unread (*`PInstrument + 0x60`* in [open-questions.md](open-questions.md)); the render
-uses the editor's rule from the highest record, which is what decides when a finished clip lets
-its row go.
+yet never spawns: one whose header sorts before all eight of the clips holding rows 0..7 — an
+earlier column — while no clip past row 7 sorts after them. A clip in the same column as they are,
+on a row past 7, is scanned before them, its bit keeps the mask off `0xff`, and every row plays.
+
+✔ Census over the 149 corpus sequencers with tracks (2026-10-13): the sort changes which notes
+spawn in 12, 953,325 of 953,791 notes spawning against 953,176 in the file's order; song 726268
+(`Abrupt`) loses rows 9 and 10 from bar 109 in the file's order and keeps them in the eboot's. The
+module and the render, both given the sorted headers, agree to −101.9 dB on 179190 (20 s) and
+−117.7 dB on 726268 (62 s, across bar 109). ⚠️ **179190 is not an example of the drop**: it was
+read as one on 2026-10-11, when the harness handed the module the file's order (*62* in
+[answered-questions.md](answered-questions.md)); sorted, its row 8 plays from step 128.
+
+The scan needs each clip's length. `v0x1c49e0` computes it from the chip's drawn width
+(`v0x1c4cee`–`v0x1c4d1f`): `n = floor(scaleX / scaleY + 0.5)` from the component's `+0x24` and
+`+0x28`, then `16·(n + 1)`, with `n = 0` coming out 32 too (`lea edx, [rcx + 0xfffffff]` and the
+`<< 4` wrap). The open board takes the same ratio off the child's matrix, `m00 / m11` with two
+Newton steps on `vrcpps` (`v0x1c4afc`–`v0x1c4b75`). `scaleX` is a multiple of `scaleY` on every
+one of 3,724 measured components, `ceil((highest + 1) / 16) − 1` of them (`CHIP_WIDTHS` in
+`write-plan.ts`), which makes the length the editor's rule from the highest record; the render
+takes that rule (*`PInstrument + 0x60`* in [open-questions.md](open-questions.md)), and it is
+what decides when a finished clip lets its row go.
 
 **The channel is a band of the board** (`v0x1608d0` writes it; `v0x1c7909`–`v0x1c793c` the divisor;
 `v0x1c452a` the `<< 4` that indexes the array): `rows = floor(boardHeight/105 + 0.5)`,

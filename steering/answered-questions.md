@@ -369,6 +369,13 @@ wrong turns:
   length to `0x7fffffff`, so a finished clip held its row for the whole song and the module went
   silent at `Vision`'s step 48 — which read as our renderer playing notes the game drops. A
   harness is a model of the engine too; every field it invents is a claim.
+- **A harness's order is a claim too, and agreement cannot test it.** The scene builder laid the
+  clip headers out in the file's order, the render's row scan used the same order, and on 179190
+  the two agreed to −84.5 dB that row 8 drops from step 128 — so the drop went into
+  [synth-engine.md](synth-engine.md) as measured. The eboot sorts the headers by column and row
+  before the module sees them (*Which clips spawn* there); sorted, 179190's row 8 plays, and so do
+  726268's rows 9 and 10 from bar 109, which a listener reported missing. ⚠️ A differential test
+  only checks what differs between its sides; whatever the harness hands **both**, it confirms.
 - **A window error measured against its own power.** It put a −90 dB tail that ends a block apart
   at the top of the list as "−0.2 dB". The comparison reads the worst window against the loudest.
 - **Song comparisons on the tracker's clock.** With onsets on their own frame every song differed
