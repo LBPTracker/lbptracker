@@ -653,8 +653,14 @@ older label, is mid-function). ⚠️ **It wraps the integer index, never the po
 (`0x379d`–`0x37b9`): only an index past `start + len` is taken `mod len`, and then an index at or
 past the slot's frame count `+0x78` reads **silence** (`0x37be`, `jge 0x3928`). The record's double
 only grows. So a loop that ends on the sample's last frame meets index `frames` exactly once, on
-the first pass, and plays one sample of 0 there — never again, because past it the index wraps —
-and the float32 fraction coarsens on long notes. `readMipped` does both (`LoopSpan.frames`;
+the first pass, and plays one sample of 0 there — never again, because past it the index wraps.
+✔ 18 of the 79 looped `.smp` end their loop on their last frame (counted off `data` and `smpl`,
+2026-10-13): the `kenny_*` waveforms, `synth_strings`, `buzz_bass`, `rude_bass_c3`, three `uke_*`,
+`musicbox_e4`, `ss_glock_b5`, `eg_c_muted_b5`, `record_static_loop`, `silence` and
+`harp_fsharp4`. The last is heard: every harp note from 49 to 64 clicks at its first wrap, 5,769
+frames in at note 51 — Indigo's opening arpeggio (4451115), the module and the render alike at
+−105.8 dB. The tracker closes that gap by default, a deviation (*61* in
+[open-questions.md](open-questions.md)). The float32 fraction also coarsens on long notes. `readMipped` does both (`LoopSpan.frames`;
 measured against the module running, 2026-10-11). Then it selects the mip on the rate it was
 handed — the ramped, per-sample rate, so a glide across an octave changes copy mid-note:
 

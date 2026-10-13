@@ -4,6 +4,14 @@ What changed for the person using LBP Tracker, newest first. The site shows this
 version number in its status bar, so it is written for them: what they can do now that they could
 not before, never how it was done. No `--` or em dash in here; the site's text does without them.
 
+## 0.2.47 (2026-10-13)
+
+- Fixed: a click once into each note of some instruments, the first time their sound loops round.
+  It was clearest on the harp, on every note of its middle range, as in the opening arpeggio of
+  Indigo. The game makes that click too, by accident, and the tracker no longer copies it.
+  Sixteen more sounds had the same flaw and lose it as well, among them the plain waveforms, the
+  ukulele, the music box and the buzz bass.
+
 ## 0.2.46 (2026-10-13)
 
 - Fixed: in some songs whole instruments on the lower rows of the board went silent for a few

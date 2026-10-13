@@ -284,7 +284,7 @@ export interface VoiceSpec {
    */
   readonly cutFrame?: number;
   /**
-   * Soften the two ways a note's natural end clicks. **Ours, not the game's**,
+   * Soften three clicks the engine makes. **Ours, not the game's**,
    * and off here, so a bare `VoiceSpec` is the engine's; `renderSequencer`
    * turns it on by default (`RenderOptions.declick`).
    *
@@ -298,6 +298,9 @@ export interface VoiceSpec {
    *    (`0x3093`) with the ladder's ten states as they were, so a ladder that
    *    envelope B has shut holds a value that drops to zero in one frame:
    *    `e_perc_1`'s bongo, 96 of its 181 transients over that song.
+   * 3. A loop that ends on its sample's last frame reads no frame of silence
+   *    at its first wrap (`readMipped`'s `gapless`): on `harp_fsharp4` that
+   *    frame clicked on every note from 49 to 64.
    *
    * A steal (`cutFrame`) is untouched: a record handed to another note is
    * taken mid-sample in the engine and here. *61* in
@@ -1490,6 +1493,8 @@ class Voice {
     const mipR = mips === undefined ? undefined : (mips[1] ?? mips[0]);
     const driveK = this.driveK;
     const driveOnePlusK = this.driveOnePlusK;
+    // Ours, with `declick`: no silent frame at the first wrap (`readMipped`).
+    const gapless = this.spec.declick === true;
     const sL = this.scratchL;
     const sR = this.scratchR;
     sL.fill(0, 0, take);
@@ -1531,8 +1536,8 @@ class Voice {
         if (mipL !== undefined) {
           // Silence at an index past the frame count, which `readMipped` tests.
           const level = mipLevelFor(rate);
-          l = readMipped(mipL, position, level, region);
-          r = mono ? l : readMipped(mipR!, position, level, region);
+          l = readMipped(mipL, position, level, region, gapless);
+          r = mono ? l : readMipped(mipR!, position, level, region, gapless);
         } else if (loop === undefined && position >= srcL.length) {
           l = 0;
           r = 0;

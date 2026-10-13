@@ -184,4 +184,15 @@ test('a loop ending on the last frame reads silence once, at its first wrap', ()
   assert.equal(readMipped(chain, 100, 0, loop), 0, 'index 100 is the frame count: silence');
   assert.equal(readMipped(chain, 100 + 90, 0, loop), 0.5, 'past start + len it wraps and sounds');
   assert.equal(readMipped(chain, 100, 0, { start: 10, end: 100 }), 0.5, 'no frame count, no gap');
+  // Ours, with `declick`: the frame the loader patched in there, the loop's
+  // first, is read instead -- the first trip round sounds like every other.
+  const ramp = Float32Array.from({ length: frames + 16 }, (_, i) => (i < frames ? i / frames : (10 + i - frames) / frames));
+  const patched = buildMipChain(ramp);
+  assert.equal(readMipped(patched, 100, 0, loop), 0);
+  assert.ok(Math.abs(readMipped(patched, 100, 0, loop, true) - 0.1) < 1e-6);
+  assert.ok(Math.abs(readMipped(patched, 100.5, 0, loop, true) - 0.105) < 1e-6);
+  // Anywhere else it changes nothing: the engine's silence past the sample stays.
+  assert.equal(readMipped(chain, 99.5, 0, loop, true), 0.5);
+  assert.equal(readMipped(chain, 100 + 90, 0, loop, true), 0.5);
+  assert.equal(readMipped(chain, 120, 0, undefined, true), 0);
 });

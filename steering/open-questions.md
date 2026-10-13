@@ -234,6 +234,22 @@ Measured on the song: the kit's voice-end transients 96 → 0, and the triangle 
 of the render the owner approved by ear. `LBP_DECLICK=0` and `RenderOptions.declick: false` render
 the engine as read.
 
+`declick` also closes the **first-wrap gap** (since 0.2.47): a loop that ends on its sample's last
+frame reads one frame of silence on its first trip round (*The sampler* in
+[synth-engine.md](synth-engine.md)), and with `declick` it reads the frame the loader patched
+there, the loop's first (`readMipped`'s `gapless`). The owner heard it as clicks on Indigo's
+opening harp (4451115, `harp_fsharp4`, every note from 49 to 64), took it for an accident of the
+engine's rather than a design, and asked for it gone. Measured on those four clips: the fifteen
+first wraps go from +20 … +21 dB of high-frequency energy over the median to −1.8 … −8.6 dB, and
+with `declick` off the render still matches the module to −105.8 dB.
+
+⚠️ **Not every engine click is a candidate.** The owner's line, 2026-10-13: an accident of the
+engine's goes (this gap); a behaviour a composer can work with stays. A clip's `sine_wave` notes
+thump at each join because the engine starts each note from rest, ladders and all, beside the old
+one still ringing for a chunk (the module does it to the sample: Vitriol, 731173, row 4). A
+hand-over of the old voice's state removed it and was reverted at the owner's request: joining
+notes so they do not break is the composer's job.
+
 ⚠️ **The bytes say the game clicks too** — `0x1750` squares the release, `0x1f65` reads the gate
 once per chunk, `0x3093` frees with the ladder's states untouched — so this is a deviation that
 removes something the game very likely has. **What would settle it**: capture the first five

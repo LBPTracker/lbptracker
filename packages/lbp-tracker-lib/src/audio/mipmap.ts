@@ -146,6 +146,14 @@ export interface LoopSpan {
  *    `fmodextinput.prx` beside the tracker (`tools/prxrun.py`): one sample of
  *    `kenny_square_a4` read as 0.0 where this read +0.25.
  *
+ * `gapless` closes that gap -- **ours, not the game's**, and the voice asks for
+ * it with `declick`: index `loop.end` reads the patched frame there, the loop's
+ * first, so the first trip round is the same as every later one. 18 of the 79
+ * looped samples the game ships end their loop on their last frame, and on
+ * `harp_fsharp4` the gap is a click on every note from 49 to 64 (Indigo's
+ * opening arpeggio); the project's owner took it for an accident of the
+ * engine's and asked for it gone (*61* in steering/open-questions.md).
+ *
  * ⚠️ The caller must pass the voice's **unwrapped** position for any of this to
  * hold: wrapping it first hides the gap, and keeps a float32 precision on long
  * looped notes that the engine, converting its ever-growing double, has lost.
@@ -155,6 +163,7 @@ export function readMipped(
   position: number,
   level: number,
   loop?: LoopSpan,
+  gapless = false,
 ): number {
   const full = chain[0];
   // ❗ **The engine hands the sampler a float32.** The voice keeps its position
@@ -176,7 +185,8 @@ export function readMipped(
       index = loop.start + ((index - loop.start) % span);
     }
   }
-  if (index < 0 || index >= (loop?.frames ?? full.length)) return 0;
+  const gap = !(gapless && loop !== undefined && index === loop.end);
+  if (index < 0 || (gap && index >= (loop?.frames ?? full.length))) return 0;
 
   let source = full;
   let at = index;
