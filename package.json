@@ -6,7 +6,6 @@
   "description": "A faithful re-implementation of LittleBigPlanet 3's in-game Music Sequencer.",
   "license": "MIT",
   "workspaces": [
-    "packages/cwlib-ts",
     "packages/lbp-tracker-lib",
     "packages/lbp-tracker-web"
   ],

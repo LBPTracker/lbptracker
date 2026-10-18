@@ -67,7 +67,7 @@ Steering files (read on demand, per the hints):
   address conventions (the delta trap that costs hours), the techniques that worked, and every
   anchor already mapped.
 - [steering/export-to-game.md](steering/export-to-game.md) — **read before touching
-  `packages/cwlib-ts/src/writer.ts`, `write-plan.ts` or `chips.ts`**: the plan writer — why the
+  `../cwlib-ts/src/writer.ts`, `write-plan.ts` or `chips.ts`**: the plan writer — why the
   export is a `.plan` and why it travels alone, the Thing shape measured over 17 real sequencer
   plans, the chassis constants and the three deviations from them, the cell geometry run backwards,
   the two builds, and what proves a writer that has no corpus.
@@ -81,24 +81,28 @@ Steering files (read on demand, per the hints):
   anything**: per settled question, the answer in a line, where its measurement now lives, and the
   wrong turns taken on the way — which are the useful part.
 
-## Layout — three npm workspaces, since 2026-09-06
+## Layout — two npm workspaces and one git dependency, since 2026-10-18
 
 | directory | package | what it is |
 |---|---|---|
-| `packages/cwlib-ts` | `@lbptracker/cwlib` | reading **and writing** LBP's serialised resources: container, Thing graph, 50 part readers, saves, archives, and the `.plan` writer |
+| `../cwlib-ts` (github.com/LBPTracker/cwlib-ts) | `@lbptracker/cwlib` | reading **and writing** LBP's serialised resources: container, Thing graph, 50 part readers, saves, archives, and the `.plan` writer — **its own repository**, installed from git |
 | `packages/lbp-tracker-lib` | `@lbptracker/lib` | turning that into sound: sampler, DSP chain, render pipeline, MIDI — and `song.ts`, the editable song |
 | `packages/lbp-tracker-web` | `@lbptracker/web` | the app: one page, one song, five views — Vite, Vue for the panels, canvases for the grids |
 
 Each has its own `src/`, `test/` and `dev/`: Node harnesses in the libraries, the typecheck entry
-point in the web package. Imports cross by package name:
+point in the web package. `../cwlib-ts` is the sibling checkout of cwlib; a path written that way in
+steering means a file in that repository. ❗ **A change to cwlib is a commit and a push there, then
+`npm update @lbptracker/cwlib` here**: the lockfile pins its commit. *The monorepo* in
+`steering/tracker-architecture.md` has why, and how to try a change before pushing it. Imports cross by package name:
 `import { readWorld } from '@lbptracker/cwlib/level.ts'`.
 
 - `npm install` — **required**: workspaces resolve the package names through symlinks in
-  `node_modules`. Nothing is downloaded for the libraries.
-- `npm test` — `node --test`, all three workspaces at once, from the root (512 tests, 2026-10-12);
+  `node_modules`; cwlib is cloned from GitHub and built into `dist/` by its `prepare`.
+- `npm test` — `node --test`, both workspaces at once, from the root (446 tests, 2026-10-18; cwlib's
+  67 run in its own repository);
   `npm test -w @lbptracker/lib` for one package.
-- `npm run typecheck` — fans out to each package's own `typecheck` script: `tsc -p .` in the two
-  libraries, `vue-tsc` for the web package. ⚠️ **The web package checks `.vue` through
+- `npm run typecheck` — fans out to each package's own `typecheck` script: `tsc -p .` in
+  `lbp-tracker-lib`, `vue-tsc` for the web package. ⚠️ **The web package checks `.vue` through
   `typescript-native-bridge`**: `vue-tsc` needs a JavaScript API and `typescript@7` is the native
   compiler and has none. See `packages/lbp-tracker-web/dev/typecheck.mjs` and *The toolchain* in
   `steering/tracker-architecture.md`.
@@ -112,13 +116,16 @@ point in the web package. Imports cross by package name:
   copies `fixtures/`. *Deployment* in `steering/tracker-architecture.md` has the measurements.
   ❗ **Every deploy ends with a Discord post of the changelog**, through a webhook whose URL is a
   secret kept out of the repository; the rule and the recipe are in that same section.
-- The libraries depend on each other as `"*"`, so a version bump touches the three manifests and
-  nothing else; the web footer reads its version out of its own `package.json`
+- The two workspaces depend on each other as `"*"`, so a version bump touches the three manifests
+  here and nothing else (cwlib keeps its own version); the web footer reads its version out of its own `package.json`
   (`packages/lbp-tracker-web/src/version.ts`), and a test holds the root manifest to the same number.
 
-❗ **The two libraries have no build step and must keep it that way.** Node runs their TypeScript
+❗ **`lbp-tracker-lib` has no build step and must keep it that way.** Node runs its TypeScript
 directly, so the file the browser executes is the file `node --test` executes, which is what the
-fidelity argument rests on. The bundler stops at the web package's edge.
+fidelity argument rests on. The bundler stops at the web package's edge. cwlib is the one
+exception, and it is forced: it arrives in `node_modules` as a real copy, where Node refuses to
+strip types, so it ships the `dist/*.js` its `prepare` builds — and Node and the browser both run
+that same file.
 
 ⚠️ **An import map does not reach a Worker or an AudioWorklet** — measured in Chrome, table in
 `steering/tracker-architecture.md`. That is *why* the web package has a bundler, and it is the trap

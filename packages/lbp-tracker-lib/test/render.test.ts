@@ -60,7 +60,7 @@ async function fixture(): Promise<{
       all.push(...project.sequencers);
     } catch {
       // A file that is not a level, or one this walk cannot read yet.
-      // `packages/cwlib-ts/dev/verify-levels.ts` is where that is a failure; here it is noise.
+      // `../cwlib-ts/dev/verify-levels.ts` is where that is a failure; here it is noise.
     }
   }
   const seq = all

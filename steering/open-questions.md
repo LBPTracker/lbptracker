@@ -607,6 +607,6 @@ branch, into one that stands between a reader and a song. What is left:
 - **One truncated file** — the archive itself stores `0-aaaffe` short. Nothing to fix.
 
 The archive's leftovers are not in the way of music; Vita is. The next one is
-found by `packages/cwlib-ts/dev/archive-sample.mjs` for what Mm's servers held, and by a search
+found by `../cwlib-ts/dev/archive-sample.mjs` for what Mm's servers held, and by a search
 over Bonsai's API for what has been published since: every real reader bug since 2026-09-05 came
 out of a file no PS3 save on this machine contains.

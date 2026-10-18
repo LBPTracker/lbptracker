@@ -1,6 +1,6 @@
 # Export to the game — writing a `.plan` LBP3 can load
 
-Read before touching `packages/cwlib-ts/src/writer.ts`, `write-plan.ts` or `chips.ts`, or before
+Read before touching `../cwlib-ts/src/writer.ts`, `write-plan.ts` or `chips.ts`, or before
 changing anything a `Sequencer` carries. This is the return leg of
 [level-files.md](level-files.md) and [sequencer-data-model.md](sequencer-data-model.md): those two
 say what the game's files hold, and this says how one is built.
@@ -29,7 +29,7 @@ are *The toolkit's `.mod`* in [level-files.md](level-files.md).
 ## The shape, measured
 
 ✔ **17 real LBP3 sequencer plans** — the plan dependencies of "Music Gallery #3",
-`packages/cwlib-ts/dev/fetch-plan.ts` — agree Thing for Thing:
+`../cwlib-ts/dev/fetch-plan.ts` — agree Thing for Thing:
 
 ```
 Thing uid 2   parent —   groupHead 3   planGuid 120863
@@ -280,11 +280,11 @@ the channel banding.
 
 | file | what |
 |---|---|
-| `packages/cwlib-ts/src/writer.ts` | the write-side primitives, method for method against `serializer.ts`, and the container |
-| `packages/cwlib-ts/src/write-plan.ts` | the Thing graph, the part writers, `RPlan`, and `writeSequencerPlan` |
-| `packages/cwlib-ts/src/chips.ts` | the instrument chip table |
-| `packages/cwlib-ts/src/platform/{node,web}.ts` | `nodeDeflate` / `webDeflate`, injected as `inflate` is |
+| `../cwlib-ts/src/writer.ts` | the write-side primitives, method for method against `serializer.ts`, and the container |
+| `../cwlib-ts/src/write-plan.ts` | the Thing graph, the part writers, `RPlan`, and `writeSequencerPlan` |
+| `../cwlib-ts/src/chips.ts` | the instrument chip table |
+| `../cwlib-ts/src/platform/{node,web}.ts` | `nodeDeflate` / `webDeflate`, injected as `inflate` is |
 | `packages/lbp-tracker-lib/dev/export-plan.ts` | the command line: a level, a plan or a song file in, a `.plan` and its dependency table out |
 | `packages/lbp-tracker-web/src/daw/plan-export.ts` | the Import/Export view's second section |
-| `packages/cwlib-ts/dev/verify-export.ts` | the round trip and the chassis diff |
-| `packages/cwlib-ts/dev/fetch-plan.ts`, `chip-table.ts`, `dump-fields.ts` | how the corpus above was gathered and read |
+| `../cwlib-ts/dev/verify-export.ts` | the round trip and the chassis diff |
+| `../cwlib-ts/dev/fetch-plan.ts`, `chip-table.ts`, `dump-fields.ts` | how the corpus above was gathered and read |

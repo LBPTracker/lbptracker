@@ -18,7 +18,7 @@
  * The mounting half lives in `widgets/open-panel.ts` for exactly that reason.
  *
  * ❗ **Nothing is uploaded.** Every byte is read from the `File` the browser
- * hands over, in the page, and the reading is `packages/cwlib-ts/src/backup.ts` which knows
+ * hands over, in the page, and the reading is `../cwlib-ts/src/backup.ts` which knows
  * nothing about files at all. See `steering/game-assets.md`.
  */
 

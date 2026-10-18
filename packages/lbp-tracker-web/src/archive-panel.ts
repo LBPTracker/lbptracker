@@ -4,7 +4,7 @@
  * "Open a file" and "open a folder" both assume a listener already has a PS3
  * backup. Most do not. The official servers are gone, but every level published
  * to them survives in an archive indexed by <https://zaprit.fish>, and a root
- * level fetched from there is exactly the resource `packages/cwlib-ts/src/level.ts` already
+ * level fetched from there is exactly the resource `../cwlib-ts/src/level.ts` already
  * reads -- so this ends in the same `onOpen` as a dropped file, with the same
  * bytes in the same reader.
  *

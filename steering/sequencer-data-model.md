@@ -5,7 +5,7 @@ field's name string next to a `lea` to the member offset — and then confirmed 
 levels. Addresses are **vaddrs** in the eboot; [eboot-re.md](eboot-re.md) has the conventions and
 the delta trap. What the engine *does* with this data — the sampler, the 27 `Params`, the clock,
 the voice pool — is in [synth-engine.md](synth-engine.md); the containers it arrives in are in
-[level-files.md](level-files.md). `packages/cwlib-ts` reads all of it.
+[level-files.md](level-files.md). `../cwlib-ts` reads all of it.
 
 ## The object graph
 
@@ -41,7 +41,7 @@ ennuo's `ResourceType.java` agrees (`INSTRUMENT = 48`, `SAMPLE = 49`).
 placement carries the popit plan it came from (the Thing's `planGuid`), the icon drawn on it
 (`PInstrument.Icon`) and the tint it wears (`Colour`, below). None of the three reaches playback
 and all are properties of the instrument rather than of the music, except where a creator has
-re-tinted; `packages/cwlib-ts/src/chips.ts` is the measured
+re-tinted; `../cwlib-ts/src/chips.ts` is the measured
 `RInstrument → (plan, icon, colour)` table for **all 68** of the game's instruments, read out of
 their own popit plans.
 
@@ -105,7 +105,7 @@ The field the engine never reads is the one a composer sees most: it is the colo
 the board. Three measurements settle what is in it, all taken 2026-09-10.
 
 **It is RGBA, not ARGB.** Over 68,568 placements (the ten-level corpus, the 17 gallery plans and
-the 103-level archive sample — `packages/cwlib-ts/dev/chip-table.ts`) there are **25 distinct
+the 103-level archive sample — `../cwlib-ts/dev/chip-table.ts`) there are **25 distinct
 values**, and 24 of them end in `ff`. Read as ARGB that is a palette in which every colour a
 creator ever picked has full blue and an alpha that varies over `00`, `40`, `80`, `bf`, `ff`, so
 most chips would be invisible; read as RGBA it is a set of saturated hues at full opacity, and the
@@ -117,7 +117,7 @@ in the game's own data, and the answer is one colour per **instrument family**: 
 `0x00bfffff` (23 instruments), percussion `0x40ff0100` (15), plucked and the Move pack
 `0xff0000ff` (13), tuned percussion `0x0000ffff` (7), wind and voice `0xff00ffff` (5), SFX
 `0xffffffff` (3), keys `0xffff00ff` (2). The table lives in
-`packages/cwlib-ts/src/chips.ts` beside the plan GUID and the icon, which the same run re-measured
+`../cwlib-ts/src/chips.ts` beside the plan GUID and the icon, which the same run re-measured
 and which agreed with the corpus tally on 50 of 50 rows.
 
 ⚠️ **`0xffffffff` is the neutral tint, and the game draws it as a WHITE chip.** It appears in
@@ -287,7 +287,7 @@ way it describes — `piano_c2` … `piano_c6`, one sample per octave, exactly t
    c8 be 07      varint → 122696   = piano_c5.smp
    ```
 
-   `packages/cwlib-ts/src/stream.ts` (`varint`) and `serializer.ts` (`COMPRESSED_INTEGERS`) handle
+   `../cwlib-ts/src/stream.ts` (`varint`) and `serializer.ts` (`COMPRESSED_INTEGERS`) handle
    it; ⚠️ a compressed corpus hides field-width bugs, [level-files.md](level-files.md).
 4. **Fields are gated on the file's revision** — the gates in the tables above are from the toolkit,
    confirmed by the corpus parsing, and `PMicrochip`'s `Name`, `Components`, `CircuitBoardSizeX/Y`
@@ -454,7 +454,7 @@ is a real divergence ([lbp-modding-toolchain.md](lbp-modding-toolchain.md)).
 components to real Things parented to the board and leaves `Components` empty; the only layout left
 is a 4×4 per Thing. The cell is the world-space translation delta **expressed in the board's own
 basis** — three dot products against the board matrix's columns, each divided by that column's
-squared length, no quaternion — `boardCell` in `packages/cwlib-ts/src/level.ts`. Measured over the
+squared length, no quaternion — `boardCell` in `../cwlib-ts/src/level.ts`. Measured over the
 corpus's 1,030 open-board placements: the bare delta puts 78.93% on a cell (one board is attached
 to something rotated), the board's basis **100.00%**, worst fractional part 0.0004 of a cell, and
 all 1,030 carry the odd-multiple fingerprint. `dev/verify-levels.ts` asserts the stronger property
@@ -496,7 +496,7 @@ divisor = max(rows / NumChannels, 1)              integer division
 channel = clamp(row / divisor, 0, NumChannels-1)
 ```
 
-`channelVolume` in `packages/cwlib-ts/src/project.ts` bands, carrying `circuitBoardSizeY` out as
+`channelVolume` in `../cwlib-ts/src/project.ts` bands, carrying `circuitBoardSizeY` out as
 `Sequencer.boardRows`; in all 51 corpus sequencers with tracks the highest placement sits strictly
 inside its board. ⚠️ The plugin's `mod 8` is a bounds guard on an already-clamped value, not the
 mapping, and a modulo shipped for two months: it re-routes 667 of 1,821 tracks on the ten

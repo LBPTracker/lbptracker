@@ -9,7 +9,7 @@
  *
  * ⚠️ **The walk fetches only what can be opened, and the list is measured.** A
  * level's dependency table names its textures, meshes and materials too, and
- * `packages/cwlib-ts/src/backup.ts` would throw every one of them away -- it
+ * `../cwlib-ts/src/backup.ts` would throw every one of them away -- it
  * opens `LVLb`, `PLNb` and `CHKb` and nothing else. So the walk follows exactly
  * the three types that are those: 9, 38 and 61. See `OPENABLE_DEPENDENCIES`.
  *

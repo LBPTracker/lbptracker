@@ -3,9 +3,9 @@
 Read before writing a parser for any LBP resource, save or archive. Everything below is the
 *carrier*: the formats a sequencer arrives in. What the sequencer's own data looks like once the
 Thing graph is open is in [sequencer-data-model.md](sequencer-data-model.md); the implementation
-is `packages/cwlib-ts`, and `tools/lbpres.py` is the Python reference for the container.
+is `../cwlib-ts`, and `tools/lbpres.py` is the Python reference for the container.
 
-Everything here is read by `packages/cwlib-ts/src/resource.ts` and written back by
+Everything here is read by `../cwlib-ts/src/resource.ts` and written back by
 `writer.ts` — the container, the chunk table and the dependency table have a write side since
 2026-09-09, and [export-to-game.md](export-to-game.md) is where that lives.
 
@@ -43,7 +43,7 @@ parser never uses, so 18 hits on it is not a coincidence.
   took "96 chunks" out of the payload's own first bytes.
 - ❗ **A resource is told from everything else by its first four bytes, never by its name.** A
   backup is full of `ICON0.PNG`, `PARAM.SFO`, costumes and photographs, and every resource is
-  named after its SHA-1. `looksLikeLevel` in `packages/cwlib-ts/src/backup.ts` accepts `LVLb`,
+  named after its SHA-1. `looksLikeLevel` in `../cwlib-ts/src/backup.ts` accepts `LVLb`,
   `PLNb` and `CHKb`.
 
 ### The dependency table
@@ -52,7 +52,7 @@ Measured 2026-09-05. It sits **after** the payload, at `depsOffset`: `u32 count`
 `u8 kind` — 1 for a 20-byte SHA-1, 2 for a `u32` GUID — followed by a `u32` resource type. ✔ On
 "Music Gallery #3" the walk of 160 variable-length entries ended at exactly the last byte of the
 file (`0x52d02` of `0x52d02`), which is the check that the reading is right. `readDependencies` in
-`packages/cwlib-ts/src/resource.ts`.
+`../cwlib-ts/src/resource.ts`.
 
 ❗ **A hashed dependency is a USER resource and a GUID one is a GAME asset.** The hashed ones are in
 the public archive under the same URL scheme as the level; the GUIDs are in the game's FileDB and
@@ -78,7 +78,7 @@ The `R*` resource-type ids themselves come from the eboot's ordered name list (`
 `RLevel` → `PWorld.things`; `RPlan` → its Thing array. **The stream is strictly sequential**:
 references are inline ids that expand at their first mention, parts carry no lengths, and
 `PWorld.things` is an array of them, so reaching the 443rd Thing means having fully read the 442
-before it. That is why `partReaders()` in `packages/cwlib-ts/src/parts.ts` has **50** readers rather
+before it. That is why `partReaders()` in `../cwlib-ts/src/parts.ts` has **50** readers rather
 than the nine part types that ever share a Thing with a sequencer — count it, do not quote it.
 
 Per Thing, in stream order — every gate below was taken from cwlib's `Thing.java` and then
@@ -140,7 +140,7 @@ anything that touches a field width against them before believing the ten-level 
 ## Plans — `PLNb`
 
 A plan is a saved Thing rather than a world — a costume, a vehicle, or a music sequencer copied into
-somebody's popit. `readPlan` in `packages/cwlib-ts/src/level.ts` opens one and `readLevelProject`
+somebody's popit. `readPlan` in `../cwlib-ts/src/level.ts` opens one and `readLevelProject`
 dispatches on the magic. `RPlan` is four fields and only the third matters:
 
 ```
@@ -161,7 +161,7 @@ on 220 of 220, asserted — and every one of 83,188 Things carries the `0xAA` ma
 663 resources: **224 plans**, all but one parsing — the exception is at revision `0x272`, refused by
 the bound on purpose — and **172 music sequencers inside plans against 19 inside the levels beside
 them**. A gallery level is a rack of speakers pointing at plans; the songs are the
-plans. `packages/cwlib-ts/test/plan.test.ts` pins the counts. ⚠️ `PLNb` was once in the level
+plans. `../cwlib-ts/test/plan.test.ts` pins the counts. ⚠️ `PLNb` was once in the level
 magic list meaning "read a plan as if it were a world", which produced eleven loud failures for a
 backup that was fine; the magic was never the problem, the reader was.
 
@@ -221,7 +221,7 @@ len-0x1c sha1     hashinate      HMAC-SHA1 over the archive, rev > 2 (Vita: len-
 `fatOffset = len - 8 - entryCount*0x1c - 0x14` (rev > 2), minus 4 more on rev 5. The save key is
 skippable; the FAT alone gets every resource out. The archive is cut into **0x240000-byte chunks**,
 one file each, and each chunk is XXTEA'd on its own. ⚠️ **Only single-chunk saves are measured**;
-`packages/cwlib-ts/src/savearchive.ts` verifies every resource against the SHA-1 in the table,
+`../cwlib-ts/src/savearchive.ts` verifies every resource against the SHA-1 in the table,
 which turns that unmeasured boundary into a loud failure rather than a corrupt level.
 
 ✔ Measured 2026-09-04 on `BCES00850LEVEL01EE7CEE/0` (472,960 bytes): 28 resources, **28 of 28
@@ -232,7 +232,7 @@ table — ennuo's `cwlib/util/Crypto.java` + `SaveArchive.java`, and Zaprit's
 a site can serve the same level as a backup zip and as loose resources because it holds the
 plaintext and *builds* the save on the way out. The encryption is something a download acquires.
 
-- ❗ `PARAM.SFO` is not encrypted either: `packages/cwlib-ts/src/psf.ts` reads `SUB_TITLE`, which is
+- ❗ `PARAM.SFO` is not encrypted either: `../cwlib-ts/src/psf.ts` reads `SUB_TITLE`, which is
   how the pages title a drop "FJ's Music Hub by Festerd_Jester" rather than `32406766.zip`.
 - ❗ **`FAR4` is not `FARC`.** The game's own `base_001.farc` is a different archive family; see
   [game-assets.md](game-assets.md).
@@ -246,7 +246,7 @@ plaintext and *builds* the save on the way out. The encryption is something a do
 
 Not a game format: a `.mod` is Craftworld Toolkit's own package, defined by nothing but cwlib's
 `types/mods/Mod.java`, and the game never sees one — the toolkit installs its rows into a FileDB
-and a FARC. `packages/cwlib-ts/src/mod.ts` reads and writes it; the page opens one like a zip and
+and a FARC. `../cwlib-ts/src/mod.ts` reads and writes it; the page opens one like a zip and
 the Import/Export view writes one around the `.plan` ([export-to-game.md](export-to-game.md)).
 
 | entry | what |
@@ -310,7 +310,7 @@ starts. The walk itself is `packages/lbp-tracker-web/src/resource-walk.ts`, shar
 **The archive's own index is downloadable.** `dry.db`, 2.65 GB of SQLite from
 <https://archive.org/download/dry23db>, **10,467,874 level slots**; its `slot` table carries the
 20-byte `rootLevel` SHA-1, so the index plus the URL above is a scriptable corpus of every level
-that survives — `packages/cwlib-ts/dev/archive-sample.mjs`. ⚠️ **`slot.game` is which title the
+that survives — `../cwlib-ts/dev/archive-sample.mjs`. ⚠️ **`slot.game` is which title the
 slot was PUBLISHED for, not the revision the file carries**: a level published as LBP2 and last
 saved in LBP3 is stored as LBP3, so `game` 1 spans `0x3b7`–`0x3f9` and only `game` 0 reaches
 LEERDAMMER. Ids are chronological, so an even spread over them is an even spread over the game's
@@ -417,12 +417,12 @@ Every corpus is somebody's own data and **none of it may be committed**; `.gitig
 | the archive sample | `fixtures/archive/` | 103 root levels spread over LBP1, LBP2 and LBP3 slots |
 | the archived chunks | fetched through the dependency walk | 32 `CHKb`, 5,832 Things — the only `cf0` corpus |
 
-`packages/cwlib-ts/test/resource.test.ts` and its siblings read `LBP_LEVELS` and **skip** when it is
+`../cwlib-ts/test/resource.test.ts` and its siblings read `LBP_LEVELS` and **skip** when it is
 absent, so the suite passes on a machine without the game.
 
 ## The reader's version bound — `LBP3_MIN_VERSION = 0x3b7`
 
-`packages/cwlib-ts/src/serializer.ts` refuses anything older. Two measurements put it at `0x3b7`
+`../cwlib-ts/src/serializer.ts` refuses anything older. Two measurements put it at `0x3b7`
 rather than the corpus's own `0x3b8`: cwlib has exactly one gate at `0x3b8` in its whole tree
 (`PPhysicsTweak`'s `version > 0x3b8 && configuration == 0xd`, which `readPhysicsTweak` has), and
 all four `0x3b7` levels in the archive sample parse the moment the bound allows them.
@@ -452,7 +452,7 @@ nonsense" looks like from the outside. Whether to admit an *allowed set* (`0x272
 ### How a reader bug is found, the technique
 
 1. `tools/CwlibTrace.java spans` for cwlib's part boundaries with offsets, and
-   `packages/cwlib-ts/dev/trace-level.ts` for ours; the first part whose span disagrees names the
+   `../cwlib-ts/dev/trace-level.ts` for ours; the first part whose span disagrees names the
    reader and therefore the cwlib file to open. ❗ Reach for this before a hex dump.
 2. Wrap every `Serializer` method to log each read as `(name, start, end, value)` — **values, not
    just widths**; widths align at any offset, values do not. The tail of a part that reads

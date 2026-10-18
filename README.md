@@ -7,16 +7,18 @@ engine was measured out of the game's own binaries, and `steering/` says how.
 
 ## Layout
 
-Three npm workspaces, split by dependency direction:
+Two npm workspaces and one git dependency, split by dependency direction:
 
 | directory | package | what it is |
 |---|---|---|
-| `packages/cwlib-ts` | `@lbptracker/cwlib` | reads LBP's serialised resources: containers, the Thing graph, saves, archives |
+| [`LBPTracker/cwlib-ts`](https://github.com/LBPTracker/cwlib-ts) | `@lbptracker/cwlib` | reads LBP's serialised resources: containers, the Thing graph, saves, archives; its own repository, installed from git |
 | `packages/lbp-tracker-lib` | `@lbptracker/lib` | turns that into sound: the sampler, the DSP chain, the render pipeline, MIDI |
 | `packages/lbp-tracker-web` | `@lbptracker/web` | the four pages — the instrument bench, the live player, the offline renderer, the MIDI bridge |
 
-The two libraries are plain TypeScript with **no build step**: Node runs them directly, so the file
-the browser executes is the file the tests execute. Only the web package has a bundler (Vite), and
+`lbp-tracker-lib` is plain TypeScript with **no build step**: Node runs it directly, so the file
+the browser executes is the file the tests execute. `cwlib-ts` builds itself into JavaScript when
+npm installs it, because Node will not run TypeScript from `node_modules`; Node and the browser
+still run the same file. Only the web package has a bundler (Vite), and
 the reason is a measurement recorded in its `vite.config.ts`. Each package has a `README.md`.
 
 `tools/` holds the reverse-engineering helpers and the Python reference implementations the
@@ -28,7 +30,7 @@ measured. Start with `steering/project-brief.md`.
 Node 24 or newer.
 
 ```bash
-npm install          # once; links the workspaces, downloads only the web package's tooling
+npm install          # once; links the workspaces, fetches and builds cwlib-ts, and the web tooling
 npm run serve        # http://127.0.0.1:8173
 npm run build        # -> dist/, relocatable static files
 npm run preview      # serves dist/ on http://127.0.0.1:8174
@@ -40,8 +42,8 @@ npm run typecheck    # tsc for the libraries, vue-tsc for the web package
 npm run check        # both, in that order
 ```
 
-`npm test -w @lbptracker/lib` and `npm run typecheck -w @lbptracker/cwlib` scope either to one
-package.
+`npm test -w @lbptracker/lib` and `npm run typecheck -w @lbptracker/web` scope either to one
+package. `cwlib-ts`'s own tests run in its repository.
 
 ## What is not here
 

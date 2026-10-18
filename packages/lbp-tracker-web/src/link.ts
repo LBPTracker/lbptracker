@@ -85,7 +85,7 @@ function levelParams(level: LinkedLevel): Record<string, string | undefined> {
  * The song a URL asks for, if it asks for one.
  *
  * ❗ **Two spellings, because a uid is unique inside a level and not across a
- * backup** (`sequencersOf` in `packages/cwlib-ts/src/backup.ts`): `seq=7` means
+ * backup** (`sequencersOf` in `../cwlib-ts/src/backup.ts`): `seq=7` means
  * "the sequencer numbered 7", which is unambiguous for the one level a `?level=`
  * link opens, and `seq=<file>#7` names the file too, which is what a backup of
  * several levels needs. A link written by this page is the short form whenever

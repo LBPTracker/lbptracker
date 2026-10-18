@@ -15,6 +15,6 @@
     "typecheck": "node ../../node_modules/typescript/bin/tsc -p ."
   },
   "dependencies": {
-    "@lbptracker/cwlib": "*"
+    "@lbptracker/cwlib": "git+https://github.com/LBPTracker/cwlib-ts.git"
   }
 }

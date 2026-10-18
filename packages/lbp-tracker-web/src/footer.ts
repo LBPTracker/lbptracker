@@ -32,7 +32,7 @@
  */
 
 /** Where this thing lives. The issues page is this plus a path, below. */
-const REPO = 'https://github.com/sgdc3/lbptracker';
+const REPO = 'https://github.com/LBPTracker/lbptracker';
 
 /** A link that never leaks the referrer and never gets window access. */
 const link = (href: string, text: string): string =>

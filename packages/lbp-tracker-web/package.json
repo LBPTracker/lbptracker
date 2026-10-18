@@ -15,7 +15,7 @@
     "typecheck": "node dev/typecheck.mjs"
   },
   "dependencies": {
-    "@lbptracker/cwlib": "*",
+    "@lbptracker/cwlib": "git+https://github.com/LBPTracker/cwlib-ts.git",
     "@lbptracker/lib": "*",
     "vue": "^3.5.42"
   },

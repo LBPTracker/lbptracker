@@ -333,7 +333,7 @@ holds a `Song` of `Clip`s of `SongNote`s of `SongPoint`s — mutable, with stabl
 selection, positions in **thirds of a step**, the timbre as the 0..15 nibble.
 
 ❗ **The boundary goes through the game's own record encoding.** `sequencerFromSong` writes each
-clip's records with `encodeNotes` (`packages/cwlib-ts/src/notes.ts`: the measured order — position
+clip's records with `encodeNotes` (`../cwlib-ts/src/notes.ts`: the measured order — position
 ascending, pitch descending, end ascending — and the resting bit) and then **decodes them again**
 for `Track.notes`, so what the player schedules is what a level saved from this song would hold.
 Measured 2026-09-06 over the ten-level corpus in `test/song.test.ts`: **62,158 clips through

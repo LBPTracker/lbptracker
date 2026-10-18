@@ -835,7 +835,7 @@ renderer was `FOLD_GAIN`, now *39*'s.
 **Answer**: three dot products against the board matrix's columns, each divided by the column's
 squared length; 100.00% of 1,030 open-board placements on a cell, with the odd-multiple
 fingerprint intact — [sequencer-data-model.md](sequencer-data-model.md),
-`packages/cwlib-ts/dev/board-probe.ts`.
+`../cwlib-ts/dev/board-probe.ts`.
 
 ⚠️ The Java tool this replaced computed `thing.translation − board.translation`, rotated by the
 **child's** inverse normalised rotation. It scored the same 100.00% on this corpus and was wrong

@@ -3,7 +3,7 @@
  *
  * The resources are built here with nothing in them but a magic and a
  * dependency table, which is all the walk reads (the table's layout is pinned
- * in `packages/cwlib-ts/test/resource.test.ts`); `grab` is a map lookup, so
+ * in `../cwlib-ts/test/resource.test.ts`); `grab` is a map lookup, so
  * what is tested is what gets asked for, in what order, and what is said about
  * what did not come.
  */

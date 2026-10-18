@@ -54,11 +54,11 @@ The voice's own grid is the tracker's clock's, kept as an A/B, and the keyboard 
 `packages/lbp-tracker-lib/test/audio.test.ts` pins "the mixer renders the same audio whatever the
 block size", and it catches a grid mistake within a minute of it being made.
 
-## The monorepo — three packages, one seam
+## The monorepo — three packages, one seam, one of them next door
 
 | directory | package | what it is |
 |---|---|---|
-| `packages/cwlib-ts` | `@lbptracker/cwlib` | reading LBP's serialised resources: the container, the Thing graph and its **50** part readers, plans, chunks, saves, archives |
+| `../cwlib-ts` | `@lbptracker/cwlib` | reading LBP's serialised resources: the container, the Thing graph and its **50** part readers, plans, chunks, saves, archives — **its own repository**, `github.com/LBPTracker/cwlib-ts` |
 | `packages/lbp-tracker-lib` | `@lbptracker/lib` | turning that into sound: the sampler, the DSP chain, the render pipeline, MIDI |
 | `packages/lbp-tracker-web` | `@lbptracker/web` | the app: one page, one song, five views ([editor.md](editor.md)) |
 
@@ -77,19 +77,46 @@ its inflater as an argument: `platform/node.ts` passes `zlib.inflateSync`, `plat
 `DecompressionStream` wrapper. That is what keeps the same parser running under `node --test`
 against the corpus and in the browser against a file the user picked.
 
+### cwlib is a git dependency
+
+Since 2026-10-18 `cwlib` lives in its own repository, split out of `packages/cwlib-ts` with its
+history (`git subtree split`; the 53 commits that touched that folder). A path written
+`../cwlib-ts/…` anywhere in steering is a file in that repository, checked out next to this one.
+Both workspaces depend on it as `git+https://github.com/LBPTracker/cwlib-ts.git`, and the lockfile pins
+the commit.
+
+❗ **It ships JavaScript, and that is forced, not chosen.** A git dependency lands in
+`node_modules` as a real copy, not a symlink, and Node 24 refuses to strip types under
+`node_modules` — `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`, measured on 24.20.0 with a
+one-file package. So cwlib's `prepare` runs `tsc -p tsconfig.build.json` into `dist/`, which npm
+does on install, and its `exports` maps `@lbptracker/cwlib/<name>.ts` onto `dist/<name>.js` with
+its `.d.ts`: every import specifier here stayed as it was. The fidelity property survives in the
+form that matters — `node --test` and the browser both run that same `dist/*.js` — but cwlib's
+own tests run on its sources, in its repository (`npm run check` there; 67 tests, its corpus tests
+find this repository's `fixtures/` through `LBP_FIXTURES`, defaulting to the sibling checkout).
+
+- **Changing cwlib**: commit and push there, then `npm update @lbptracker/cwlib` here, which moves
+  the lockfile's commit. To try a change before pushing, `npm run build` in `../cwlib-ts` and
+  `npm install --no-save ../cwlib-ts` here: a `file:` install is a symlink, so it sees the fresh
+  `dist/` until the next plain `npm install` puts the pinned commit back.
+- ⚠️ cwlib's build is the one place `rewriteRelativeImportExtensions` is on (the bullet below says
+  why it had to go here): its sources import each other only by relative path, so TS2877 never
+  fires there.
+
 ## The toolchain
 
 Node 24 strips TypeScript types at load, so `node packages/…/whatever.ts` just runs; it also ships
-the test runner (`node --test` finds every `*.test.ts` across the workspaces) and zlib. **The two
-libraries need nothing else**: no build, no bundler, no transpile — the file the browser runs is
-the file `node --test` runs, which is the property the fidelity argument rests on.
+the test runner (`node --test` finds every `*.test.ts` across the workspaces) and zlib. **`lib`
+needs nothing else**: no build, no bundler, no transpile — the file the browser runs is the file
+`node --test` runs, which is the property the fidelity argument rests on. (`cwlib` builds; the
+section above says why it must.)
 
-- ⚠️ **`npm install` is required.** Workspaces resolve `@lbptracker/cwlib/level.ts` through
-  symlinks in `node_modules`; nothing is downloaded for the libraries.
-- ❗ **Node does not strip types inside `node_modules`, and this survives it** because a workspace
+- ⚠️ **`npm install` is required.** Workspaces resolve `@lbptracker/lib/…` through symlinks in
+  `node_modules`, and `@lbptracker/cwlib` is cloned and built there.
+- ❗ **Node does not strip types inside `node_modules`, and `lib` survives it** because a workspace
   entry is a symlink and Node resolves the realpath before deciding. Measured with a two-package
   probe before the split; if it ever changes, every test stops loading at once and the reason will
-  not be obvious.
+  not be obvious. cwlib, a real copy, did not survive it, and is why it ships `dist/`.
 - ⚠️ **Strip-only type removal bans any syntax that emits code**: parameter properties, `enum`,
   `namespace` and decorators fail at load with `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`. Declare fields
   longhand and use `as const` objects. `tsconfig.base.json` sets `erasableSyntaxOnly` to enforce it
@@ -112,14 +139,14 @@ the file `node --test` runs, which is the property the fidelity argument rests o
   checker means nothing on its own.**
 - ⚠️ `typescript` and `typescript-native-bridge` both declare `bin: tsc`, so npm installs neither
   shim (`node_modules/.bin` holds `vite` and `vue-tsc` and no `tsc`) and a script saying `tsc`
-  dies with `'tsc' is not recognized` — which reads as a broken PATH. The libraries' `typecheck`
-  scripts therefore name the file: `node ../../node_modules/typescript/bin/tsc -p .`. Both
+  dies with `'tsc' is not recognized` — which reads as a broken PATH. `lib`'s `typecheck`
+  script therefore names the file: `node ../../node_modules/typescript/bin/tsc -p .`. Both
   packages are hoisted to the root `node_modules`, so the path is stable.
 - Each package owns its `test` and `typecheck` scripts; the root's `typecheck` is
-  `npm run typecheck --workspaces`, which runs all three and exits non-zero if any fails
+  `npm run typecheck --workspaces`, which runs both and exits non-zero if any fails
   (measured with a `const x: number = 'oops'` in `cwlib`: exit 1, and the web check still ran
   after it), and `npm run check` chains it with the tests. `node --test` at
-  the root finds every `*.test.ts` under `packages/` in one process, which is faster than three.
+  the root finds every `*.test.ts` under `packages/` in one process, which is faster than two.
 
 ## Serving and shipping: Vite, in the web package only
 
@@ -152,9 +179,10 @@ pages are checked in an automated browser. The deployed site serves no levels, s
 into the page's error line. `?level=<sha1>` is the other query route and is the shareable one — a
 published level fetched from the archive; *Checking it* in [editor.md](editor.md) has it.
 
-What was kept: the libraries have no build (the bundler stops at the web package's edge; `node
---test` runs 306 tests against the source); the output is relocatable (`base: './'`, every path
-`./assets/…`, checked by grep after each build and by serving `dist/` at a bare root);
+What was kept: the libraries had no build until cwlib left the repository (the bundler stops at
+the web package's edge; `node --test` runs 306 tests against the source); the output is
+relocatable (`base: './'`, every path `./assets/…`, checked by grep after each build and by
+serving `dist/` at a bare root);
 **`fixtures/` is served, never built** — a ten-line middleware serves `/fixtures/…` in dev and
 preview, and `publicDir` was not used because it would copy the lot into `dist/`; and the dev server
 makes **no outbound requests** (below).
@@ -301,7 +329,7 @@ with the same `{ name, bytes }[]`, read by `readOpened` in `src/open-level.ts`; 
 several sequencers puts them in the picker, and picking one makes it the song.
 The formats are in [level-files.md](level-files.md); this is the behaviour around them.
 
-- `packages/cwlib-ts/src/backup.ts` reads over `{ name, bytes }[]` and knows nothing about files,
+- `../cwlib-ts/src/backup.ts` reads over `{ name, bytes }[]` and knows nothing about files,
   directories or archives, because the user's data is read client-side and never uploaded.
   `zip.ts` reads stored and deflated entries through an `InflateRaw` the platform supplies. ⚠️
   **`readEntries` returns a PAGE**, at most a hundred entries, and has to be called again until it
@@ -530,7 +558,7 @@ the quietest (`polyphony.ts`).
    formula, key splits, envelopes, ladder, LFOs, drive, pool.
 3. ~~**`RInstrument` reading**~~ — done: all 68 of the game's instruments parse exactly and the bench
    plays them from the real `.smp` samples.
-4. ~~**Level import**~~ — done, both halves: `packages/cwlib-ts/src/project.ts` turns a level into
+4. ~~**Level import**~~ — done, both halves: `../cwlib-ts/src/project.ts` turns a level into
    sequencers, tracks and a scheduled event list; the whole corpus imports (19 files, 338
    sequencers, 129,696 tracks, 2,027,633 notes, zero records falling outside a note; tempos 30–240,
    cells 0–334, rows 0–24), and `dev/verify-levels.ts` matches cwlib's dump on 149 sequencers and
@@ -548,7 +576,7 @@ the quietest (`polyphony.ts`).
 
 | where | what |
 |---|---|
-| `packages/cwlib-ts/src/` | `stream.ts` (big-endian reader, varints, `Revision` gates), `serializer.ts`, `resource.ts` (container, dependency table), `thing.ts` + `parts.ts` (the walk, 50 readers), `level.ts` (worlds, plans, chunks, `boardCell`), `project.ts` + `notes.ts` (the sequencer as data), `savearchive.ts`, `psf.ts`, `zip.ts`, `backup.ts`, `platform/` |
+| `../cwlib-ts/src/` | `stream.ts` (big-endian reader, varints, `Revision` gates), `serializer.ts`, `resource.ts` (container, dependency table), `thing.ts` + `parts.ts` (the walk, 50 readers), `level.ts` (worlds, plans, chunks, `boardCell`), `project.ts` + `notes.ts` (the sequencer as data), `savearchive.ts`, `psf.ts`, `zip.ts`, `backup.ts`, `platform/` |
 | `packages/lbp-tracker-lib/src/` | `render.ts` (the pipeline), `audio/mixer.ts` (voices, resampling, panning, looping, per-chunk re-derivation), `audio/interpolate.ts` + `mipmap.ts` (default `linear`; `sinc8` kept for A/B), `audio/moog.ts`, `audio/lfo.ts`, `audio/effects.ts` (echo, reverb, fold constants), `audio/compressor.ts`, `audio/master-stage.ts` (the master bus: the game's, with the AGC of `audio/agc.ts` or without, the fold's gain alone, or ours in `audio/master.ts`), `audio/mixer-worklet.ts`, `rinstrument.ts` + `instrument.ts` + `voice.ts`, `envelope.ts`, `params.ts`, `polyphony.ts`, `scale.ts`, `swing.ts`, `fsb.ts` + `ima.ts` + `wav.ts`, `midi.ts` + `smf.ts`, `als.ts` + `als-xml.ts` + `als-sampler.ts` (the Ableton Live set and its Samplers), `song.ts` (the editable song and its boundary with the records) |
 | `packages/lbp-tracker-web/` | `index.html` the app; `src/daw.ts` the shell (tabs, transport, files); `src/daw/session.ts` the one song, player and plan; `src/daw/arrange.ts`, `mixer.ts`, `render-view.ts`, `convert-view.ts` (with `als-export.ts` and `plan-export.ts`), `keyboard-view.ts` the views; `src/render-worker.ts`; `src/player.ts` the scheduler; `src/editor/` the board, the roll, the state and the panels; `src/controls/`, `src/widgets/`, `src/assets.ts`, `src/lbparchive.ts`, `src/footer.ts` |
 

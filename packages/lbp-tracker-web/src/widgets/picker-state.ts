@@ -17,7 +17,7 @@ export interface SeqRow {
    * ⚠️ **A uid is unique inside a level and not across a backup.** Opening a
    * folder of forty levels routinely gives two sequencers numbered 7, and a
    * picker keyed on the uid shows one row where there are two and hands the
-   * caller the wrong song. `packages/cwlib-ts/src/backup.ts` builds these as
+   * caller the wrong song. `../cwlib-ts/src/backup.ts` builds these as
    * `file#uid`; a page with one level can pass the uid as a string.
    */
   readonly key: string;

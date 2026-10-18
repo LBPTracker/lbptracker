@@ -94,7 +94,7 @@ rule — that a capture of "the game" is a capture of shadPS4 — is in
 
 ### The `RawDump` duplication — kept for the rule at the end
 
-`tools/RawDump.java`, deleted 2026-09-02 once `packages/cwlib-ts/src/level.ts` replaced it, walked
+`tools/RawDump.java`, deleted 2026-09-02 once `../cwlib-ts/src/level.ts` replaced it, walked
 `world.things` and dumped every Thing carrying a music `PSequencer`. ⚠️ **A world's Thing list can
 carry the same sequencer twice**, and when it does every component was written again with the same
 `seqUID` **and the same `instIdx`**, byte for byte. **60 of the corpus's 338 sequencers came out
@@ -105,7 +105,7 @@ overflowed, stole the quietest, and the four voices carrying the sustained lead 
 bars, exactly as a listener reported.
 
 The fixture on disk, `fixtures/levels/sequencers.jsonl`, **predates the fix and still contains the
-duplicates**; `packages/cwlib-ts/dev/verify-levels.ts` drops any row repeating a
+duplicates**; `../cwlib-ts/dev/verify-levels.ts` drops any row repeating a
 `(file, seqUID, instIdx)` it has already seen — exact rather than heuristic, because a board cell
 holds one component. The TypeScript walk cannot produce this at all: it visits each Thing once, and
 its 62,158 placements over the ten-level corpus are exactly `PartCensus.java`'s `INSTRUMENT` count.
@@ -117,7 +117,7 @@ were at the same board cell. They were.
 
 ## How `sequencerdump` gets from a file to a set of sequencers
 
-The traversal is the part worth reusing, and all of it is implemented in `packages/cwlib-ts`
+The traversal is the part worth reusing, and all of it is implemented in `../cwlib-ts`
 (`backup.ts`, `savearchive.ts`, `readPlan` in `level.ts`). The containers, the `FAR4` recipe, the
 plans and the streaming chunks are in [level-files.md](level-files.md); the sequencer-specific
 half:

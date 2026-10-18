@@ -2,10 +2,11 @@
  * The web package's build. The other two packages have none.
  *
  * ❗ **The bundler is confined to this package, and that is the point.**
- * `@lbptracker/cwlib` and `@lbptracker/lib` stay plain TypeScript that Node
- * runs directly — `node --test` needs no build step and no bundler, which is
- * what keeps the fidelity work honest (see steering/tracker-architecture.md).
- * Only the pages are bundled.
+ * `@lbptracker/lib` stays plain TypeScript that Node runs directly — `node
+ * --test` needs no build step and no bundler, which is what keeps the fidelity
+ * work honest (see steering/tracker-architecture.md). `@lbptracker/cwlib` is a
+ * git dependency and arrives as the `dist/*.js` its own `prepare` built, which
+ * is what Node runs too. Only the pages are bundled.
  *
  * ## Why a bundler at all, measured rather than assumed
  *
@@ -100,9 +101,9 @@ export default defineConfig({
   // 8173 and 8174 are what every note, page and bookmark in this project says.
   server: { host: '127.0.0.1', port: 8173, strictPort: true },
   preview: { host: '127.0.0.1', port: 8174, strictPort: true },
-  // The two libraries are workspace source, not dependencies: pre-bundling them
-  // would hand the browser an esbuild copy instead of the file `node --test`
-  // runs, which is exactly the property this project keeps.
+  // Pre-bundling either library would hand the browser an esbuild copy instead
+  // of the file `node --test` runs, which is exactly the property this project
+  // keeps: `lib`'s source, and cwlib's built `dist/`.
   optimizeDeps: { exclude: ['@lbptracker/cwlib', '@lbptracker/lib'] },
   build: {
     outDir: path.join(REPO, 'dist'),
