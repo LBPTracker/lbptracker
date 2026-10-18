@@ -4,6 +4,12 @@ What changed for the person using LBP Tracker, newest first. The site shows this
 version number in its status bar, so it is written for them: what they can do now that they could
 not before, never how it was done. No `--` or em dash in here; the site's text does without them.
 
+## 0.2.49 (2026-10-18)
+
+- Fixed: the app's icon was a broken image wherever the PNG version is used, such as the home
+  screen icon on an iPhone or iPad and the preview picture when a link to the site is shared.
+  It now shows the logo, the yellow note on its purple tile.
+
 ## 0.2.48 (2026-10-13)
 
 - The harp holds its notes more naturally. Shortly after each pluck the harp's sound used to
