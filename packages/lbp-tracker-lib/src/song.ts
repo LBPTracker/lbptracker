@@ -22,7 +22,7 @@
  * Positions are in **thirds of a step** throughout, because that is the record
  * grid: a triplet sits at thirds 1 and 2 of a step, and a note's end is the
  * position of its last control point (the engine's gate closes a step after
- * it -- `duration = lastStep - firstStep + 1`, steering/sequencer-data-model.md).
+ * it -- `duration = lastStep - firstStep + 1`, ../cwlib-ts/steering/sequencer-data-model.md).
  */
 
 import {
@@ -127,7 +127,7 @@ export interface Song {
  *
  * Reported by the project's owner from the game's editor, 2026-09-06: a placed
  * instrument's grid is four bars and grows by two at a time. Measured against
- * the corpus the same day (steering/sequencer-data-model.md, *The tile*): of
+ * the corpus the same day (../cwlib-ts/steering/sequencer-data-model.md, *The tile*): of
  * 72,726 chips with a neighbour on their row, 63,337 sit exactly two cells
  * (32 steps) apart, and the notes of 66,837 of 74,864 clips need exactly two
  * cells -- so the default grid is 32 steps, one 105-unit square of the board,
@@ -151,7 +151,7 @@ export const MAX_TIMBRE = 15;
  * How many rows a board may have. The game's editor clamps a board to 2625 units a side, 25 rows
  * of 105 (eboot `v0x169b35`), but with cheats a board reaches 33 rows and the game still plays it,
  * which is the owner's report and the limit here (*The board's size limit* in
- * steering/sequencer-data-model.md).
+ * steering/sequencer-engine-inputs.md).
  */
 export const MAX_BOARD_ROWS = 33;
 /** The tallest board the game's own editor makes, 2625 units: past it the game is off its own map. */

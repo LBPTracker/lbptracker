@@ -25,7 +25,7 @@ of the Python ones are the ground truth the TypeScript reproduces (`fsb.py`, `lb
 | tool | what it is | checked how |
 |---|---|---|
 | `fsb.py` | FSB4 bank reader, IMA ADPCM decoder, WAV writer | decodes the game's `piano_C3` to a clean tone at the expected pitch (game-assets.md); `packages/lbp-tracker-lib/src/fsb.ts` + `ima.ts` are byte-identical to it |
-| `lbpres.py` | the `LVLb`/`PLNb` container: revision, branch, zlib chunk table | 18 real levels, every chunk inflating to its declared size and the last one ending exactly on `depsOffset` (level-files.md) |
+| `lbpres.py` | the `LVLb`/`PLNb` container: revision, branch, zlib chunk table | 18 real levels, every chunk inflating to its declared size and the last one ending exactly on `depsOffset` ([cwlib's level-files.md](../../cwlib-ts/steering/level-files.md)) |
 | `wavehammer.py` | the WaveHammer's gain curve — a literal transcription of the PRX plus the two-line closed form its knee reduces to | `wavehammer.py check` agrees the two over five configurations × 3999 entries to 2.1e-14 dB; `runhammer.py sweep` agrees it with the module *running* to 1e-4 dB |
 | `panmeasure.py` | the stereo width of a recording: the least-squares leak of one channel into the other, with the residual that says whether one number describes it at all | how the pan width was settled (*22* in answered-questions.md). Use it on any new capture of the game |
 
@@ -97,7 +97,7 @@ whole chain, run in series against the modules* in [lbp-audio-engine.md](lbp-aud
 | `trace-icons.py` | those PNGs into the SVG paths of `src/editor/icons.ts`: drop the frame, close the stripes down the y axis, marching squares, Douglas-Peucker. ⚠️ Both traps are in its header, and the second one bites anyone simplifying a closed loop. `EPS` is the one knob |
 | `ReverbOrder.java` | a compiled `.ff` script through the LAMS table: every `LoadConstInstructionInt` operand in a function, translated. ⚠️ **The int is inline in the instruction word**, which is why searching a script's bytes for a LAMS id finds nothing. This is how the reverb list's order was read |
 | `InstrumentNames.java` | every `*instrument_*.plan` → its inventory `titleKey` → the LAMS table → **the name the game shows for each sound**, joined to the `.rinst` GUID through the plan's dependencies. Feeds `src/editor/instrument-labels.ts` |
-| `ModCheck.java` | **the check on `../cwlib-ts/src/mod.ts`**: `read` opens a `.mod` with cwlib's own `Mod` and prints config and rows, with whether the archive holds each under its hash; `write` has `Mod.save` make one for our reader. cwlib is the format's only definition, so this is the only ground truth there is — *The toolkit's `.mod`* in level-files.md |
+| `ModCheck.java` | **the check on `../cwlib-ts/src/mod.ts`**: `read` opens a `.mod` with cwlib's own `Mod` and prints config and rows, with whether the archive holds each under its hash; `write` has `Mod.save` make one for our reader. cwlib is the format's only definition, so this is the only ground truth there is — *The toolkit's `.mod`* in cwlib's level-files.md |
 | `InstrumentColours.java` | the same 68 plans read as **what a chip the game has just placed holds**: `PInstrument.Colour` (the family's tint), the plan GUID, the chip icon, and the mixer defaults. Feeds `../cwlib-ts/src/chips.ts`, all 68 rows of it. ⚠️ It uses cwlib rather than our own reader on purpose — these plans are revision `0x397` and `../cwlib-ts` stops at `0x3b7` |
 
 The sequencer's real samples and its `.rinst` instrument definitions come out of the game with:
@@ -139,45 +139,14 @@ disassembler nobody has written; the strings alone still say which script owns a
 
 ## The level corpus
 
+The reader's harnesses — `trace-level`, `walk-levels`, `verify-levels`, `fetch-plan`,
+`dump-fields`, `chip-table`, `verify-export`, `archive-sample` — and the two Java oracles beside
+them, `PartCensus.java` and `CwlibTrace.java`, are
+[cwlib's tools.md](../../cwlib-ts/steering/tools.md). What stays here is the page's own:
+
 | tool | what it does |
 |---|---|
-| `PartCensus.java` | which Thing parts a level corpus actually uses, overall and on the Things carrying a `SEQUENCER` or an `INSTRUMENT`. Its `INSTRUMENT` count for the ten-level corpus, **62,158**, is what `../cwlib-ts/test/project.test.ts` pins the TypeScript walk against |
-| `CwlibTrace.java` | **ask cwlib what it reads from a level, and where.** `CwlibTrace parts <level>` gives the Thing count and each Thing's decoded part list; `CwlibTrace spans <level>` turns on cwlib's own serialiser log and prints every part boundary **with its byte offset** |
-| `../cwlib-ts/dev/trace-level.ts` | the other half: our reader's part spans in the same units, so a divergence is a diff that names the part and therefore the cwlib file to open |
-| `../cwlib-ts/dev/walk-levels.ts` | walk a directory of resources and name the next part with no reader, rather than throwing a stack trace |
-| `../cwlib-ts/dev/verify-levels.ts` | the golden fixture: the walk against `fixtures/levels/sequencers.jsonl`, plus the structural check that every board cell is whole and distinct |
-| `../cwlib-ts/dev/board-probe.ts` | the measurement behind `boardCell` — why the cell of a component on an open board is the delta in the board's basis and not the bare delta |
-| `../cwlib-ts/dev/fetch-plan.ts` | a root level's **plan dependencies**, out of the public archive: `node ../cwlib-ts/dev/fetch-plan.ts <root hash or local file>` drops every type-38 dependency into `fixtures/plans/`. How the 17 real sequencer plans behind [export-to-game.md](export-to-game.md) were gathered |
-| `../cwlib-ts/dev/dump-fields.ts` | **every primitive read the parse makes, with its offset and its VALUE** — the technique level-files.md calls for, since widths align at any offset and values do not. `dump-fields.ts <file> [PART,PART] [start..end]`. This is how the parts the reader discards were read back out for the writer |
 | `packages/lbp-tracker-web/dev/check-demos.ts` | **the check on `src/demo-songs.ts`**: fetches each demo's level from archive.org as the page does and requires its uid to be a sequencer in it, printing name, author and chip count. With hashes as arguments it lists every sequencer of those levels instead, which is how a new row's uid is found. ⚠️ Network and other people's levels, so a dev tool and never a test |
-| `../cwlib-ts/dev/chip-table.ts` | **the check on `src/chips.ts`**, which `tools/InstrumentColours.java` now writes: `(RInstrument GUID) → (planGuid, icon)` tallied over every sequencer in the directories given, reporting any GUID that answers twice. It also tallies `PInstrument.Colour`, which the table cannot get from a corpus at all — a creator re-tints a chip and the corpus then holds the choice, not the default |
-| `../cwlib-ts/dev/verify-export.ts` | **what proves the plan writer**: every sequencer in the files given written out, read back and compared — settings field by field, note records byte for byte — plus a span-by-span diff of the non-musical parts against the game's own bytes |
-| `../cwlib-ts/dev/dry-search.ts` | the archive's index by name: `dry-search.ts "music gallery"` over `dry.db`, printing slot id, game and root hash. The way to find a level to fetch when all you have is its title |
-| `../cwlib-ts/dev/archive-sample.mjs` | **a corpus from the archive's own index**: `node ../cwlib-ts/dev/archive-sample.mjs 60` reads `dry.db`, picks an even spread of ids per game, downloads the root levels into `fixtures/archive/` and leaves them for `walk-levels.ts` |
-
-- ❗ **Reach for `CwlibTrace` before tracing bytes by hand.** Question 28 spent one session on a hex
-  dump and another guessing at version gates; twelve real reader bugs then came out of the span
-  diff, none needing a hex dump. `ResourceSystem.LOG_LEVEL` is what turns cwlib's log on.
-- ⚠️ `CwlibTrace parts` prints `825 things (278 non-null)`; **compare the non-null count.** cwlib's
-  `things` list holds nulls and `readWorld` filters them; comparing against the total once produced
-  a bogus "0 of 21 read correctly".
-- ⚠️ `PartCensus.java`'s output was once read as scoping the walk down to "eight part readers". It
-  answers *what sits on a sequencer's Thing*, which would matter if a Thing could be reached
-  directly — it cannot, the stream is sequential. **`partReaders()` returns 50 today.** Count it, do
-  not quote it.
-- ⚠️ **Reach for `archive-sample.mjs` before arguing about reader coverage from the ten-level
-  corpus**, which is one creator on one console generation. The 103-level sweep behind
-  `LBP3_MIN_VERSION` took one command, and every real `parts.ts` bug found on 2026-09-05 came out of
-  a file no PS3 save here contains. It needs the index (`LBP_DRY_DB`) and a Python to query it with
-  (`LBP_PYTHON`), because no Node this repo targets ships SQLite.
-- ⚠️ **`tools/RawDump.java` is gone**, deleted 2026-09-02. It walked a level's Thing graph through
-  the toolkit jar and dumped every music sequencer's note records; `../cwlib-ts/src/level.ts`
-  does that now and nothing in the pipeline needs Java. What it leaves behind is
-  `fixtures/levels/sequencers.jsonl` — 129,696 rows over **19 files** (⚠️ its `level` field is a
-  float, not a name; the source file is `file`), which `verify-levels.ts` still checks the walk
-  against. **It cannot be regenerated**, so it covers its own corpus and nothing newer, and it still
-  contains the 23,911 duplicate rows the tool used to emit — see *The `RawDump` duplication* in
-  lbp-modding-toolchain.md before trusting a raw row count.
 
 ## The eboot and the PRXs
 
@@ -297,7 +266,7 @@ question can be answered in seconds instead of by ear.
 | `ladder-knee.ts` | prints `LADDER_KNEE` for `als-sampler.ts`: where `MoogLadder` attenuates a sine by Live's −8.0 dB, for nominal cutoffs from 20 Hz up. Run it again if `audio/moog.ts` changes; `test/als-sampler.test.ts` re-derives three points off the grid |
 | `als-device-tree.ts <preset.adv>` | a Live device preset to the `DeviceNode` tree `als-xml.ts` emits, printed as TypeScript to paste. It refuses unless the tree rebuilds the file's elements in the file's order, which is the "derived, not typed" rule as a script. The master bus's Compressor and Limiter came out of it ([ableton-interchange.md](ableton-interchange.md)) |
 | `export-plan.ts` | **the command line into the game**: a level, a plan or a `.lbptracker.json` song in, a `.plan` out, with the revision and the whole dependency table printed. `export-plan.ts <in> [out] [--ps4] [--seq <uid>]`; a level with several sequencers lists the others |
-| `sequencer-memory.ts [dir ...]` | **the sequencer's thermometer over a corpus**: the game's own sum (distinct samples, FileDB sizes) for every sequencer in the toolkit's corpus, `fixtures/archive` and `fixtures/plans`, against `MaxSequencerMemory`; and what each instrument costs alone. It is the check on the reading in [sequencer-data-model.md](sequencer-data-model.md) — nothing may come out over the limit. ⚠️ A sample missing from the manifest counts as 0 and is reported |
+| `sequencer-memory.ts [dir ...]` | **the sequencer's thermometer over a corpus**: the game's own sum (distinct samples, FileDB sizes) for every sequencer in the toolkit's corpus, `fixtures/archive` and `fixtures/plans`, against `MaxSequencerMemory`; and what each instrument costs alone. It is the check on the reading in [sequencer-engine-inputs.md](sequencer-engine-inputs.md) — nothing may come out over the limit. ⚠️ A sample missing from the manifest counts as 0 and is reported |
 | `pitch-probe.ts` | that `Notes.y`, `basenote` and `Splitnotes` share one numbering: zones against their own base notes, and the corpus's notes against the samples they resolve to |
 
 ⚠️ **A render that normalises cannot see a gain error.** `render-level.ts` normalises its WAV, and a
@@ -311,8 +280,7 @@ a gain question out.
 |---|---|---|
 | `LBP_LEVELS` | the corpus tests, `render-level.ts`, `verify-midi.ts`, `live-sim.ts`, `live-settings.ts` | a directory of level resources; default the toolkit checkout's `tools/sequencerdump/data`. The tests **skip** without it |
 | `LBP_RINST`, `LBP_SMP` | `rinstrument.test.ts`, `envelope.test.ts`, `fsb.test.ts` | the extracted instruments and samples; default `fixtures/rinst`, `fixtures/smp` |
-| `LBP_FSB`, `LBP_PYTHON` | `fsb.test.ts`, `archive-sample.mjs` | a bank to decode against the Python oracle, and the interpreter to run `tools/` with |
-| `LBP_DRY_DB` | `archive-sample.mjs` | the archive index, `dry.db` |
+| `LBP_FSB`, `LBP_PYTHON` | `fsb.test.ts` | a bank to decode against the Python oracle, and the interpreter to run `tools/` with |
 | `LBP_EBOOT`, `LBP_BINDINGS`, `LBP_DELTA` | `tools/ebconf.py` | the eboot dump, the binding table, the file↔vaddr delta |
 | `LBP_UID` | `render-level.ts`, `live-sim.ts`, `live-settings.ts` | which sequencer, by uid |
 | `LBP_FROM`, `LBP_SECONDS` | `render-level.ts`; `live-sim.ts`, `live-settings.ts` | the window to render, in seconds |
@@ -336,3 +304,4 @@ a gain question out.
 | `LBP_ALS_INSTRUMENTS=1` | `export-als.ts` | a Sampler per track from `fixtures/rinst` and `fixtures/smp`: over the corpus it adds the instrument counts, and with `LBP_ALS_OUT` it writes a project folder (set, samples, `Ableton Project Info`) instead of a lone `.als` |
 | `LBP_ALS_MASTER=<0..10>` | `export-als.ts` | the tracker's master bus on the master track at that glue (*The master bus* in [ableton-interchange.md](ableton-interchange.md)); over the corpus it checks the sets with the two devices in |
 | `LBP_LIVE_EXE`, `LBP_LIVE_LOG` | `tools/open-in-live.ps1` | Live's program and its `Log.txt`; default this machine's Live 11.3.43 |
+ 

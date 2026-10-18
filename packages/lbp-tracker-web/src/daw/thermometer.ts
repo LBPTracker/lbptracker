@@ -8,7 +8,7 @@
  * thermometer "to see how expensive each instrument you place is".
  *
  * ❗ **It warns, and refuses nothing.** What was read in the eboot is a message
- * when the cost goes over, not a refusal (steering/sequencer-data-model.md), and
+ * when the cost goes over, not a refusal (steering/sequencer-engine-inputs.md), and
  * a level can arrive over the limit from somebody's modded game.
  */
 

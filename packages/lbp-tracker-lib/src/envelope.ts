@@ -5,7 +5,7 @@
  * This is the envelope the project went four sessions without: until it was
  * found, `Mixer` faked a note's shape with a linear release and an optional
  * exponential decay, both marked as ours rather than the game's. Both are
- * superseded by this. See steering/sequencer-data-model.md for the evidence,
+ * superseded by this. See steering/sequencer-engine-inputs.md for the evidence,
  * which is the disassembly plus two independent checks against the 68
  * instruments the game ships.
  *

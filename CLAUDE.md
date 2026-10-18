@@ -8,10 +8,10 @@ Rules for this workspace's steering:
 - **All steering files must always be written in English.**
 - One topic per file under `steering/`. When adding a topic, create `steering/<topic>.md`
   (English, kebab-case name) and add a one-line entry to the list below saying *when to read it*.
-- **Each fact lives in exactly one file; every other file points at it.** When a measurement
-  changes, change it where it lives and leave the pointers alone. A summary row restating a
-  transcript elsewhere is where two copies drift apart, and the drift is invisible because both
-  halves look measured.
+- **Each fact lives in exactly one file — here or in cwlib-ts — and every other file points at
+  it.** When a measurement changes, change it where it lives and leave the pointers alone. A
+  summary row restating a transcript elsewhere is where two copies drift apart, and the drift is
+  invisible because both halves look measured.
 - Steering holds durable knowledge about the target (the game) and about how we intend to build.
   Session history belongs to the auto-memory. A wrong turn earns a place in
   `answered-questions.md` only if it is a trap the next reader could fall into again, and it is
@@ -25,10 +25,11 @@ Steering files (read on demand, per the hints):
 - [steering/project-brief.md](steering/project-brief.md) — **read FIRST**: what we are building,
   what "faithful" means concretely and how far each part of it has been reached, the deliberate
   deviations, scope, and what counts as evidence here.
-- [steering/sequencer-data-model.md](steering/sequencer-data-model.md) — **read before writing any
-  parser or playback code**: the recovered `PSequencer` / `PInstrument` / `RInstrument` schemas
-  with field names and struct offsets, the stream conventions (endianness, stream order, varints,
-  revision gates), the 4-byte note record, and the circuit-board timeline.
+- [steering/sequencer-engine-inputs.md](steering/sequencer-engine-inputs.md) — **read before
+  touching `lib/src/rinstrument.ts`, `instrument.ts`, `scale.ts` or `thermometer.ts`**: the
+  `RInstrument` and sample-slot schemas and what the corpus says about them, the playback formula,
+  the clip the eboot builds per placement, `Key` and `Scale`, the board's size limit and the
+  sequencer's thermometer.
 - [steering/synth-engine.md](steering/synth-engine.md) — **read before touching anything in
   `packages/lbp-tracker-lib/src` that makes sound**: what `fmodextinput.prx` does with that data —
   the state block, the clock, the voice, the pitch formula, the sampler, all 27 `Params`, the pan
@@ -36,13 +37,9 @@ Steering files (read on demand, per the hints):
 - [steering/lbp-audio-engine.md](steering/lbp-audio-engine.md) — read for everything downstream of
   the synthesiser: FMOD Ex 4.44.10 and how little of it the game drives, the sequencer's DSP chain
   (`SMS Reverb`, `SMS WaveHammer`), the 7.1 output stage and the stereo fold.
-- [steering/level-files.md](steering/level-files.md) — **read before writing a parser for any LBP
-  resource, save or archive, or touching how a level is fetched**: the container, the Thing
-  stream, plans, streaming chunks, the dependency table, `FAR4` saves, the public archive, Bonsai
-  and its API, the corpora, and the reader's version bound.
-- [steering/lbp-modding-toolchain.md](steering/lbp-modding-toolchain.md) — read before trusting or
-  porting anything from ennuo's toolkit: what it covers, the provenance rule, its known
-  approximations, and the table of places we deliberately differ from it.
+- [steering/level-sources.md](steering/level-sources.md) — **read before touching how a level is
+  fetched** (`lbparchive.ts`, `bonsai.ts`, the two panels, `resource-walk.ts`): the public
+  archive and its index, why the route is a hash, and Bonsai and its API.
 - [steering/game-assets.md](steering/game-assets.md) — read before touching audio data: where the
   sequencer's samples really are (`.smp` files in the FARCs, by GUID — not the FSB banks), their
   loop points, the FSB4 format and codecs for the SFX side, and the asset-licensing stance.
@@ -66,11 +63,6 @@ Steering files (read on demand, per the hints):
 - [steering/eboot-re.md](steering/eboot-re.md) — **read before opening the eboot or a PRX**: the
   address conventions (the delta trap that costs hours), the techniques that worked, and every
   anchor already mapped.
-- [steering/export-to-game.md](steering/export-to-game.md) — **read before touching
-  `../cwlib-ts/src/writer.ts`, `write-plan.ts` or `chips.ts`**: the plan writer — why the
-  export is a `.plan` and why it travels alone, the Thing shape measured over 17 real sequencer
-  plans, the chassis constants and the three deviations from them, the cell geometry run backwards,
-  the two builds, and what proves a writer that has no corpus.
 - [steering/tools.md](steering/tools.md) — read before reaching for anything in `tools/` or
   `packages/*/dev/`: what each script is for, the trap each exists because of, and the
   environment variables.
@@ -80,6 +72,23 @@ Steering files (read on demand, per the hints):
 - [steering/answered-questions.md](steering/answered-questions.md) — **read before re-deriving
   anything**: per settled question, the answer in a line, where its measurement now lives, and the
   wrong turns taken on the way — which are the useful part.
+
+**What the game's files hold is cwlib's, and so is its steering**, in the sibling checkout's
+[CLAUDE.md](../cwlib-ts/CLAUDE.md) and `../cwlib-ts/steering/`. Read it there before writing any
+parser, reader or writer, and before trusting a field's meaning:
+- [level-files.md](../cwlib-ts/steering/level-files.md) — the container, the Thing stream, plans,
+  streaming chunks, the dependency table, `FAR4` saves, the `.mod`, **the corpora**, and the
+  reader's version bound.
+- [sequencer-data-model.md](../cwlib-ts/steering/sequencer-data-model.md) — **read before writing
+  any parser or playback code**: `PSequencer` / `PInstrument` with offsets, the stream
+  conventions, the 4-byte note record, and the circuit-board timeline.
+- [export-to-game.md](../cwlib-ts/steering/export-to-game.md) — **read before touching the plan
+  export** (`lib/dev/export-plan.ts`, `web/src/daw/plan-export.ts`): the writer, the measured
+  Thing shape, and what proves it.
+- [lbp-modding-toolchain.md](../cwlib-ts/steering/lbp-modding-toolchain.md) — read before trusting
+  or porting anything from ennuo's toolkit: the provenance rule and where we differ from it.
+- its own `tools.md`, `open-questions.md` and `answered-questions.md`. Question numbers are one
+  sequence across both repositories.
 
 ## Layout — two npm workspaces and one git dependency, since 2026-10-18
 

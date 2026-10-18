@@ -14,7 +14,7 @@
  * The tables are at module vaddr **`0x80c0`**, which is the addend of the
  * `R_X86_64_RELATIVE` relocation on the pointer slot at `0x8020` -- not a
  * figure derived from a segment mapping. Six rows of twelve `int32`. See
- * steering/sequencer-data-model.md.
+ * steering/sequencer-engine-inputs.md.
  *
  * ⚠️ **An earlier reading of this table was off by one row**, which named every
  * scale wrongly and lost one entirely. It came from computing the address from

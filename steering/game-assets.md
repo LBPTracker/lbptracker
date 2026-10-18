@@ -265,7 +265,7 @@ by SHA-1 from a table at the end whose last 12 bytes are `[u32 BE][u32 BE]"FARC"
 **not** decoded by hand — an evening at 24/28/32/36-byte strides produced nothing plausible — and
 did not need to be: cwlib's `FileArchive` reads it, and that is what `ExtractGuid.java` links
 against. ❗ `FARC` is not `FAR4`, the save-archive family in
-[level-files.md](level-files.md).
+[cwlib's level-files.md](../../cwlib-ts/steering/level-files.md).
 
 ## Asset licensing — a design constraint, not a footnote
 

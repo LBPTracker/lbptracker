@@ -2,7 +2,7 @@
  * A sequencer to a MIDI file and back.
  *
  * `sequencerdump` already did the export half, and its author has ruled that
- * layer out as a reference; `steering/lbp-modding-toolchain.md` lists the
+ * layer out as a reference; `../cwlib-ts/steering/lbp-modding-toolchain.md` lists the
  * divergences. This module is the version with those fixed, so it is worth
  * saying which is which:
  *

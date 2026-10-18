@@ -327,7 +327,7 @@ zone takes a folder, a zip of one, a single file, one of this tracker's own `.js
 by its number, and every route ends in the same `onOpen`
 with the same `{ name, bytes }[]`, read by `readOpened` in `src/open-level.ts`; a level holding
 several sequencers puts them in the picker, and picking one makes it the song.
-The formats are in [level-files.md](level-files.md); this is the behaviour around them.
+The formats are in [cwlib's level-files.md](../../cwlib-ts/steering/level-files.md); this is the behaviour around them.
 
 - `../cwlib-ts/src/backup.ts` reads over `{ name, bytes }[]` and knows nothing about files,
   directories or archives, because the user's data is read client-side and never uploaded.
@@ -360,7 +360,7 @@ The formats are in [level-files.md](level-files.md); this is the behaviour aroun
   answers any origin, so the page asks it for the search, the level and every resource itself,
   and nothing passes through a server of ours. The rule was never "no search", it was "no proxy";
   the header that zaprit.fish lacks is the whole difference. The measurements are in *Bonsai* in
-  [level-files.md](level-files.md). The two panels share the dependency walk
+  [level-sources.md](level-sources.md). The two panels share the dependency walk
   (`src/resource-walk.ts`) and nothing else, since what each store says on failure is its own.
 
 ## The live player — settings are applied, not re-planned
@@ -571,7 +571,7 @@ the quietest (`polyphony.ts`).
 7. **Round-trip export** back into a game-loadable resource — the feature that makes the project
    matter to the LBP community. **Built**: `cwlib`'s `writer.ts` and `write-plan.ts` write a
    `PLNb` plan holding a Music Sequencer, self-contained because everything it names is a GUID.
-   [export-to-game.md](export-to-game.md) has the measured Thing shape, the deviations, and what
+   [cwlib's export-to-game.md](../../cwlib-ts/steering/export-to-game.md) has the measured Thing shape, the deviations, and what
    proves it; what is *not* proved is the only thing left — that the game opens it.
 
 | where | what |
@@ -584,7 +584,7 @@ the quietest (`polyphony.ts`).
 
 The corpus tests read `LBP_LEVELS`, `LBP_RINST`, `LBP_SMP` and `LBP_FSB` and **skip** when they
 are absent, so the suite passes on a machine without the game. Never commit a fixture derived from
-game assets or from someone's level ([level-files.md](level-files.md) has the corpora).
+game assets or from someone's level ([cwlib's level-files.md](../../cwlib-ts/steering/level-files.md) has the corpora).
 **Golden-file tests from day one**: render short fixtures and diff the PCM, because fidelity
 regressions are inaudible until they are not, and a diff catches them instantly. ⚠️ A test that
 normalises cannot see a gain error, and several here normalise.

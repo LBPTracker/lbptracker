@@ -78,7 +78,7 @@ pointers and the count and finishes by pushing the same settings `v0x1c6250` doe
 ### The clip — one placement, `0x470` bytes
 
 Filled by the eboot's `v0x1607c0`, field for field in
-[sequencer-data-model.md](sequencer-data-model.md): `+0x00` the record count, `+0x0c` `Scale`,
+[sequencer-engine-inputs.md](sequencer-engine-inputs.md): `+0x00` the record count, `+0x0c` `Scale`,
 `+0x10` the root (`key < 12 ? key + 12 : key`), `+0x1c` the length in steps, `+0x20 + 4·cursor` the
 records with bits 28..29 cleared, `+0x420`…`+0x42c` `Level`, `Pan`, `2·EchoSend − 1`, `ReverbSend`,
 `+0x430` the instrument index. The 16-byte header beside it, written by `v0x1608d0`

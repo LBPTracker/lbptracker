@@ -2,7 +2,7 @@
 
 Read before touching `packages/lbp-tracker-web/index.html`, `src/daw.ts`, `src/daw/*`,
 `src/editor/*`, `src/player.ts` or `packages/lbp-tracker-lib/src/song.ts`. This is how the app is
-built and why; what the game's data means is in [sequencer-data-model.md](sequencer-data-model.md)
+built and why; what the game's data means is in [cwlib's sequencer-data-model.md](../../cwlib-ts/steering/sequencer-data-model.md)
 and the architecture it sits in is [tracker-architecture.md](tracker-architecture.md). The editor
 started 2026-09-06 and the five pages became one app the same day; what is not there yet is at
 the end.
@@ -118,7 +118,7 @@ song travels with the render request.
 The in-game Music Sequencer is two grids. The **board** is the circuit board: 105-unit square
 tiles, a chip four of the game's 8-step bars long sitting on one, positions at half-tile
 resolution (52.5 units, 16 steps — a "cell" here), and rows banded into mixer channels
-([sequencer-data-model.md](sequencer-data-model.md), *The timeline* and *The tile*). The **note grid** inside a chip is a piano roll where a note is a chain of
+([cwlib's sequencer-data-model.md](../../cwlib-ts/steering/sequencer-data-model.md), *The timeline* and *The tile*). The **note grid** inside a chip is a piano roll where a note is a chain of
 control points joined by straight lines: the game draws the dots at a size that is the volume and
 in a colour that runs from blue to orange with the timbre, and the engine glides pitch and volume
 linearly between consecutive points, so the straight line is what sounds.
@@ -150,7 +150,7 @@ The editor draws both, as faithfully as the data allows and no further:
   *single* selection with it, as the selection always followed, while a block stays.
 - **The song panel carries the author** (`MixerPanel.vue`, `Song.author`). It is read out of the
   level by `sequencerAuthor` and written into an exported plan — *The author* in
-  [export-to-game.md](export-to-game.md) has where the game keeps it. The field is put back to
+  [cwlib's export-to-game.md](../../cwlib-ts/steering/export-to-game.md) has where the game keeps it. The field is put back to
   what `authorHandle` kept on every keystroke, because a character a handle cannot hold changes
   nothing in the song, Vue then has no new value to render, and the screen would disagree with the
   file. It edits with the `look` kind: nothing plays an author.
@@ -172,7 +172,7 @@ The editor draws both, as faithfully as the data allows and no further:
 
   `tools/trace-icons.py`). **The colour behind it is the chip's own** — `PInstrument.Colour` out
   of the file, drawn as a translucent body with the border and the glyph in full
-  ([sequencer-data-model.md](sequencer-data-model.md)) — and a sound with no icon falls back to a
+  ([cwlib's sequencer-data-model.md](../../cwlib-ts/steering/sequencer-data-model.md)) — and a sound with no icon falls back to a
   family glyph. A placement nobody has tinted shows the colour its instrument ships with, which
   is a colour per family, so a board reads by family without being told to; `drawnColour` is
   where the neutral white turns into that. ⚠️ **The game draws that white as white** (measured by
@@ -298,7 +298,7 @@ The editor draws both, as faithfully as the data allows and no further:
 ### The sequencer's thermometer
 
 The game's budget of sample memory per sequencer, on the page since 0.2.33. **The rule and its
-readings live in [sequencer-data-model.md](sequencer-data-model.md)**; `lib/src/thermometer.ts` is
+readings live in [sequencer-engine-inputs.md](sequencer-engine-inputs.md)**; `lib/src/thermometer.ts` is
 the sum, and `web/src/daw/thermometer.ts` feeds it the song and draws it.
 
 - The meter is `#thermo`, a narrow vertical column down the **left** of the arrange view, where the
@@ -346,7 +346,7 @@ clip as its length in steps and nothing serialises it ([open-questions.md](open-
 game's editor gives a placed instrument **four bars** and lets it grow by **two** at a time
 (reported by the project's owner from the game, 2026-09-06), and the corpus fixes the bar at
 **8 steps** — the chip spacing and note extents in *The tile* of
-[sequencer-data-model.md](sequencer-data-model.md) — so `clipStepsFor` derives the smallest of
+[cwlib's sequencer-data-model.md](../../cwlib-ts/steering/sequencer-data-model.md) — so `clipStepsFor` derives the smallest of
 32, 48, 64 … 128 that holds the notes, 128 being the ceiling `x`'s seven bits allow. ⚠️ **The
 first reading of "four bars" was 64 steps**, a bar taken as a 16-step cell: on that rule 64,483 of
 72,726 corpus chips overlap their neighbour, against 82 with the 8-step bar and 55 in the data.
@@ -565,7 +565,7 @@ bar 175 that nothing on screen showed as selected.
 
 - **Writing back to a *level*.** The song leaves as a song file, as MIDI, as a WAV and — since
   2026-09-09 — as a **`.plan`**, which is the popit object a creator drops into their own level
-  ([export-to-game.md](export-to-game.md), the Import/Export view's second section). Writing a
+  ([cwlib's export-to-game.md](../../cwlib-ts/steering/export-to-game.md), the Import/Export view's second section). Writing a
   whole `LVLb` back is a different job: `readLevel` is deliberately a prefix, and a level writer
   needs all of `RLevel`.
 - **`Loop` and `StartPoint`** are carried and edited but not played: the player runs a song from

@@ -20,7 +20,7 @@
  * the hash, so nothing has to be asked of anyone before the download. The
  * measurements that closed the other routes, including why the archive's own
  * 2.65 GB SQLite index cannot be read from a page, are in *The public archive*
- * in `steering/lbp-modding-toolchain.md`.
+ * in `../cwlib-ts/steering/lbp-modding-toolchain.md`.
  */
 
 /** Where a listener finds a level and its hash. */

@@ -5,7 +5,7 @@
  *
  * ❗ **It needs no server** — not even the dev one — which is why it is a hash
  * and not a search. See *The search, built and then removed* in
- * `steering/lbp-modding-toolchain.md`.
+ * `../cwlib-ts/steering/lbp-modding-toolchain.md`.
  *
  * This markup used to be a 20-line `innerHTML` string with the prose spliced
  * into it by `+`, which is why the note's default text had to be read back out

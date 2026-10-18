@@ -7,7 +7,7 @@
  * the eight `SampleGuids` of each loaded `RInstrument` into one set, and sums the
  * FileDB size of every distinct sample; `v0x74b960` shows that against
  * `MaxSequencerMemory`, which `gamedata/data/limits_settings.lmt` sets to
- * 1,000,000 (steering/sequencer-data-model.md). This runs the same sum over a
+ * 1,000,000 (steering/sequencer-engine-inputs.md). This runs the same sum over a
  * corpus: if the reading is right, what creators managed to build sits under the
  * limit, and the fullest boards sit just under it.
  *

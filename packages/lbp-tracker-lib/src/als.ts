@@ -465,7 +465,7 @@ const DELAY_SIXTEENTHS = [1, 2, 3, 4, 5, 6, 8, 16];
 /**
  * The echo on Live's Delay: `EchoTime` beats, synced where Live's menu has
  * that many sixteenths -- 2, 1 and 1.5 beats, which are 189 + 95 + 47 = 331 of
- * the corpus's 338 sequencers (`sequencer-data-model.md`) -- and in seconds at
+ * the corpus's 338 sequencers (`../cwlib-ts/steering/sequencer-data-model.md`) -- and in seconds at
  * the song's tempo otherwise. Feedback
  * clamps at 0.95 in both, the engine's `0x0793` and Live's own maximum.
  */

@@ -166,7 +166,7 @@ test('running status is decoded, and a file that uses it reads the same', () => 
 /* ------------------------------------------------------------------ export */
 
 test('a triplet lands on an exact tick — the 96-PPQ bug', () => {
-  // ⚠️ This is divergence 4 in steering/lbp-modding-toolchain.md. The toolkit
+  // ⚠️ This is divergence 4 in ../cwlib-ts/steering/lbp-modding-toolchain.md. The toolkit
   // maps a triplet with `group*96 + pos*32`, which puts four positions of 32
   // ticks inside a 96-tick quarter and pushes the fourth onto the next beat.
   // At 480 PPQ a step is 120 ticks and a third of one is exactly 40.

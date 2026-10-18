@@ -5,7 +5,7 @@
  *
  * The board is the game's: a cell is 16 steps, two of the game's 8-step bars,
  * half of one of its 105-unit tiles, and a row is one placement high
- * (steering/sequencer-data-model.md, *The timeline* and *The tile*). The piano roll is the placement's own note grid: positions
+ * (../cwlib-ts/steering/sequencer-data-model.md, *The timeline* and *The tile*). The piano roll is the placement's own note grid: positions
  * in thirds of a step, because that is the record's resolution, and one row
  * per pitch.
  */
@@ -131,7 +131,7 @@ export const PITCHES = 128;
  * to the beat, each four thirds (1⅓ steps) wide, and is sparser than the
  * whole-step grid, not three times denser. This is what the record's thirds
  * exist for: the triplet positions 1⅓ and 2⅔ are the sub-steps 1 and 2 the
- * corpus holds in equal measure (steering/sequencer-data-model.md).
+ * corpus holds in equal measure (../cwlib-ts/steering/sequencer-data-model.md).
  *
  * ⚠️ For a day the triplet grid was thirds of a step, three cells per step;
  * the owner called it far too dense, and it was.

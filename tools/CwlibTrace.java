@@ -33,7 +33,7 @@ import java.io.File;
  *   "$JDK/java" -cp "$JAR;out" CwlibTrace spans fixtures/archive/0-c33a7e*
  *
  * ⚠️ **cwlib is somebody's reading of the game, not the game** -- *Provenance
- * rule 1* in `steering/lbp-modding-toolchain.md` still applies. What makes it
+ * rule 1* in `../cwlib-ts/steering/lbp-modding-toolchain.md` still applies. What makes it
  * usable here is that it is a reading which *demonstrably parses these files*:
  * every LBP1 level in `fixtures/archive` that this project refuses, cwlib reads,
  * with a thing count. That is a fact about the files, and a disagreement between

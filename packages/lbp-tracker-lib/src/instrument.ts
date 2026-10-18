@@ -4,7 +4,7 @@
  * Field names, offsets and stream order come from the game's own serialisers,
  * and the split and stacking semantics from the engine's own zone walk and
  * stack loop, checked against all 68 instruments the game ships -- see
- * steering/sequencer-data-model.md and steering/synth-engine.md.
+ * steering/sequencer-engine-inputs.md and steering/synth-engine.md.
  */
 
 export const MAX_SLOTS = 8;
@@ -45,7 +45,7 @@ export interface Instrument {
    * in `fmodextinput.prx` runs `numStack` times filling one playback position,
    * one detune and one spread per layer, so a note plays that many overlapping
    * copies of the same slot. It runs to 5 in the corpus, and at five the three
-   * arrays tile the voice record exactly. See steering/sequencer-data-model.md.
+   * arrays tile the voice record exactly. See steering/sequencer-engine-inputs.md.
    */
   readonly numStack: number;
   readonly arpeggiate: boolean;

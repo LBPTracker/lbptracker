@@ -22,7 +22,7 @@
  *
  * `dev/sequencer-memory.ts` holds this against real levels: of 183 sequencers
  * none is over and the fullest is at 999,562. The readings, and what was not
- * read, are in steering/sequencer-data-model.md.
+ * read, are in steering/sequencer-engine-inputs.md.
  */
 
 /** `MaxSequencerMemory`, in bytes of `.smp` file. */

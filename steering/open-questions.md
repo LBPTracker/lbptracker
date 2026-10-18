@@ -6,12 +6,13 @@ whole signal path are measured, and import, playback and export are built. What 
 *decisions* where the project knowingly departs from the measured engine — a master bus of our own
 in the game's place among them — an AGC beside it, one question about what reaches the game's
 compressor, a short list of measured
-residues nothing models yet, one loose end left over from the export, three things about the chip
-tint that only Create Mode can answer, whether the Ableton set opens in Live 12, how its Samplers sound, where its
+residues nothing models yet, whether the Ableton set opens in Live 12, how its Samplers sound, where its
 swing groove puts the notes and whether Live's Delay is the engine's echo, and three
 questions that are not about fidelity at all.
 When one gets resolved, move the answer into the descriptive file it belongs to and delete the
-entry.
+entry. The questions about the files — the chip tint (*49*), the plan the game called too big
+(*51*), and what still will not open (*28*) — are cwlib's, in
+[cwlib's open-questions.md](../../cwlib-ts/steering/open-questions.md).
 
 ## The decisions — deliberate deviations from the measured engine
 
@@ -337,7 +338,7 @@ seconds of *Rhombitruncated* from the game. A bongo hit every 0.461 s from 0.257
   changing the stream. `woodpecker`, the tenth scene, was the filter's float32 (above).
 - **A chain stored out of order.** The walk takes a note's records in the clip's array order
   (`0x3a0a`'s cursor) and `makeNote` sorts them by position, so the ~81 corpus notes whose last
-  record precedes the first ([sequencer-data-model.md](sequencer-data-model.md)) play differently
+  record precedes the first ([cwlib's sequencer-data-model.md](../../cwlib-ts/steering/sequencer-data-model.md)) play differently
   here, the glide and the gate taken in another order. None plays in the first 20 s of the 16
   songs measured, so it is read and not measured.
 - **The fader under a held note, live.** `0x3930` re-reads the channel's volume into `[+0x04]` at
@@ -422,33 +423,6 @@ fewer records than the file, 10 the same count with different notes.
   mix the resting bit, look for runs", "five are not diagnosed"). **Print the diff first; the
   theorising is what produced the buckets.**
 
-## 49. The chip's tint — three things the file cannot say
-
-`PInstrument.Colour` is read, drawn, carried through MIDI and written back
-([sequencer-data-model.md](sequencer-data-model.md)), and *49* in
-[answered-questions.md](answered-questions.md) is the part that is settled. What is left needs the
-game, not the bytes:
-
-- **The low byte.** It is `ff` on 24 of the 25 values the corpus holds, and `00` on the factory
-  green all fifteen percussion instruments ship with. `chipColour` drops it, because honouring it
-  as an opacity draws every untinted drum kit invisible — but "drop it" is a choice, not a
-  reading. **What would settle it**: place a percussion chip and a synth chip in Create Mode and
-  look at whether one is fainter than the other.
-- **Whether a creator's non-white tint is drawn.** 1,838 of 68,568 placements (2.7%) carry a
-  colour that is neither white nor their instrument's own. ✔ Half of this is answered: the game
-  draws the field — a plan of `0xffffffff` chips imported as a white board (2026-09-14), where a
-  game that coloured chips by instrument would have shown the families. Nobody has yet watched a
-  coloured tint. **What would settle it**: import a plan exported from the tracker since that date,
-  whose untinted chips now carry their family colours explicitly, and look at the board.
-- **The decision this left behind.** The tracker reads the neutral white as the family colour, on
-  the board and in an exported plan — the owner's choice, and a deliberate departure from how the
-  game shows a white level. Nothing measurable would change it; it is recorded so that nobody
-  mistakes the family colours on a white level's board for what the game shows.
-- **What palette the tweak menu offers.** The 25 corpus values are hues at a few saturations, not
-  an obvious grid, and the editor here offers a free `<input type="color">` — which may be able to
-  write a colour the game's own picker cannot reach. Harmless if so. **What would settle it**:
-  `gamedata/scripts/tweak*.ff` through `lbpres.py --raw` ([tools.md](tools.md)).
-
 ## 50. Should the instrument picker use the game's colours?
 
 `FAMILY_COLOURS` in `src/editor/instruments.ts` is ours: eleven families, softened for a dark UI,
@@ -457,19 +431,6 @@ has its own colour now — so the two palettes sit side by side, close but not e
 seven families, saturated). Adopting the measured colours would make the picker match the board
 exactly and lose some of the separation eleven families give. **A taste decision, and the owner's**;
 it costs one table either way.
-
-## 51. "Too big" — why the game would not place an exported sequencer
-
-Reported 2026-09-21 by a player: an exported plan arrives in the popit and the game calls it too
-big when they try to put it down. **Not reproduced here**, and which song it was is not known.
-
-One cause was found and fixed on the bytes: `POS` carried the identity where the game's own gadget
-sits at 0.7333 (*The chassis* in [export-to-game.md](export-to-game.md)), so every export was 1.364
-times the size. ⚠️ That it is **the** cause is inferred. What would settle it: place a 0.2.28 plan
-and a 0.2.29 plan of the same song in Create Mode. If 0.2.29 still fails, the next suspects are the
-ones the corpus bounds and the writer does not — the board's `sizeX`/`sizeY` and the chip count on
-a long song, against the largest board in `fixtures/plans` — and the way to find it is the
-bisection of *46*: swap spans of a plan the game wrote into ours until it places.
 
 ## 52. The Ableton set in Live 12
 
@@ -584,29 +545,3 @@ What would settle all three: Live's meters, as for the Sampler's level (*How it 
 file). A sustained sine whose period divides the delay goes into the Echo return at send 1, with
 its fader at 0 dB. If both laws hold, the return's peak box climbs to `1/(1 − fb)` of the input.
 Two or three sets at different feedbacks would separate the two laws.
-
-## 28. What still will not open — the archive sweep's leftovers, and Bonsai's
-
-The reader is measured over 103 archive levels: no failure anywhere in the range it claims, and
-19 of 19 LBP1 files identical to cwlib with the bound lowered by hand
-([level-files.md](level-files.md)). Levels off Bonsai turned one of the items below, the Vita
-branch, into one that stands between a reader and a song. What is left:
-
-- **The allowed-set decision.** `LBP3_MIN_VERSION` is `0x3b7` and all nineteen LBP1 files are
-  refused, deliberately: LBP1 has no Music Sequencer, so opening them buys the tracker nothing
-  musical, and the range `0x272`–`0x3b7` has zero coverage — admitting it wholesale is exactly the
-  plausible-nonsense failure the bound exists to prevent. The right change, if one is wanted, is an
-  **allowed set** — `0x272` plus `0x3b7..0x3ff`, refusing the untested span between — and it is a
-  design decision to take on purpose.
-- **`0x26e`** — one level whose chunk table is not where this reader looks; a container question.
-- **Branch `0x4431`** — LBP Vita: one level in the saves, `f331efa7`, version `0x3e2`, and nothing
-  in the archive sample. ❗ **Bonsai is the corpus that was missing**: its Vita levels are on this
-  branch, revision `0x87`, and a search for "a" alone finds 847 of them; six of six music levels
-  fail with "the world Thing carried no WORLD part" ([level-files.md](level-files.md)). Vita has a
-  Music Sequencer, so this one is in the way of music.
-- **One truncated file** — the archive itself stores `0-aaaffe` short. Nothing to fix.
-
-The archive's leftovers are not in the way of music; Vita is. The next one is
-found by `../cwlib-ts/dev/archive-sample.mjs` for what Mm's servers held, and by a search
-over Bonsai's API for what has been published since: every real reader bug since 2026-09-05 came
-out of a file no PS3 save on this machine contains.

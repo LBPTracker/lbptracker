@@ -1,7 +1,7 @@
 /**
  * Note -> playback parameters.
  *
- * The pitch formula is the one in steering/sequencer-data-model.md, which
+ * The pitch formula is the one in steering/sequencer-engine-inputs.md, which
  * follows directly from the recovered field names and from the way the shipped
  * banks are laid out (one sample per octave: piano_C2..C6, epiano_C1..C5,
  * triangle_synth_C2..C6).

@@ -13,7 +13,7 @@ we write is two things layered: **the music, in ordinary MIDI events that any DA
 second layer and the measurement of the whole.
 
 Every number here comes from `packages/lbp-tracker-lib/dev/verify-midi.ts` over the ten-level corpus
-(149 sequencers, 62,158 clips, 953,791 notes, 1,448,224 records — [level-files.md](level-files.md)),
+(149 sequencers, 62,158 clips, 953,791 notes, 1,448,224 records — [cwlib's level-files.md](../../cwlib-ts/steering/level-files.md)),
 last taken 2026-09-24. Run it after touching either file; `LBP_MIDI_BUDGET=1` adds the byte
 table below.
 
@@ -161,7 +161,7 @@ Meta type `0x01`, the tag then JSON. **Only what MIDI has no message for**:
 ⚠️ **`author` is not FF 02.** A MIDI file has a *copyright notice* meta, which is the nearest
 standard carrier and the wrong one: writing a PSN handle there states something about rights on
 somebody's behalf that the game's file never said. It rides here, and only when the sequencer
-names somebody ([export-to-game.md](export-to-game.md), *The author*).
+names somebody ([cwlib's export-to-game.md](../../cwlib-ts/steering/export-to-game.md), *The author*).
 
 `boardRows` is the clearest case for the rule: MIDI has no circuit board, and the board's height in
 cells is what bands a track to a mixer channel (`channelVolume`, *9* in answered-questions.md).
@@ -194,7 +194,7 @@ A `clips` entry is `[gridX, steps]`, `[gridX, steps, rest]` or `[gridX, steps, r
 
 ### `colour` — the chip's tint, which MIDI has no message for at all
 
-`PInstrument.Colour`, packed RGBA ([sequencer-data-model.md](sequencer-data-model.md)). There is
+`PInstrument.Colour`, packed RGBA ([cwlib's sequencer-data-model.md](../../cwlib-ts/steering/sequencer-data-model.md)). There is
 no controller for a colour and a CC would be the wrong tool anyway — seven bits of one, and a
 synth would act on it — so it rides in the meta and nowhere else. **Measured 2026-09-10 over the
 ten-level corpus: 22,188 of 62,158 chips carry a colour that is not the one their instrument
@@ -321,7 +321,7 @@ rather than the omission it was.
 ### `rest` — byte 3's inert bit, per part, per clip, and per record
 
 The editor writes a resting value into byte 3's bit 6 that the engine never reads
-([sequencer-data-model.md](sequencer-data-model.md)). A third element on a `clips` tuple overrides
+([cwlib's sequencer-data-model.md](../../cwlib-ts/steering/sequencer-data-model.md)). A third element on a `clips` tuple overrides
 the part's value; omitted when it is 1, which is what the current editor writes. Inert to the
 engine and still a fact about the file: dropping it made 78% of clips come back different. A fourth
 element is a **base64 bitmap, one bit per record**, for the 31 clips that mix the two values — 93

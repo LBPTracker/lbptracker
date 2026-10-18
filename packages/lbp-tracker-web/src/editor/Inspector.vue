@@ -109,7 +109,7 @@ const setColour = (event: Event) => {
     // white chip would come back as the family's. `fe` in the low byte is a
     // white that is not the neutral, and it is white under every reading of
     // that byte the game might have: ignored it is nothing, and as an opacity
-    // it is 99.6%. What the game really does with it is open question 49.
+    // it is 99.6%. What the game really does with it is open question 49, in cwlib's steering.
     else if ((picked | 0) === UNTINTED) c.colour = 0xfffffffe | 0;
     else c.colour = picked;
   }, 'colour');

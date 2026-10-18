@@ -75,7 +75,7 @@ two?" was the wrong question for four sessions. The same shape recurs: the synth
 - Play back sequences with the game's synthesis model.
 - Compose: a tracker-style grid editor.
 - Export audio (offline render).
-- Import existing LBP sequences, and export back to a game-loadable form — [export-to-game.md](export-to-game.md).
+- Import existing LBP sequences, and export back to a game-loadable form — [cwlib's export-to-game.md](../../cwlib-ts/steering/export-to-game.md).
 
 **Out of scope, at least for v1**
 - The "Interactive Music" object (stems + sliders). Different system, different data — see
@@ -105,7 +105,7 @@ repository contains no game data, which stays true. See [game-assets.md](game-as
   [open-questions.md](open-questions.md).
 - **The game's own bytes outrank every other source.** ennuo's toolkit is a decade of community
   reading and it is still a reading: it enters as a hypothesis until an address or a file diff
-  confirms it — [lbp-modding-toolchain.md](lbp-modding-toolchain.md).
+  confirms it — [cwlib's lbp-modding-toolchain.md](../../cwlib-ts/steering/lbp-modding-toolchain.md).
 - **A capture of "the game" is a capture of shadPS4.** Every recording this project has settled
   against was made under the emulator, which runs the game's own plugins. A capture is therefore
   trustworthy for *structure* — how many voices sound, whether a note is gated, the ratio between
