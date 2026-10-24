@@ -500,6 +500,19 @@ because the picker is one too: an ordinary overlay renders under the top layer w
 `z-index`. Jobs nest — the archive fetch holds one while the read of what it brought back starts
 another — and the newest is the one shown.
 
+❗ **The loader stays up until the song can play, and its percentage is a weighted plan of steps.**
+Until 0.2.49 it closed when the songs were read, and the slowest part of a first open — every
+sample of every instrument fetched and decoded, then the voice pass — ran afterwards as a footer
+line on a page that looked ready. `openLevel` now waits on `whenPlanned` (`daw/session.ts`), which
+reports the instruments as they load and the voice pass as it goes. Each job declares its steps
+with the seconds they usually take (`OPEN_STEPS`, `FETCH_SECONDS`, `WALK_SECONDS` in
+`open-level.ts`, with what they were measured on), a child job fills the step its parent is in so
+the bar runs once from 0 to 100 across the fetch and the read, a step that can count says how far
+it is, and one that cannot creeps on the clock and never finishes. ⚠️ Two traps: the voice pass and
+the level's read are all script, so the loader yields to the page (`paint`, and `watchVoices`
+every 50 ms) or it shows the step before them for their whole length; and `Player`'s progress
+callback used to drop every report but the first, so nothing could see the voice pass move.
+
 `window.__lbpEditor` exposes `state`, `player`, `board`, `roll` and `showView`. Verified in Chrome 2026-09-06:
 Ascetic's 1,150 clips open and plan; a chip click selects; a drag on empty space draws a two-point
 glide and the plan rebuilds to 14,500 notes; play advances 32 steps in two seconds at 240 BPM;

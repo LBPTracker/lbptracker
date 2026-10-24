@@ -17,19 +17,21 @@ import { mountFooter } from './footer.ts';
 import { mountHelp } from './help.ts';
 import { confirmDialog } from './confirm.ts';
 import { APP_VERSION } from './version.ts';
-import { isSongFile, openedTitle, readOpened, saveNote, type Opened } from './open-level.ts';
+import {
+  OPEN_STEPS, PLAN_STEPS, isSongFile, openedTitle, readOpened, saveNote, type Opened,
+} from './open-level.ts';
 import { seqPicker } from './seq-picker.ts';
 import { focusOwnsKeys } from './keys.ts';
 import { saveSongFile } from './song-file.ts';
 import { mountOpen } from './widgets/open-panel.ts';
-import { loading } from './widgets/loading.ts';
+import { loading, paint, type LoadingJob } from './widgets/loading.ts';
 import { demoDeck } from './demo-songs.ts';
 import {
   forgetLevel, linkable, pickWanted, rememberSequencer, rememberSong, songFromQuery, songLink,
 } from './link.ts';
 import {
   RATE, clock, ensureAssets, onPlan, onPlayer, onStatus, openSong, player, setError,
-  setErrorSink, setStatus, state,
+  setErrorSink, setStatus, state, whenPlanned,
 } from './daw/session.ts';
 import { mountArrange } from './daw/arrange.ts';
 import { loadThermometer } from './daw/thermometer.ts';
@@ -298,9 +300,18 @@ const picker = seqPicker($<HTMLDivElement>('seq'), async (key) => {
     return;
   }
   if (state.dirty && !(await confirmDialog('Throw away the unsaved changes?', 'throw them away'))) return;
-  openSong(songFromSequencer(seq), `opened "${seq.name}"`);
-  chose(key);
-  fileDialog.close();
+  // Another song of the same level brings its own instruments, and loading
+  // them is the same wait as the first song's.
+  const job = loading(`Opening “${seq.name || 'untitled'}”`);
+  job.plan(PLAN_STEPS);
+  try {
+    openSong(songFromSequencer(seq), `opened "${seq.name}"`);
+    chose(key);
+    fileDialog.close();
+    await planned(job);
+  } finally {
+    job.done();
+  }
 }, {
   // ❗ **Only a level from the online archive or Bonsai has a link**, which is
   // why this lives in the picker and not in the top bar beside the song's name:
@@ -353,6 +364,15 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
+/** Wait for the song just opened to be playable, saying so on `job`. */
+async function planned(job: LoadingJob): Promise<void> {
+  job.step('instruments', 'loading instruments…');
+  await whenPlanned((step, fraction, text) => {
+    job.step(step, text);
+    job.progress(fraction);
+  });
+}
+
 async function openLevel(opened: Opened): Promise<void> {
   setError('');
   drop.busy(true);
@@ -361,7 +381,9 @@ async function openLevel(opened: Opened): Promise<void> {
   // zone's own title lives inside `#fileDialog`, and a `?level=` link or a drop
   // on the home screen never opens that dialog; reading a big backup is
   // seconds. See `widgets/loading.ts`.
-  const job = loading(`Reading ${opened.label}`, 'loading the game’s instruments…');
+  const job = loading(`Reading ${opened.label}`);
+  job.plan(OPEN_STEPS);
+  job.step('assets', 'reading the list of the game’s instruments…');
   // ❗ **The URL stops claiming a level that is not this one.** The archive and
   // Bonsai routes have already written the level's name there
   // (`rememberLevel`); every other route is opening something nobody else can
@@ -371,17 +393,21 @@ async function openLevel(opened: Opened): Promise<void> {
   else demoLanded = true;
   try {
     await ensureAssets();
-    job.note(
+    job.step(
+      'read',
       opened.files.length > 1
-        ? `unpacking ${opened.files.length} resources…`
-        : 'unpacking the level…',
+        ? `unpacking ${opened.files.length} resources and finding the songs…`
+        : 'unpacking the level and finding the songs…',
     );
+    // Reading a level is all script: let the line reach the screen first.
+    await paint();
     const only = opened.files.length === 1 ? opened.files[0] : undefined;
     // One of our own song files opens as the song it holds -- ids, names and
     // grid lengths intact -- rather than through the sequencer it also is.
     if (only && isSongFile(only)) {
       openSong(songFromJson(new TextDecoder().decode(only.bytes)), `opened ${only.name}`);
       leaveHome();
+      await planned(job);
       drop.loaded(true);
       drop.say(only.name);
       songs = new Map();
@@ -425,6 +451,7 @@ async function openLevel(opened: Opened): Promise<void> {
       openSong(songFromSequencer(seq), `opened "${seq.name}"`);
       chose(start);
       leaveHome();
+      await planned(job);
       // One song: nothing to choose, so the dialog can go. Several: the picker
       // is the point, and it is *put up* rather than merely left up, because
       // the route that most needs it never opened it -- a `?level=` link goes

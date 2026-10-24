@@ -4,6 +4,15 @@ What changed for the person using LBP Tracker, newest first. The site shows this
 version number in its status bar, so it is written for them: what they can do now that they could
 not before, never how it was done. No `--` or em dash in here; the site's text does without them.
 
+## 0.2.50 (2026-10-24)
+
+- Opening a song now shows what is happening and how far along it is: a progress bar with a
+  percentage, and a line saying what is going on right now, such as downloading the level,
+  fetching what it depends on, loading each instrument by name, or preparing the notes.
+- The loading window now stays up until the song is ready to play. It used to close once the
+  level was read, and the song then needed a few more seconds before the play button worked.
+  The same window now also appears when you pick another song from a level you already opened.
+
 ## 0.2.49 (2026-10-18)
 
 - Fixed: the app's icon was a broken image wherever the PNG version is used, such as the home

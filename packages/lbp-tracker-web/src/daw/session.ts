@@ -138,6 +138,7 @@ export const player = new Player({
   },
   progress: (phase, done, total) => {
     setStatus(`preparing: ${phase} ${Math.round((done / Math.max(1, total)) * 100)}%`);
+    return watchVoices(done, total);
   },
 });
 
@@ -224,7 +225,74 @@ function showPlanSummary(): void {
  */
 export function replanSoon(): void {
   window.clearTimeout(replanTimer);
-  replanTimer = window.setTimeout(() => void replan(), 180);
+  replanTimer = window.setTimeout(() => {
+    replanTimer = 0;
+    void replan();
+  }, 180);
+}
+
+/** Where a whole-plan build has got: the instruments it loads, then the voices it plans. */
+export type PlanWatch = (step: 'instruments' | 'voices', fraction: number, text: string) => void;
+const planWaiters: { done: () => void; watch?: PlanWatch }[] = [];
+let lastYield = 0;
+
+/**
+ * Resolve when the plan stands for the song as it is now, reporting on the way.
+ *
+ * ❗ **This is what lets the loader stay up until the song can play.** Opening a
+ * level ended when its songs were read, and the plan -- every sample of every
+ * instrument fetched and decoded, then the voice pass -- ran after the loader
+ * had gone, as a status line in the footer: the slowest part of a first open,
+ * on a page that looked ready. It resolves on a build that ends with nothing
+ * left to rebuild, failed or not; a failure has its own status line.
+ */
+export function whenPlanned(watch?: PlanWatch): Promise<void> {
+  return new Promise((done) => planWaiters.push({ done, watch }));
+}
+
+const tellWaiters = (step: 'instruments' | 'voices', fraction: number, text: string): void => {
+  for (const w of planWaiters) w.watch?.(step, fraction, text);
+};
+
+/**
+ * The voice pass's own report: the renderer's first half loads each event's
+ * instrument and its second half plans the voices (`renderSequencer`), so only
+ * the second half is "voices" here. ⚠️ **It yields to the page** every 50 ms
+ * while anyone is watching: the second half is all script, and a loader that
+ * cannot paint shows the step before it for the whole of it.
+ */
+function watchVoices(done: number, total: number): Promise<void> | void {
+  if (planWaiters.length === 0 || done * 2 < total) return;
+  const events = total / 2;
+  tellWaiters('voices', (done - events) / Math.max(1, events),
+    `planning ${events.toLocaleString()} note${events === 1 ? '' : 's'}…`);
+  const now = performance.now();
+  if (now - lastYield < 50) return;
+  lastYield = now;
+  return new Promise((resolve) => window.setTimeout(resolve, 0));
+}
+
+/**
+ * The loader, counting the instruments a build asks for the first time.
+ * One already loaded comes back at once and counts at once.
+ */
+function countingLoader(load: InstrumentLoader, seq: Sequencer): InstrumentLoader {
+  const wanted = new Set(seq.tracks.map((t) => t.guid).filter((g) => g !== 0));
+  const seen = new Set<number>();
+  const say = (guid?: number) => {
+    const name = guid === undefined ? undefined : byGuid.get(guid)?.name;
+    tellWaiters('instruments', seen.size / Math.max(1, wanted.size),
+      `loading instruments: ${seen.size} of ${wanted.size}${name ? ` (${name})` : ''}…`);
+  };
+  say();
+  return async (guid) => {
+    const loaded = await load(guid);
+    if (wanted.has(guid) && !seen.has(guid)) {
+      seen.add(guid);
+      say(guid);
+    }
+    return loaded;
+  };
 }
 
 async function replan(): Promise<void> {
@@ -234,8 +302,9 @@ async function replan(): Promise<void> {
   }
   replanning = true;
   try {
-    const load = await ensureAssets();
+    const assets = await ensureAssets();
     const seq = audibleSequencer();
+    const load = planWaiters.length > 0 ? countingLoader(assets, seq) : assets;
     const restart = restartNext;
     restartNext = false;
     pushEffects();
@@ -254,6 +323,8 @@ async function replan(): Promise<void> {
     if (replanAgain) {
       replanAgain = false;
       replanSoon();
+    } else if (replanTimer === 0) {
+      for (const w of planWaiters.splice(0)) w.done();
     }
   }
 }

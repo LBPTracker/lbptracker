@@ -24,9 +24,9 @@ import { createApp, h, reactive } from 'vue';
 import ArchivePanel from './widgets/ArchivePanel.vue';
 import { readPaste, rootLevelUrl, SEARCH_HOST } from './lbparchive.ts';
 import { rememberLevel } from './link.ts';
-import { loading, type LoadingJob } from './widgets/loading.ts';
+import { bodyBytes, loading, sizeText, type LoadingJob } from './widgets/loading.ts';
 import { mustWalk, walkNote, walkParts } from './resource-walk.ts';
-import type { Opened } from './open-level.ts';
+import { FETCH_SECONDS, OPEN_SECONDS, WALK_SECONDS, type Opened } from './open-level.ts';
 
 /**
  * How many resources one paste may pull in, and how many at a time.
@@ -104,8 +104,14 @@ export function wireArchiveOpen(opts: {
     job?.note(loud);
   };
 
-  /** One resource out of the archive. Throws with something worth reading. */
-  async function grab(sha1: string): Promise<Uint8Array> {
+  /**
+   * One resource out of the archive. Throws with something worth reading.
+   * `onBytes` follows the body as it arrives, for the root's download.
+   */
+  async function grab(
+    sha1: string,
+    onBytes?: (got: number, total: number | undefined) => void,
+  ): Promise<Uint8Array> {
     // ❗ `mode: 'cors'` is the default and is spelled out because it is the
     // property being relied on: archive.org echoes the asking origin, so this
     // works from a dev server, a static host or a file:// page alike.
@@ -116,7 +122,7 @@ export function wireArchiveOpen(opts: {
         + 'may never have received this level',
       );
     }
-    return new Uint8Array(await answer.arrayBuffer());
+    return onBytes ? bodyBytes(answer, onBytes) : new Uint8Array(await answer.arrayBuffer());
   }
 
   /**
@@ -144,20 +150,40 @@ export function wireArchiveOpen(opts: {
     ui.query = sha1;
     ui.deep = deep;
     job = loading(`Opening ${sha1.slice(0, 8)}… from the archive`);
+    // The bar's weights (`widgets/loading.ts`): `open` is the read and the plan
+    // `openLevel` does after, as a step of this job.
+    const fetchStep = { key: 'fetch', seconds: FETCH_SECONDS };
+    const openStep = { key: 'open', seconds: OPEN_SECONDS };
+    job.plan([fetchStep, openStep]);
     progress(`fetching ${sha1.slice(0, 8)}…`, 'asking archive.org for the level…');
     try {
-      const root = { sha1, bytes: await grab(sha1) };
+      const root = {
+        sha1,
+        bytes: await grab(sha1, (got, total) => job?.progress(
+          total ? Math.min(1, got / total) : null,
+          `downloading the level: ${sizeText(got)}${total ? ` of ${sizeText(total)}` : ''}…`,
+        )),
+      };
       // ❗ **Read once, at the start.** Ticking the box while eighteen fetches
       // are in flight must not change what this open is doing halfway through.
-      const walked = mustWalk(root.bytes, deep)
+      const walking = mustWalk(root.bytes, deep);
+      if (walking) {
+        job.plan([fetchStep, { key: 'walk', seconds: WALK_SECONDS }, openStep]);
+        job.step('walk', 'looking for the plans and chunks it depends on…');
+      }
+      const walked = walking
         ? await walkParts({
           root,
           grab,
           limit: RESOURCE_LIMIT,
           atATime: AT_A_TIME,
-          progress: (have, known) => progress(`${have} of ${known} resources…`),
+          progress: (have, known) => {
+            progress(`${have} of ${known} resources…`, `fetching what it depends on: ${have} of ${known} resources…`);
+            job?.progress(have / Math.max(1, known));
+          },
         })
         : { files: [{ name: sha1, bytes: root.bytes }], missing: 0, skipped: 0 };
+      job.step('open', 'opening the level…');
       const note = walkNote(walked, 'in the archive');
       say(note, note !== '');
       host.hidden = note === '';

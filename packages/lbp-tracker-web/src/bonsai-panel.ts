@@ -25,10 +25,10 @@ import {
   readBonsaiPaste, readBonsaiUser, readSearch, searchSummary, songlessWhy, type BonsaiLevel,
 } from './bonsai.ts';
 import { rememberLevel } from './link.ts';
-import { loading, type LoadingJob } from './widgets/loading.ts';
+import { bodyBytes, loading, sizeText, type LoadingJob } from './widgets/loading.ts';
 import { mustWalk, StopWalk, walkNote, walkParts } from './resource-walk.ts';
 import { HEADER_MIN } from '@lbptracker/cwlib/resource.ts';
-import type { Opened } from './open-level.ts';
+import { FETCH_SECONDS, OPEN_SECONDS, WALK_SECONDS, type Opened } from './open-level.ts';
 
 /**
  * How many resources one open may pull in, the root included, and how many at
@@ -222,11 +222,14 @@ export function wireBonsaiOpen(opts: {
    * ⚠️ **A `429` ends the walk, it does not skip a part**: every part still in
    * the queue would get the same answer, and asking keeps the block going.
    */
-  async function grab(sha1: string): Promise<Uint8Array> {
+  async function grab(
+    sha1: string,
+    onBytes?: (got: number, total: number | undefined) => void,
+  ): Promise<Uint8Array> {
     const answer = await fetch(bonsaiAssetUrl(sha1), { mode: 'cors' });
     if (answer.status === 429) throw new StopWalk(SLOW_DOWN);
     if (!answer.ok) throw new Error(`Bonsai answered ${answer.status} for ${sha1.slice(0, 8)}`);
-    return new Uint8Array(await answer.arrayBuffer());
+    return onBytes ? bodyBytes(answer, onBytes) : new Uint8Array(await answer.arrayBuffer());
   }
 
   /**
@@ -280,16 +283,25 @@ export function wireBonsaiOpen(opts: {
     const named = typeof wanted === 'object' ? `level ${wanted.id}`
       : typeof wanted === 'number' ? `level ${wanted}` : `the level ${wanted.slice(0, 8)}…`;
     job = loading(`Opening ${named} from Bonsai`);
+    // The bar's weights, as on the archive route (`open_` in `archive-panel.ts`).
+    const fetchStep = { key: 'fetch', seconds: FETCH_SECONDS };
+    const openStep = { key: 'open', seconds: OPEN_SECONDS };
+    const lookStep = { key: 'look', seconds: typeof wanted === 'object' ? 0 : 0.8 };
+    job.plan([lookStep, fetchStep, openStep]);
     progress(`asking Bonsai for ${named}…`);
     try {
       const level = typeof wanted === 'object' ? wanted : await lookUp(wanted);
       ui.chosen = level.id;
       const songless = songlessWhy(level);
       if (songless) throw new Error(songless);
+      job.step('fetch', `downloading “${level.title}”…`);
       progress(`fetching “${level.title}”…`, `downloading “${level.title}”…`);
       let rootBytes: Uint8Array;
       try {
-        rootBytes = await grab(level.sha1);
+        rootBytes = await grab(level.sha1, (got, total) => job?.progress(
+          total ? Math.min(1, got / total) : null,
+          `downloading “${level.title}”: ${sizeText(got)}${total ? ` of ${sizeText(total)}` : ''}…`,
+        ));
       } catch (error) {
         if (error instanceof StopWalk) throw error;
         throw new Error(`the level’s file would not come: ${
@@ -303,15 +315,24 @@ export function wireBonsaiOpen(opts: {
       const root = { sha1: level.sha1, bytes: rootBytes };
       // ❗ Read once, at the start, and not optional for an adventure: see
       // `open_` in `archive-panel.ts` and `mustWalk`.
-      const walked = mustWalk(root.bytes, deep)
+      const walking = mustWalk(root.bytes, deep);
+      if (walking) {
+        job.plan([lookStep, fetchStep, { key: 'walk', seconds: WALK_SECONDS }, openStep]);
+        job.step('walk', 'looking for the plans and chunks it depends on…');
+      }
+      const walked = walking
         ? await walkParts({
           root,
           grab,
           limit: RESOURCE_LIMIT,
           atATime: AT_A_TIME,
-          progress: (have, known) => progress(`${have} of ${known} resources…`),
+          progress: (have, known) => {
+            progress(`${have} of ${known} resources…`, `fetching what it depends on: ${have} of ${known} resources…`);
+            job?.progress(have / Math.max(1, known));
+          },
         })
         : { files: [{ name: level.sha1, bytes: root.bytes }], missing: 0, skipped: 0 };
+      job.step('open', 'opening the level…');
       const note = walkNote(walked, 'on Bonsai');
       say(note, note !== '');
       host.hidden = note === '';

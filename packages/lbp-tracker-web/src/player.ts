@@ -224,8 +224,8 @@ export interface PlayerEvents {
   tick?(): void;
   /** Playing started or stopped, including reaching the end. */
   playing?(on: boolean): void;
-  /** The plan is being built. */
-  progress?(phase: string, done: number, total: number): void;
+  /** The plan is being built. A promise returned is awaited: it is how a watcher lets the page paint. */
+  progress?(phase: string, done: number, total: number): void | Promise<void>;
 }
 
 /** What `load` found out about the song. */
@@ -645,9 +645,11 @@ export class Player {
           track: keyOf(where.track),
         });
       },
-      onProgress: (phase, done, total) => {
-        if ((done & 0xfff) === 0) this.events.progress?.(phase, done, total);
-      },
+      // The renderer reports every 1,024 events already. ⚠️ A further
+      // `done & 0xfff` filter here let through only the first report of the
+      // second half, and that only when the event count was a multiple of
+      // 4,096, so nothing watching could see the voice pass move.
+      onProgress: (phase, done, total) => this.events.progress?.(phase, done, total),
     });
     return { played: result.played, skipped: result.skipped, framesPerStep: result.framesPerStep };
   }

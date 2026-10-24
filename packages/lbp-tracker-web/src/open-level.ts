@@ -60,6 +60,30 @@ export interface Opened {
   readonly link?: LinkedLevel;
 }
 
+/**
+ * The loader's steps for reading what was opened and making its song playable
+ * (`openLevel` in `daw.ts`), and what each usually takes: the bar's weights
+ * (`widgets/loading.ts`). Measured on a demo song (16 instruments, 9,180
+ * notes) opened from the dev server, 2026-10-24: the read 0.3 s, the
+ * instruments 0.6 s and the voice pass 0.15 s. The instruments are given
+ * double, since off the deployed site their samples cross a network.
+ */
+export const PLAN_STEPS = [
+  { key: 'instruments', seconds: 1.2 },
+  { key: 'voices', seconds: 0.3 },
+] as const;
+export const OPEN_STEPS = [
+  { key: 'assets', seconds: 0.2 },
+  { key: 'read', seconds: 0.4 },
+  ...PLAN_STEPS,
+] as const;
+/** What a route that fetches first gives the open that follows: the same time, so the bar runs once. */
+export const OPEN_SECONDS = OPEN_STEPS.reduce((sum, s) => sum + s.seconds, 0);
+/** A root level from the archive or Bonsai: about 1.7 s before the first byte and 0.5 s of body. */
+export const FETCH_SECONDS = 2.2;
+/** The dependency walk, when it runs: "Music Gallery #3"'s 17 plans took 7 s (`open_` in `archive-panel.ts`). */
+export const WALK_SECONDS = 7;
+
 const read = async (file: File, name = file.name): Promise<BackupFile | undefined> =>
   (file.size > BIGGEST || file.size === 0
     ? undefined
