@@ -11,7 +11,8 @@
  * a hunt.
  */
 
-import type { Instrument, SampleSlot } from './instrument.ts';
+import type { SampleSlot } from '@lbptracker/cwlib/rinstrument.ts';
+import type { Instrument } from './instrument.ts';
 import { resolveSlot } from './instrument.ts';
 
 /**

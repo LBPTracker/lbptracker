@@ -2,9 +2,8 @@
 
 The parts a level carries — `PSequencer`, `PInstrument`, the note record, the circuit board — are
 read by cwlib, and their schemas are `../../cwlib-ts/steering/sequencer-data-model.md`. This file is
-the other half: the sampler patch, which `packages/lbp-tracker-lib/src/rinstrument.ts` reads into
-the sampler's own structures (*a parser belongs with the model it fills*,
-[tracker-architecture.md](tracker-architecture.md)), and what the game does with the parts once it
+the other half: what the engine makes of the sampler patch — whose layout and reader are cwlib-ts's
+([sequencer-data-model.md](../../cwlib-ts/steering/sequencer-data-model.md), *`RInstrument`*; `@lbptracker/cwlib/rinstrument.ts`) — and what the game does with the parts once it
 has them — the clip it builds per placement, `Key` and `Scale`, the board's size limit and the
 sequencer's thermometer. Addresses are **vaddrs** in the eboot; [eboot-re.md](eboot-re.md) has the
 conventions. What the engine then does with the clip is [synth-engine.md](synth-engine.md).
@@ -36,23 +35,16 @@ caller-supplied note array that rewrites bits 8..14 as `(95 − y) & 0x7f` (cons
 a level**: the filler's only caller, `v0x1c449b`, passes `rdx = 0`, so the file's `Notes` reach the
 plugin with nothing but bits 28..29 cleared, and the stored `y` **is** the note.
 
-## `RInstrument` — serialiser at `v0xc68a70`
+## `RInstrument` — what its fields mean to the engine
 
-The serialiser builds field names with `sprintf("%s_%d", base, i)`, so the save format has flat
-numbered fields rather than nested arrays; each array is preceded by an explicit i32 count.
-
-| base name | count | member stride | what it is |
-|---|---|---|---|
-| `Samples_0..7` | 8 | `0x10` from `+0x48` | the sample-slot structs below |
-| `SampleGuids_0..7` | 8 | `4` from `+0xc8` | GUIDs → `.smp` files in the FARCs (game-assets.md) |
-| `Splitnotes_*` | 9 | from `+0xe8` | key-split bounds; `[0]` is never consulted, `[1..8]` are the eight zones' lower bounds |
-| `Numstack` | 1 | `+0x10c` | the unison stack's **layer count**, 1..5 |
-| `Params[i]_*` | 27 | two f32 at `+0x110 + 8i` | the synth block — every one a range `(x, y)`; all 27 named in [synth-engine.md](synth-engine.md) |
-| `Arpeggio_*` | 32 | bytes, default `0xf` | arpeggiator pattern |
-| `Arpeggiate` | 1 | bool | arpeggiator on/off |
+The resource's layout — field order, counts, member offsets, the serialiser at `v0xc68a70` — is
+cwlib-ts's, with its reader
+([sequencer-data-model.md](../../cwlib-ts/steering/sequencer-data-model.md), *`RInstrument`*).
+This is what the values mean once the engine has them. The 27 `Params`, each a range `(x, y)`, are
+all named in [synth-engine.md](synth-engine.md).
 
 **Measured across the game's 68 `.rinst` files** (`tools/ExtractGuid.java` pulls them out; every
-one parses exactly, `packages/lbp-tracker-lib/test/rinstrument.test.ts`):
+one parses exactly in cwlib-ts's `test/rinstrument.test.ts`):
 
 - `Splitnotes` is **descending** and `splitNotes[0]` is **87 in every instrument**; unused trailing
   entries are 0. Slot `i` covers `splitNotes[i+1] <= note < splitNotes[i]` — each bound belongs to
@@ -81,28 +73,11 @@ one parses exactly, `packages/lbp-tracker-lib/test/rinstrument.test.ts`):
 - 68 instruments, 47 multisampled, 274 pitched slots against 4 unpitched, and **not one** with
   `fitbpm` set.
 
-## The sample slot — serialiser at `v0xcc0e90`
+## The sample slot — `finetune`'s unit
 
-Each of the 8 slots is 16 bytes in the resource (152 in the engine's own record):
-
-| offset | type | field | stream position | meaning |
-|---|---|---|---|---|
-| `+0x00` | i32 | `basenote` | 1st | the note the sample was recorded at |
-| `+0x04` | f32 | `basebpm` | 2nd | the sample's own tempo, for tempo-synced slots |
-| `+0x08` | f32 | `finetune` | **6th (last)** | fine pitch offset, in **semitones** |
-| `+0x0c` | bool | `pitched` | 3rd | pitch-shift with the note, or play at a fixed rate |
-| `+0x0d` | bool | `fitbpm` | 4th **and 5th** | rate-match the sample to the sequencer tempo |
-
-⚠️ **Member offset order and stream order are not the same**, and confusing them produces a
-parser that silently reads `finetune` where `pitched` lives. The serialiser emits `basenote,
-basebpm, pitched, fitbpm, fitbpm, finetune`.
-
-**There is no third bool.** The serialiser emits three `bool` calls, but the third passes the *same*
-member pointer and the *same* name string as the second: at `v0xcc0ed6` the compiler hoists
-`lea r15, [r14+0xd]` and `lea r12, ["fitbpm"]` into registers and makes the identical call twice,
-at `v0xcc0eea` and `v0xcc0ef8`. `fitbpm` is serialised twice into the same field — a duplicate in
-the game's own code, not a hidden setting. An earlier version of this file listed a phantom bool at
-`+0x0e`; ennuo's toolkit independently reports the same double write.
+The slot's layout — 16 bytes, stream order not member order, `fitbpm` written twice and no third
+bool — is cwlib-ts's
+([sequencer-data-model.md](../../cwlib-ts/steering/sequencer-data-model.md), *The sample slot*).
 
 **`finetune` is in semitones**: the engine adds it into the same sum as the note and the root note
 before the one division by 12 (*5* in [answered-questions.md](answered-questions.md)). The corpus

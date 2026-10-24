@@ -1,30 +1,15 @@
 /**
- * The sampler patch: 8 sample slots and the key splits between them.
+ * The sampler's model of a patch: its slots, the key splits between them, and
+ * the zone a note lands in.
  *
- * Field names, offsets and stream order come from the game's own serialisers,
- * and the split and stacking semantics from the engine's own zone walk and
+ * The resource itself -- `RInstrument`, `SampleSlot`, their layout and their
+ * reader -- is cwlib-ts's (`@lbptracker/cwlib/rinstrument.ts`). What is here,
+ * the split and stacking semantics, comes from the engine's own zone walk and
  * stack loop, checked against all 68 instruments the game ships -- see
  * steering/sequencer-engine-inputs.md and steering/synth-engine.md.
  */
 
-export const MAX_SLOTS = 8;
-export const MAX_SPLITS = 9; // 8 zones; [0] is a constant, [1..8] are the bounds
-export const MAX_PARAMS = 27;
-export const MAX_ARPEGGIO = 32;
-
-/** One of the 8 sample slots. 16 bytes in the game's memory. */
-export interface SampleSlot {
-  /** The note the sample was recorded at. */
-  readonly baseNote: number;
-  /** The sample's own tempo, for loops. */
-  readonly baseBpm: number;
-  /** Fine pitch offset, in **semitones** -- measured, see `pitchRatio`. */
-  readonly fineTune: number;
-  /** Pitch-shift with the note, or play at a fixed rate (percussion). */
-  readonly pitched: boolean;
-  /** Rate-match the sample to the sequencer tempo. */
-  readonly fitBpm: boolean;
-}
+import type { SampleSlot } from '@lbptracker/cwlib/rinstrument.ts';
 
 export interface Instrument {
   readonly slots: readonly SampleSlot[];

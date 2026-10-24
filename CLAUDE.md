@@ -26,8 +26,8 @@ Steering files (read on demand, per the hints):
   what "faithful" means concretely and how far each part of it has been reached, the deliberate
   deviations, scope, and what counts as evidence here.
 - [steering/sequencer-engine-inputs.md](steering/sequencer-engine-inputs.md) — **read before
-  touching `lib/src/rinstrument.ts`, `instrument.ts`, `scale.ts` or `thermometer.ts`**: the
-  `RInstrument` and sample-slot schemas and what the corpus says about them, the playback formula,
+  touching `lib/src/instrument.ts`, `scale.ts` or `thermometer.ts`**: what the `RInstrument` and
+  sample-slot fields mean to the engine (their layout and reader are cwlib-ts's), the playback formula,
   the clip the eboot builds per placement, `Key` and `Scale`, the board's size limit and the
   sequencer's thermometer.
 - [steering/synth-engine.md](steering/synth-engine.md) — **read before touching anything in

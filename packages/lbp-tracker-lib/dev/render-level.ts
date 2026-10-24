@@ -35,7 +35,7 @@ import {
 } from '../src/render.ts';
 import { VOICES_UNLIMITED, VOICE_POOL_SIZE } from '../src/polyphony.ts';
 import { readLevelProject, type LevelProject } from '@lbptracker/cwlib/project.ts';
-import { readInstrument, usedSlots } from '../src/rinstrument.ts';
+import { readInstrument, usedSlots } from '@lbptracker/cwlib/rinstrument.ts';
 import { loadResourceFile, nodeInflate } from '@lbptracker/cwlib/platform/node.ts';
 import { engineSample, readWav, writeWav } from '../src/wav.ts';
 

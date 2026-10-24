@@ -26,7 +26,7 @@ import { nodeInflate } from '@lbptracker/cwlib/platform/node.ts';
 import { loadResource } from '@lbptracker/cwlib/resource.ts';
 import { alsProjectFiles, sequencerToAls } from '../src/als.ts';
 import type { AlsInstrumentSource } from '../src/als-sampler.ts';
-import { readInstrument, usedSlots, type RInstrument } from '../src/rinstrument.ts';
+import { readInstrument, usedSlots, type RInstrument } from '@lbptracker/cwlib/rinstrument.ts';
 import { MASTER_DEFAULTS } from '../src/audio/master.ts';
 
 const LEVELS = process.env.LBP_LEVELS ?? 'C:/Users/sgdc3/Desktop/LBP/toolkit/tools/sequencerdump/data';

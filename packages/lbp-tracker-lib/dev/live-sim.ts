@@ -34,7 +34,7 @@ import { allocateVoices, LiveVoicePool, VOICES_UNLIMITED, type PoolWalks } from 
 import { readLevelProject, type LevelProject } from '@lbptracker/cwlib/project.ts';
 import { RATE, renderSequencer, type LoadedInstrument } from '../src/render.ts';
 import { loadResource } from '@lbptracker/cwlib/resource.ts';
-import { readInstrument, usedSlots } from '../src/rinstrument.ts';
+import { readInstrument, usedSlots } from '@lbptracker/cwlib/rinstrument.ts';
 import { engineSample, readWav } from '../src/wav.ts';
 import { swungFrame } from '../src/swing.ts';
 import { engineClock } from '../src/engine-clock.ts';

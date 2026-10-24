@@ -20,7 +20,7 @@ import {
   Envelope,
   evaluateParam,
 } from '../envelope.ts';
-import type { InstrumentParam } from '../rinstrument.ts';
+import type { InstrumentParam } from '@lbptracker/cwlib/rinstrument.ts';
 import { LFO_PARAMS, OUTPUT_PARAMS, echoSendLevel } from '../params.ts';
 import type { Interpolator } from './interpolate.ts';
 import { INTERPOLATORS, DEFAULT_INTERPOLATOR } from './interpolate.ts';

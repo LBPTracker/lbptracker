@@ -26,7 +26,7 @@ import { CONTROLS } from '../controls/kit.ts';
 import { alsProjectFiles, sequencerToAls, type AlsExportResult } from '@lbptracker/lib/als.ts';
 import type { AlsInstrumentSource } from '@lbptracker/lib/als-sampler.ts';
 import { MASTER_DEFAULTS, type MasterSettings } from '@lbptracker/lib/audio/master.ts';
-import { readInstrument, usedSlots, type RInstrument } from '@lbptracker/lib/rinstrument.ts';
+import { readInstrument, usedSlots, type RInstrument } from '@lbptracker/cwlib/rinstrument.ts';
 import { type Sequencer } from '@lbptracker/cwlib/project.ts';
 import { loadResource } from '@lbptracker/cwlib/resource.ts';
 import { webInflate } from '@lbptracker/cwlib/platform/web.ts';

@@ -1,5 +1,18 @@
 import { strict as assert } from 'node:assert';
+import { existsSync } from 'node:fs';
+import { readdir } from 'node:fs/promises';
+import path from 'node:path';
 import test from 'node:test';
+
+import { loadResourceFile } from '@lbptracker/cwlib/platform/node.ts';
+import { readInstrument, usedSlots } from '@lbptracker/cwlib/rinstrument.ts';
+
+/**
+ * The .rinst files are extracted from the user's own game with
+ * tools/ExtractGuid.java and are never committed. Without them these skip.
+ * Reading them is cwlib-ts's and tested there; these test the zone walk.
+ */
+const RINST = process.env.LBP_RINST ?? 'fixtures/rinst';
 
 test('the zone count comes from the splits, not the sample count', async () => {
   const { zoneCount, resolveSlot } = await import('../src/instrument.ts');
@@ -92,7 +105,7 @@ test('resolveSlot is the engine’s zone walk, on every shipped instrument', asy
     return;
   }
   const { resolveSlot } = await import('../src/instrument.ts');
-  const { readInstrument, usedSlots } = await import('../src/rinstrument.ts');
+  const { readInstrument, usedSlots } = await import('@lbptracker/cwlib/rinstrument.ts');
   const { loadResourceFile } = await import('@lbptracker/cwlib/platform/node.ts');
 
   /** The loop above, with the record's bound array being `Splitnotes[1..8]`. */
@@ -119,4 +132,60 @@ test('resolveSlot is the engine’s zone walk, on every shipped instrument', asy
   }
   assert.ok(checked >= 8000, `expected the whole palette, checked ${checked}`);
   console.log(`    ${rows.length} instruments x 128 notes = ${checked} comparisons, all agree`);
+});
+
+test('Splitnotes pairs one bound per slot, and every slot is reachable', async (t) => {
+  if (!existsSync(RINST)) {
+    t.skip(`no ${RINST} (extract with tools/ExtractGuid.java, or set LBP_RINST)`);
+    return;
+  }
+  const { resolveSlot } = await import('../src/instrument.ts');
+  const files = (await readdir(RINST)).filter((f) => f.endsWith('.rinst'));
+  if (files.length === 0) {
+    t.skip(`no .rinst files in ${RINST}`);
+    return;
+  }
+
+  let fencepost = 0;
+  let reachable = 0;
+  for (const name of files) {
+    const inst = readInstrument((await loadResourceFile(path.join(RINST, name))).data);
+    const slots = usedSlots(inst).length;
+    if (inst.splitNotes.filter((v) => v > 0).length === slots) fencepost += 1;
+
+    const seen = new Set<number>();
+    for (let note = 0; note <= 127; note += 1) {
+      seen.add(resolveSlot(inst as never, note, slots));
+    }
+    if (seen.size === slots) reachable += 1;
+  }
+
+  console.log(
+    `    one bound per slot: ${fencepost}/${files.length}, ` +
+      `all slots reachable: ${reachable}/${files.length}`,
+  );
+  // A wrong slot<->zone pairing strands samples. These floors are what
+  // establishes the convention; see resolveSlot's docstring.
+  assert.ok(fencepost / files.length > 0.85, 'the fencepost holds for the great majority');
+  assert.ok(reachable / files.length > 0.9, 'nearly every slot is reachable');
+});
+
+test('baiyon_city_guildford puts every base note inside its own zone', async (t) => {
+  const file = path.join(RINST, 'baiyon_city_guildford.rinst');
+  if (!existsSync(file)) {
+    t.skip(`no ${file}`);
+    return;
+  }
+  const { resolveSlot } = await import('../src/instrument.ts');
+  const inst = readInstrument((await loadResourceFile(file)).data);
+  const used = usedSlots(inst);
+  // The cleanest multisample the game ships: eight slots, eight bounds, and
+  // each slot's base note lands in the zone that slot owns.
+  for (let i = 0; i < used.length; i += 1) {
+    assert.equal(
+      resolveSlot(inst as never, used[i].slot.baseNote, used.length),
+      i,
+      `base ${used[i].slot.baseNote} should resolve to its own slot ${i}`,
+    );
+  }
 });

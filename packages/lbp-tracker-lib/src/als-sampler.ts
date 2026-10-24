@@ -40,7 +40,7 @@ import { ADSR_PARAMS, ADSR_PARAMS_B, evaluateAdsr, evaluateParam, type Adsr } fr
 import { FILTER_BYPASS_CUTOFF, FILTER_PARAMS, ladderCoefficients } from './audio/moog.ts';
 import { resolveSlot, zoneCount } from './instrument.ts';
 import { OUTPUT_PARAMS } from './params.ts';
-import { usedSlots, type RInstrument } from './rinstrument.ts';
+import { usedSlots, type RInstrument } from '@lbptracker/cwlib/rinstrument.ts';
 import { loopRegion, readWav } from './wav.ts';
 
 /** An instrument and the sample files it plays, as the caller fetched them. */

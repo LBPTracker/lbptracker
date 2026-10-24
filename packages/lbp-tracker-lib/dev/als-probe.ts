@@ -21,7 +21,7 @@ import { DEFAULT_CHIP_COLOUR } from '@lbptracker/cwlib/chips.ts';
 import { readNotes, NOTE_RECORD_SIZE } from '@lbptracker/cwlib/notes.ts';
 import type { Sequencer, Track } from '@lbptracker/cwlib/project.ts';
 import { alsProjectFiles, sequencerToAls } from '../src/als.ts';
-import type { RInstrument } from '../src/rinstrument.ts';
+import type { RInstrument } from '@lbptracker/cwlib/rinstrument.ts';
 
 /**
  * Where each note ends: step 55 of the 64 the loop runs. ⚠️ A note as long as
