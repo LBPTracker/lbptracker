@@ -6,7 +6,7 @@ import test from 'node:test';
 
 import { loadResourceFile } from '@lbptracker/cwlib/platform/node.ts';
 
-import { readInstrument, usedSlots } from '@lbptracker/cwlib/rinstrument.ts';
+import { readInstrument, usedSlots } from '@lbptracker/cwlib/resources/rinstrument.ts';
 import {
   MAX_SEQUENCER_MEMORY, addedSequencerMemory, overSequencerMemory, sequencerMemory,
 } from '../src/thermometer.ts';

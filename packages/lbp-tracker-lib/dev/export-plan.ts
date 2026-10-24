@@ -2,7 +2,7 @@
  * Write a `.plan` from a level, a plan, or one of this tracker's song files —
  * and print the two things that decide whether the game will take it.
  *
- * The writing is `@lbptracker/cwlib/write-plan.ts`. This is the command-line
+ * The writing is `@lbptracker/cwlib/sequencer/write-plan.ts`. This is the command-line
  * way in, for handing a file to somebody with a console and asking them to
  * import it:
  *
@@ -23,12 +23,12 @@
 
 import { readFile, writeFile } from 'node:fs/promises';
 
-import { readChunk, readLevel, readPlan } from '@lbptracker/cwlib/level.ts';
-import { partReaders } from '@lbptracker/cwlib/parts.ts';
+import { readChunk, readLevel, readPlan } from '@lbptracker/cwlib/things/level.ts';
+import { partReaders } from '@lbptracker/cwlib/things/parts.ts';
 import { nodeDeflate, nodeInflate } from '@lbptracker/cwlib/platform/node.ts';
-import { importLevel, type Sequencer } from '@lbptracker/cwlib/project.ts';
-import { readDependencies } from '@lbptracker/cwlib/resource.ts';
-import { LBP3_PS3, LBP3_PS4, writeSequencerPlan } from '@lbptracker/cwlib/write-plan.ts';
+import { importLevel, type Sequencer } from '@lbptracker/cwlib/sequencer/project.ts';
+import { readDependencies } from '@lbptracker/cwlib/io/resource.ts';
+import { LBP3_PS3, LBP3_PS4, writeSequencerPlan } from '@lbptracker/cwlib/sequencer/write-plan.ts';
 import { sequencerFromSong, songFromJson, looksLikeSongJson } from '../src/song.ts';
 
 const args = process.argv.slice(2);

@@ -1,15 +1,15 @@
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
-import { DEFAULT_CHIP_COLOUR } from '@lbptracker/cwlib/chips.ts';
-import { readNotes, NOTE_RECORD_SIZE } from '@lbptracker/cwlib/notes.ts';
-import { channelVolume, type Sequencer, type Track } from '@lbptracker/cwlib/project.ts';
+import { DEFAULT_CHIP_COLOUR } from '@lbptracker/cwlib/sequencer/chips.ts';
+import { readNotes, NOTE_RECORD_SIZE } from '@lbptracker/cwlib/sequencer/notes.ts';
+import { channelVolume, type Sequencer, type Track } from '@lbptracker/cwlib/sequencer/project.ts';
 import { alsProjectFiles, sequencerToAls } from '../src/als.ts';
 import { Ids } from '../src/als-xml.ts';
 import { liveDialHz, samplerDevice, samplerSampleFile, samplerZones, trackingRoot, type SamplerSample } from '../src/als-sampler.ts';
 import { kneeHz } from '../dev/ladder-knee.ts';
 import { ladderCoefficients, MoogLadder } from '../src/audio/moog.ts';
-import type { RInstrument, SampleSlot } from '@lbptracker/cwlib/rinstrument.ts';
+import type { RInstrument, SampleSlot } from '@lbptracker/cwlib/resources/rinstrument.ts';
 
 /* ---------------------------------------------------------------- fixtures */
 

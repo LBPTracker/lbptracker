@@ -9,7 +9,7 @@
  *
  * ⚠️ **The walk fetches only what can be opened, and the list is measured.** A
  * level's dependency table names its textures, meshes and materials too, and
- * `../cwlib-ts/src/backup.ts` would throw every one of them away -- it
+ * `../cwlib-ts/src/sequencer/backup.ts` would throw every one of them away -- it
  * opens `LVLb`, `PLNb` and `CHKb` and nothing else. So the walk follows exactly
  * the three types that are those: 9, 38 and 61. See `OPENABLE_DEPENDENCIES`.
  *
@@ -18,8 +18,8 @@
  * the store; anything else that will not come is counted and said out loud.
  */
 
-import { HEADER_MIN, OPENABLE_DEPENDENCIES, readDependencies } from '@lbptracker/cwlib/resource.ts';
-import { looksLikeLevel, type BackupFile } from '@lbptracker/cwlib/backup.ts';
+import { HEADER_MIN, OPENABLE_DEPENDENCIES, readDependencies } from '@lbptracker/cwlib/io/resource.ts';
+import { looksLikeLevel, type BackupFile } from '@lbptracker/cwlib/sequencer/backup.ts';
 
 /**
  * Whether to walk at all: when the reader asked to, and whenever the root

@@ -31,8 +31,8 @@
  * wherever they fall.
  */
 
-import { factoryColour } from '@lbptracker/cwlib/chips.ts';
-import { encodeRecord, readNotes, NOTE_RECORD_SIZE, type NoteRecord } from '@lbptracker/cwlib/notes.ts';
+import { factoryColour } from '@lbptracker/cwlib/sequencer/chips.ts';
+import { encodeRecord, readNotes, NOTE_RECORD_SIZE, type NoteRecord } from '@lbptracker/cwlib/sequencer/notes.ts';
 import {
   CHANNEL_COUNT,
   STEPS_PER_CELL,
@@ -40,8 +40,8 @@ import {
   type ScheduledNote,
   type Sequencer,
   type Track,
-} from '@lbptracker/cwlib/project.ts';
-import { authorHandle } from '@lbptracker/cwlib/project.ts';
+} from '@lbptracker/cwlib/sequencer/project.ts';
+import { authorHandle } from '@lbptracker/cwlib/sequencer/project.ts';
 import { blockRoot, notePitch, unquantise } from './scale.ts';
 import { swungFrame } from './swing.ts';
 import {

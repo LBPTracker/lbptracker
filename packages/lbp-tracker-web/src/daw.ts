@@ -10,8 +10,8 @@
 // ❗ Both sheets from here, in this order: see the note at the top of daw.css.
 import '../ui.css';
 import '../daw.css';
-import { sequencersOf, type BackupResult } from '@lbptracker/cwlib/backup.ts';
-import type { Sequencer } from '@lbptracker/cwlib/project.ts';
+import { sequencersOf, type BackupResult } from '@lbptracker/cwlib/sequencer/backup.ts';
+import type { Sequencer } from '@lbptracker/cwlib/sequencer/project.ts';
 import { songEndSteps, songFromJson, songFromSequencer, newSong } from '@lbptracker/lib/song.ts';
 import { mountFooter } from './footer.ts';
 import { mountHelp } from './help.ts';

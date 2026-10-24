@@ -13,7 +13,7 @@ import { test } from 'node:test';
 
 import {
   DEPENDENCY_CHUNK, DEPENDENCY_LEVEL, DEPENDENCY_PLAN, DEPENDENCY_TEXTURE,
-} from '@lbptracker/cwlib/resource.ts';
+} from '@lbptracker/cwlib/io/resource.ts';
 import { mustWalk, StopWalk, walkNote, walkParts } from '../src/resource-walk.ts';
 
 /** `HEADER_MIN` in `resource.ts`: the shortest header a real resource has. */

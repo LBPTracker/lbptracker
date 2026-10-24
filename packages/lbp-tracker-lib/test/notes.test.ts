@@ -9,7 +9,7 @@ import {
   groupNotes,
   readNotes,
   type NoteRecord,
-} from '@lbptracker/cwlib/notes.ts';
+} from '@lbptracker/cwlib/sequencer/notes.ts';
 
 function rec(
   step: number,
@@ -218,7 +218,7 @@ test('the modulation is the low nibble of the fourth byte, over 15', () => {
 // ------------------------------------------------ creator-authored names
 
 test('the editor’s XML escaping is undone in names', async () => {
-  const { decodeEntities } = await import('@lbptracker/cwlib/parts.ts');
+  const { decodeEntities } = await import('@lbptracker/cwlib/things/parts.ts');
 
   // The only two the corpus actually contains: &apos; 46 times across the
   // sequencer names and 416 across the instrument names, &amp; 7 times.

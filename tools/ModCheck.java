@@ -6,7 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 
 /**
- * The check on `packages/cwlib-ts/src/mod.ts`: cwlib is the `.mod` format's only
+ * The check on `packages/cwlib-ts/src/archives/mod.ts`: cwlib is the `.mod` format's only
  * definition, so the proof of our writer is that `cwlib.types.mods.Mod` opens
  * what it wrote, and the proof of our reader is that it opens what `Mod.save`
  * wrote.

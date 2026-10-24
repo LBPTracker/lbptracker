@@ -26,11 +26,11 @@ import { CONTROLS } from '../controls/kit.ts';
 import { alsProjectFiles, sequencerToAls, type AlsExportResult } from '@lbptracker/lib/als.ts';
 import type { AlsInstrumentSource } from '@lbptracker/lib/als-sampler.ts';
 import { MASTER_DEFAULTS, type MasterSettings } from '@lbptracker/lib/audio/master.ts';
-import { readInstrument, usedSlots, type RInstrument } from '@lbptracker/cwlib/rinstrument.ts';
-import { type Sequencer } from '@lbptracker/cwlib/project.ts';
-import { loadResource } from '@lbptracker/cwlib/resource.ts';
+import { readInstrument, usedSlots, type RInstrument } from '@lbptracker/cwlib/resources/rinstrument.ts';
+import { type Sequencer } from '@lbptracker/cwlib/sequencer/project.ts';
+import { loadResource } from '@lbptracker/cwlib/io/resource.ts';
 import { webInflate } from '@lbptracker/cwlib/platform/web.ts';
-import { writeZip } from '@lbptracker/cwlib/zip.ts';
+import { writeZip } from '@lbptracker/cwlib/archives/zip.ts';
 
 import { asset } from '../assets.ts';
 import { download } from '../song-file.ts';

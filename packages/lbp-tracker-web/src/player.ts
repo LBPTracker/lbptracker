@@ -42,7 +42,7 @@
 import MIXER_WORKLET_URL from '@lbptracker/lib/audio/mixer-worklet.ts?worker&url';
 import { DropoutCounter } from '@lbptracker/lib/audio/dropouts.ts';
 import { type VoiceSpec } from '@lbptracker/lib/audio/mixer.ts';
-import { channelVolume, type Sequencer, type Track } from '@lbptracker/cwlib/project.ts';
+import { channelVolume, type Sequencer, type Track } from '@lbptracker/cwlib/sequencer/project.ts';
 import {
   LiveVoicePool,
   VOICES_UNLIMITED,

@@ -36,7 +36,7 @@
  * own edges. The scroller is resizable in height and fixed in width.
  */
 
-import { STEPS_PER_CELL } from '@lbptracker/cwlib/project.ts';
+import { STEPS_PER_CELL } from '@lbptracker/cwlib/sequencer/project.ts';
 import {
   DEFAULT_CLIP_STEPS, clampClipShift, clipsEndCell, setSongEnd, snapClipSteps, songEndSteps,
   type Clip, type ClipShift,
@@ -53,7 +53,7 @@ import {
   type BoardLayout,
   type Rect,
 } from './geometry.ts';
-import { drawnColour } from '@lbptracker/cwlib/chips.ts';
+import { drawnColour } from '@lbptracker/cwlib/sequencer/chips.ts';
 import { MISSING_INSTRUMENT, chipColour, drawIcon, type InstrumentInfo } from './instruments.ts';
 import { capture, release } from './pointer.ts';
 import { Follow } from './follow.ts';

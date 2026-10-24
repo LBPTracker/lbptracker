@@ -16,7 +16,7 @@ import { CLIP_STEP_CHOICES, highestStep, resizeClip, type ChangeKindLike } from 
 import { STEPS_PER_BAR, barOfCell, noteName, positionLabel } from './geometry.ts';
 import type { Clip } from '@lbptracker/lib/song.ts';
 import { chipColour, chipColourValue, type InstrumentInfo } from './instruments.ts';
-import { UNTINTED, drawnColour, factoryColour } from '@lbptracker/cwlib/chips.ts';
+import { UNTINTED, drawnColour, factoryColour } from '@lbptracker/cwlib/sequencer/chips.ts';
 import Glyph from './Glyph.vue';
 import { pickInstrument } from './instrument-picker.ts';
 import type { EditorState } from './state.ts';

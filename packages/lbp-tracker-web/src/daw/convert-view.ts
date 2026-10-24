@@ -30,8 +30,8 @@ import {
   type MidiImportResult,
   type MidiSplit,
 } from '@lbptracker/lib/midi.ts';
-import { writeZip } from '@lbptracker/cwlib/zip.ts';
-import { type Sequencer } from '@lbptracker/cwlib/project.ts';
+import { writeZip } from '@lbptracker/cwlib/archives/zip.ts';
+import { type Sequencer } from '@lbptracker/cwlib/sequencer/project.ts';
 import { songFromSequencer } from '@lbptracker/lib/song.ts';
 import { currentSequencer, ensureAssets, openSong, rinstIndex, state } from './session.ts';
 import { mountAlsExport } from './als-export.ts';

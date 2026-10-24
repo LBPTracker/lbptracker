@@ -1,12 +1,12 @@
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
-import { DEFAULT_CHIP_COLOUR } from '@lbptracker/cwlib/chips.ts';
-import { readNotes, NOTE_RECORD_SIZE } from '@lbptracker/cwlib/notes.ts';
-import { CHANNEL_HEADROOM, type Sequencer, type Track } from '@lbptracker/cwlib/project.ts';
+import { DEFAULT_CHIP_COLOUR } from '@lbptracker/cwlib/sequencer/chips.ts';
+import { readNotes, NOTE_RECORD_SIZE } from '@lbptracker/cwlib/sequencer/notes.ts';
+import { CHANNEL_HEADROOM, type Sequencer, type Track } from '@lbptracker/cwlib/sequencer/project.ts';
 import { ALS_BEND_RANGE, LIVE_PALETTE, liveColour, sequencerToAls } from '../src/als.ts';
 import { FOLD_GAIN } from '../src/audio/effects.ts';
-import type { RInstrument } from '@lbptracker/cwlib/rinstrument.ts';
+import type { RInstrument } from '@lbptracker/cwlib/resources/rinstrument.ts';
 import { GLUE, LIMITER, MASTER_DEFAULTS, glueLevels } from '../src/audio/master.ts';
 
 /* ---------------------------------------------------------------- fixtures */

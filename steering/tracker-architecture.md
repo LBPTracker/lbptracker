@@ -67,7 +67,7 @@ block size", and it catches a grid mistake within a minute of it being made.
 `swing.ts` are in `lib` despite being sequencer facts — they are readings of `fmodextinput.prx`,
 about what the *engine* does with the data. ❗ **Every resource's reader, writer and the types
 that hold its data are `cwlib`'s**, whichever package uses them — `RInstrument` included, which
-was `lib`'s `rinstrument.ts` until 2026-10-24 and is `@lbptracker/cwlib/rinstrument.ts`; what
+was `lib`'s `rinstrument.ts` until 2026-10-24 and is `@lbptracker/cwlib/resources/rinstrument.ts`; what
 `lib` does with it — `instrument.ts`'s sampler model and zone walk — stays here. A test lives
 with the package it exercises; `notes.test.ts` tests `cwlib`'s records but reaches for `lib`'s
 `quantise`, so it sits in `lib` rather than put a `cwlib → lib` edge in a package that must not
@@ -168,7 +168,7 @@ probed in Chrome with a page carrying `{"@probe/": "./pkg/"}` and three consumer
 
 `render-worker.ts` reaches `assets.ts`, `render.ts` and `backup.ts` — the worker's module graph is
 very nearly the whole engine. Without a bundler every one of those files would have to name its
-neighbours with a path like `../../cwlib-ts/src/project.ts`, and the packages would be folders with
+neighbours with a path like `../../cwlib-ts/src/sequencer/project.ts`, and the packages would be folders with
 extra steps. ⚠️ **The AudioWorklet needs `?worker&url`, not a path**:
 `import MIXER_WORKLET_URL from '@lbptracker/lib/audio/mixer-worklet.ts?worker&url'` makes Vite
 bundle that graph ahead of time; a bare specifier inside the worklet realm fails to load and the
@@ -330,7 +330,7 @@ with the same `{ name, bytes }[]`, read by `readOpened` in `src/open-level.ts`; 
 several sequencers puts them in the picker, and picking one makes it the song.
 The formats are in [cwlib's level-files.md](../../cwlib-ts/steering/level-files.md); this is the behaviour around them.
 
-- `../cwlib-ts/src/backup.ts` reads over `{ name, bytes }[]` and knows nothing about files,
+- `../cwlib-ts/src/sequencer/backup.ts` reads over `{ name, bytes }[]` and knows nothing about files,
   directories or archives, because the user's data is read client-side and never uploaded.
   `zip.ts` reads stored and deflated entries through an `InflateRaw` the platform supplies. ⚠️
   **`readEntries` returns a PAGE**, at most a hundred entries, and has to be called again until it
@@ -559,7 +559,7 @@ the quietest (`polyphony.ts`).
    formula, key splits, envelopes, ladder, LFOs, drive, pool.
 3. ~~**`RInstrument` reading**~~ — done: all 68 of the game's instruments parse exactly and the bench
    plays them from the real `.smp` samples.
-4. ~~**Level import**~~ — done, both halves: `../cwlib-ts/src/project.ts` turns a level into
+4. ~~**Level import**~~ — done, both halves: `../cwlib-ts/src/sequencer/project.ts` turns a level into
    sequencers, tracks and a scheduled event list; the whole corpus imports (19 files, 338
    sequencers, 129,696 tracks, 2,027,633 notes, zero records falling outside a note; tempos 30–240,
    cells 0–334, rows 0–24), and `dev/verify-levels.ts` matches cwlib's dump on 149 sequencers and

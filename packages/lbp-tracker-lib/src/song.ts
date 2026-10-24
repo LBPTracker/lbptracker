@@ -1,7 +1,7 @@
 /**
  * The song as the editor holds it: a board of clips, each a grid of notes.
  *
- * `Sequencer` and `Track` in `@lbptracker/cwlib/project.ts` are what a level
+ * `Sequencer` and `Track` in `@lbptracker/cwlib/sequencer/project.ts` are what a level
  * file yields -- immutable, with the file's own record bytes beside the decoded
  * notes -- and everything downstream of them (the renderer, the live player,
  * the MIDI exporter) reads that shape. An editor needs the opposite: something
@@ -33,9 +33,9 @@ import {
   thirdsOf,
   type Note,
   type WriteNote,
-} from '@lbptracker/cwlib/notes.ts';
-import { factoryColour } from '@lbptracker/cwlib/chips.ts';
-import { STEPS_PER_CELL, authorHandle, type Sequencer, type Track } from '@lbptracker/cwlib/project.ts';
+} from '@lbptracker/cwlib/sequencer/notes.ts';
+import { factoryColour } from '@lbptracker/cwlib/sequencer/chips.ts';
+import { STEPS_PER_CELL, authorHandle, type Sequencer, type Track } from '@lbptracker/cwlib/sequencer/project.ts';
 
 /** One control point. `thirds` is the position within the clip, `timbre` the 0..15 nibble. */
 export interface SongPoint {

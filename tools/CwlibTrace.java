@@ -10,7 +10,7 @@ import java.io.File;
 
 /**
  * Ask cwlib what it reads from a level, and WHERE -- the reference reading, with
- * byte offsets, to diff `packages/cwlib-ts/src/thing.ts`'s own trace against.
+ * byte offsets, to diff `packages/cwlib-ts/src/things/thing.ts`'s own trace against.
  *
  * ❗ **This is the tool question 28 needed and did not have.** That entry spent a
  * session on a byte-level trace and another guessing at gates. cwlib's serialiser
@@ -67,7 +67,7 @@ public class CwlibTrace {
                 int live = 0;
                 if (world != null)
                     for (Thing t : world.things) if (t != null) live++;
-                // ⚠️ The list holds nulls: `packages/cwlib-ts/src/level.ts` filters them out, so
+                // ⚠️ The list holds nulls: `packages/cwlib-ts/src/things/level.ts` filters them out, so
                 // compare the NON-NULL count against what the walk reports.
                 System.out.printf("%s  v%x/%x branch %x/%x  -> %d things (%d non-null)%n", name,
                     sr.getRevision().getVersion(), sr.getRevision().getSubVersion(),

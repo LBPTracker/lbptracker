@@ -5,7 +5,7 @@
  * steering/game-assets.md for the measurements.
  *
  * ⚠️ FSB4 is LITTLE-endian. LBP's own serialised resources are big-endian
- * (../cwlib-ts/src/resource.ts). The two formats sit next to each other in this
+ * (../cwlib-ts/src/io/resource.ts). The two formats sit next to each other in this
  * project and reading one with the other's byte order is a mistake that
  * produces plausible-looking garbage rather than an error.
  *

@@ -3,7 +3,7 @@
 The parts a level carries — `PSequencer`, `PInstrument`, the note record, the circuit board — are
 read by cwlib, and their schemas are `../../cwlib-ts/steering/sequencer-data-model.md`. This file is
 the other half: what the engine makes of the sampler patch — whose layout and reader are cwlib-ts's
-([sequencer-data-model.md](../../cwlib-ts/steering/sequencer-data-model.md), *`RInstrument`*; `@lbptracker/cwlib/rinstrument.ts`) — and what the game does with the parts once it
+([sequencer-data-model.md](../../cwlib-ts/steering/sequencer-data-model.md), *`RInstrument`*; `@lbptracker/cwlib/resources/rinstrument.ts`) — and what the game does with the parts once it
 has them — the clip it builds per placement, `Key` and `Scale`, the board's size limit and the
 sequencer's thermometer. Addresses are **vaddrs** in the eboot; [eboot-re.md](eboot-re.md) has the
 conventions. What the engine then does with the clip is [synth-engine.md](synth-engine.md).

@@ -8,9 +8,9 @@ import test from 'node:test';
 import { buildMipChain } from '../src/audio/mipmap.ts';
 import { type SampleBuffer } from '../src/audio/mixer.ts';
 import { RATE, renderSequencer, toPcm16, type LoadedInstrument } from '../src/render.ts';
-import { DEFAULT_CHIP_COLOUR } from '@lbptracker/cwlib/chips.ts';
-import { readLevelProject, type Sequencer } from '@lbptracker/cwlib/project.ts';
-import { readInstrument, usedSlots } from '@lbptracker/cwlib/rinstrument.ts';
+import { DEFAULT_CHIP_COLOUR } from '@lbptracker/cwlib/sequencer/chips.ts';
+import { readLevelProject, type Sequencer } from '@lbptracker/cwlib/sequencer/project.ts';
+import { readInstrument, usedSlots } from '@lbptracker/cwlib/resources/rinstrument.ts';
 import { loadResourceFile, nodeInflate } from '@lbptracker/cwlib/platform/node.ts';
 import { engineSample, readWav } from '../src/wav.ts';
 
@@ -169,7 +169,7 @@ test('the effects reach the mix, and turning the clip off changes the output', a
  * crosses, which is exact because `swungFrame` is linear inside a step.
  */
 test('a glide is linear in steps, so under swing it bends at every step it crosses', async () => {
-  const { groupNotes } = await import('@lbptracker/cwlib/notes.ts');
+  const { groupNotes } = await import('@lbptracker/cwlib/sequencer/notes.ts');
   const { DEFAULT_SLOT } = await import('../src/instrument.ts');
   const { swungFrame } = await import('../src/swing.ts');
   const { samplesPerStep } = await import('../src/voice.ts');
@@ -230,7 +230,7 @@ test('a glide is linear in steps, so under swing it bends at every step it cross
 
 /** A one-slot instrument on a constant sample, for plans that need no audio. */
 async function planOf(
-  tracks: readonly { gridX?: number; gridY?: number; notes: Parameters<typeof import('@lbptracker/cwlib/notes.ts').groupNotes>[0] }[],
+  tracks: readonly { gridX?: number; gridY?: number; notes: Parameters<typeof import('@lbptracker/cwlib/sequencer/notes.ts').groupNotes>[0] }[],
   options: Parameters<typeof renderSequencer>[2] = {},
   slot: {
     pitched?: boolean; numStack?: number; startOffset?: number; frames?: number; loop?: { start: number; end: number };
@@ -240,7 +240,7 @@ async function planOf(
   } = {},
   tempo = 120,
 ) {
-  const { groupNotes, encodeNotes } = await import('@lbptracker/cwlib/notes.ts');
+  const { groupNotes, encodeNotes } = await import('@lbptracker/cwlib/sequencer/notes.ts');
   const { DEFAULT_SLOT } = await import('../src/instrument.ts');
   const seq: Sequencer = {
     uid: 1, name: 'plan', author: '', tempo, swing: 0,

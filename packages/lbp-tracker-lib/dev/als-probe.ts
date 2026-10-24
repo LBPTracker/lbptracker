@@ -17,11 +17,11 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
-import { DEFAULT_CHIP_COLOUR } from '@lbptracker/cwlib/chips.ts';
-import { readNotes, NOTE_RECORD_SIZE } from '@lbptracker/cwlib/notes.ts';
-import type { Sequencer, Track } from '@lbptracker/cwlib/project.ts';
+import { DEFAULT_CHIP_COLOUR } from '@lbptracker/cwlib/sequencer/chips.ts';
+import { readNotes, NOTE_RECORD_SIZE } from '@lbptracker/cwlib/sequencer/notes.ts';
+import type { Sequencer, Track } from '@lbptracker/cwlib/sequencer/project.ts';
 import { alsProjectFiles, sequencerToAls } from '../src/als.ts';
-import type { RInstrument } from '@lbptracker/cwlib/rinstrument.ts';
+import type { RInstrument } from '@lbptracker/cwlib/resources/rinstrument.ts';
 
 /**
  * Where each note ends: step 55 of the 64 the loop runs. ⚠️ A note as long as

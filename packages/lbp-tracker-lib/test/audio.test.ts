@@ -15,7 +15,7 @@ import {
   resolveSlot,
   type Instrument,
 } from '../src/instrument.ts';
-import type { SampleSlot } from '@lbptracker/cwlib/rinstrument.ts';
+import type { SampleSlot } from '@lbptracker/cwlib/resources/rinstrument.ts';
 import { PAN_WIDTH } from '../src/render.ts';
 import {
   panGains,

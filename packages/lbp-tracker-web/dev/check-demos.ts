@@ -7,7 +7,7 @@
  *
  * ⚠️ Network, and other people's levels: a dev tool, never a test.
  */
-import { readBackup, sequencersOf } from '@lbptracker/cwlib/backup.ts';
+import { readBackup, sequencersOf } from '@lbptracker/cwlib/sequencer/backup.ts';
 import { nodeInflate } from '@lbptracker/cwlib/platform/node.ts';
 
 import { DEMO_SONGS } from '../src/demo-songs.ts';

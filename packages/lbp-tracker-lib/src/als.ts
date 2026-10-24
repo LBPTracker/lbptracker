@@ -53,8 +53,8 @@
  * tracks are empty -- and a glide wider than 48 semitones, Live's per-note range.
  */
 
-import { drawnColour } from '@lbptracker/cwlib/chips.ts';
-import { channelVolume, schedule, type Sequencer, type Track } from '@lbptracker/cwlib/project.ts';
+import { drawnColour } from '@lbptracker/cwlib/sequencer/chips.ts';
+import { channelVolume, schedule, type Sequencer, type Track } from '@lbptracker/cwlib/sequencer/project.ts';
 import { deviceHead, dial, Ids, num, routings, target, toggle, v } from './als-xml.ts';
 import { partKey, partLabel, rowGroups } from './midi.ts';
 import { blockRoot, keyOffset, notePitch } from './scale.ts';
@@ -66,7 +66,7 @@ import {
 import type { MasterSettings } from './audio/master.ts';
 import { evaluateParam } from './envelope.ts';
 import { OUTPUT_PARAMS, echoSendLevel } from './params.ts';
-import type { RInstrument } from '@lbptracker/cwlib/rinstrument.ts';
+import type { RInstrument } from '@lbptracker/cwlib/resources/rinstrument.ts';
 import { clipStepsFor } from './song.ts';
 import { swungFrame } from './swing.ts';
 

@@ -48,8 +48,8 @@ import { ADSR_PARAMS, ADSR_PARAMS_B, evaluateAdsr } from '@lbptracker/lib/envelo
 import { FILTER_PARAMS } from '@lbptracker/lib/audio/moog.ts';
 import { LFO_PARAMS, OUTPUT_PARAMS, STACK_PARAMS } from '@lbptracker/lib/params.ts';
 import { resolveSlot } from '@lbptracker/lib/instrument.ts';
-import { readInstrument, usedSlots, type RInstrument } from '@lbptracker/cwlib/rinstrument.ts';
-import { loadResource } from '@lbptracker/cwlib/resource.ts';
+import { readInstrument, usedSlots, type RInstrument } from '@lbptracker/cwlib/resources/rinstrument.ts';
+import { loadResource } from '@lbptracker/cwlib/io/resource.ts';
 import { ENGINE_RATE, pitchRatio, velocityGain } from '@lbptracker/lib/voice.ts';
 import { engineSample, loopRegion, readWav, type WavData } from '@lbptracker/lib/wav.ts';
 import { webInflate } from '@lbptracker/cwlib/platform/web.ts';

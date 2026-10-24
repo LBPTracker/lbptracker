@@ -1,7 +1,7 @@
 /**
  * The song back into the game: a `.plan` file the LBP3 popit can hold.
  *
- * The writing is `@lbptracker/cwlib/write-plan.ts`, which is where the Thing
+ * The writing is `@lbptracker/cwlib/sequencer/write-plan.ts`, which is where the Thing
  * graph and every measured constant live. This is the control around it: which
  * build to write for, the button, and the tally that says what came out.
  *
@@ -18,9 +18,9 @@
  * wrong is a file that will not open rather than one that sounds wrong.
  */
 
-import { writeMod } from '@lbptracker/cwlib/mod.ts';
-import { readDependencies } from '@lbptracker/cwlib/resource.ts';
-import { LBP3_PS3, LBP3_PS4, writeSequencerPlan } from '@lbptracker/cwlib/write-plan.ts';
+import { writeMod } from '@lbptracker/cwlib/archives/mod.ts';
+import { readDependencies } from '@lbptracker/cwlib/io/resource.ts';
+import { LBP3_PS3, LBP3_PS4, writeSequencerPlan } from '@lbptracker/cwlib/sequencer/write-plan.ts';
 import { webDeflate } from '@lbptracker/cwlib/platform/web.ts';
 
 import { download } from '../song-file.ts';

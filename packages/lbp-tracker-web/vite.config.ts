@@ -25,7 +25,7 @@
  * every one of those files would have to name its neighbours with a relative
  * path across the package boundary, and the package names would buy nothing.
  * Vite resolves them in all three contexts, so the source says
- * `@lbptracker/cwlib/level.ts` everywhere and means it.
+ * `@lbptracker/cwlib/things/level.ts` everywhere and means it.
  *
  * ## The three things this config exists for
  *

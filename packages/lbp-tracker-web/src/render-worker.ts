@@ -19,7 +19,7 @@
  * `fixtures/smp`) are **still fetched**, and they are the same class of asset.
  * They have to move to the same footing before this can be deployed anywhere.
  *
- * The file it opens is a **level**, parsed here by `../cwlib-ts/src/level.ts`. It used
+ * The file it opens is a **level**, parsed here by `../cwlib-ts/src/things/level.ts`. It used
  * to be an 81 MB JSON dump produced by a Java tool, indexed by regex and parsed
  * line by line to stay affordable in a tab; the whole level walk turns out to be
  * cheaper than that was.
@@ -33,7 +33,7 @@ import {
   toPcm16,
   type LoadedInstrument,
 } from '@lbptracker/lib/render.ts';
-import { type Sequencer } from '@lbptracker/cwlib/project.ts';
+import { type Sequencer } from '@lbptracker/cwlib/sequencer/project.ts';
 import { writeWav } from '@lbptracker/lib/wav.ts';
 
 let rinstIndex: Manifest | null = null;

@@ -12,9 +12,9 @@ import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 
-import { DEFAULT_CHIP_COLOUR, factoryColour } from '@lbptracker/cwlib/chips.ts';
-import { decodeRecords, encodeNotes, readNotes, type WriteNote } from '@lbptracker/cwlib/notes.ts';
-import { readLevelProject, type Track } from '@lbptracker/cwlib/project.ts';
+import { DEFAULT_CHIP_COLOUR, factoryColour } from '@lbptracker/cwlib/sequencer/chips.ts';
+import { decodeRecords, encodeNotes, readNotes, type WriteNote } from '@lbptracker/cwlib/sequencer/notes.ts';
+import { readLevelProject, type Track } from '@lbptracker/cwlib/sequencer/project.ts';
 import { nodeInflate } from '@lbptracker/cwlib/platform/node.ts';
 
 import {

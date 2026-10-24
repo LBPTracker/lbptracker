@@ -12,7 +12,7 @@
  */
 import { computed } from 'vue';
 import { MIXER_CHANNELS, type Song } from '@lbptracker/lib/song.ts';
-import { AUTHOR_MAX, authorHandle } from '@lbptracker/cwlib/project.ts';
+import { AUTHOR_MAX, authorHandle } from '@lbptracker/cwlib/sequencer/project.ts';
 import { REVERB_SETTINGS, reverbSummary } from '@lbptracker/lib/audio/effects.ts';
 import { bandOf } from '../editor/geometry.ts';
 import type { EditorState } from '../editor/state.ts';

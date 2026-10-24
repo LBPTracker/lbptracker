@@ -103,7 +103,7 @@ point in the web package. `../cwlib-ts` is the sibling checkout of cwlib; a path
 steering means a file in that repository. ❗ **A change to cwlib is a commit and a push there, then
 `npm update @lbptracker/cwlib` here**: the lockfile pins its commit. *The monorepo* in
 `steering/tracker-architecture.md` has why, and how to try a change before pushing it. Imports cross by package name:
-`import { readWorld } from '@lbptracker/cwlib/level.ts'`.
+`import { readWorld } from '@lbptracker/cwlib/things/level.ts'`.
 
 - `npm install` — **required**: workspaces resolve the package names through symlinks in
   `node_modules`; cwlib is cloned from GitHub and built into `dist/` by its `prepare`.

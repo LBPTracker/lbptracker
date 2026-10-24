@@ -20,11 +20,11 @@
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import { factoryColour } from '@lbptracker/cwlib/chips.ts';
+import { factoryColour } from '@lbptracker/cwlib/sequencer/chips.ts';
 import { midiToSequencer, sameNotes, sequencerToMidi } from '../src/midi.ts';
 import { metaString, readMidi, varLength } from '../src/smf.ts';
-import { schedule, type Sequencer } from '@lbptracker/cwlib/project.ts';
-import { readLevelProject } from '@lbptracker/cwlib/project.ts';
+import { schedule, type Sequencer } from '@lbptracker/cwlib/sequencer/project.ts';
+import { readLevelProject } from '@lbptracker/cwlib/sequencer/project.ts';
 import { blockRoot, notePitch } from '../src/scale.ts';
 import { nodeInflate } from '@lbptracker/cwlib/platform/node.ts';
 

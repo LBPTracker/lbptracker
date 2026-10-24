@@ -27,7 +27,7 @@ import {
 import { rememberLevel } from './link.ts';
 import { bodyBytes, loading, sizeText, type LoadingJob } from './widgets/loading.ts';
 import { mustWalk, StopWalk, walkNote, walkParts } from './resource-walk.ts';
-import { HEADER_MIN } from '@lbptracker/cwlib/resource.ts';
+import { HEADER_MIN } from '@lbptracker/cwlib/io/resource.ts';
 import { FETCH_SECONDS, OPEN_SECONDS, WALK_SECONDS, type Opened } from './open-level.ts';
 
 /**

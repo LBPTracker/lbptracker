@@ -9,7 +9,7 @@
  */
 
 import { createApp, h } from 'vue';
-import { STEPS_PER_CELL } from '@lbptracker/cwlib/project.ts';
+import { STEPS_PER_CELL } from '@lbptracker/cwlib/sequencer/project.ts';
 import {
   MAX_BOARD_ROWS, STOCK_BOARD_ROWS, addClip, clampClipShift, clipsAnchor, clipsEndCell, duplicateClips, freeClipShift,
   moveClips, removeClip, setSongEnd, type Clip, type ClipShift,

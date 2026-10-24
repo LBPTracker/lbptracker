@@ -18,7 +18,7 @@
  *   into a usable range of times.
  */
 
-import type { InstrumentParam } from '@lbptracker/cwlib/rinstrument.ts';
+import type { InstrumentParam } from '@lbptracker/cwlib/resources/rinstrument.ts';
 
 /** One evaluated envelope. Times are in seconds; `sustain` is a level, 0..1. */
 export interface Adsr {

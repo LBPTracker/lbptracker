@@ -1,9 +1,9 @@
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
-import { DEFAULT_CHIP_COLOUR } from '@lbptracker/cwlib/chips.ts';
-import { readNotes, NOTE_RECORD_SIZE } from '@lbptracker/cwlib/notes.ts';
-import { STEPS_PER_CELL, schedule, type Sequencer, type Track } from '@lbptracker/cwlib/project.ts';
+import { DEFAULT_CHIP_COLOUR } from '@lbptracker/cwlib/sequencer/chips.ts';
+import { readNotes, NOTE_RECORD_SIZE } from '@lbptracker/cwlib/sequencer/notes.ts';
+import { STEPS_PER_CELL, schedule, type Sequencer, type Track } from '@lbptracker/cwlib/sequencer/project.ts';
 import { blockRoot, notePitch, quantise, unquantise, MAX_SCALE } from '../src/scale.ts';
 import {
   DEFAULT_PPQ,
@@ -1298,7 +1298,7 @@ test('every file of a split imports on its own', async () => {
 });
 
 test('a zip of the split reads back as the files that went in', async () => {
-  const { writeZip, crc32 } = await import('@lbptracker/cwlib/zip.ts');
+  const { writeZip, crc32 } = await import('@lbptracker/cwlib/archives/zip.ts');
   const one = Uint8Array.of(1, 2, 3, 4, 5);
   const two = new Uint8Array(1000).fill(0x41);
   const zip = writeZip([{ name: 'one.mid', bytes: one }, { name: 'two.mid', bytes: two }]);

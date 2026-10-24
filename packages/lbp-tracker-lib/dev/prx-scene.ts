@@ -55,14 +55,14 @@ import path from 'node:path';
 
 import { buildMipChain } from '../src/audio/mipmap.ts';
 import { FOLD_GAIN, clipHeaderOrder, renderSequencer, type LoadedInstrument } from '../src/render.ts';
-import { readInstrument, usedSlots, type RInstrument } from '@lbptracker/cwlib/rinstrument.ts';
+import { readInstrument, usedSlots, type RInstrument } from '@lbptracker/cwlib/resources/rinstrument.ts';
 import { clipStepsFor } from '../src/song.ts';
 import { engineSample, readWav } from '../src/wav.ts';
-import { readBackup } from '@lbptracker/cwlib/backup.ts';
-import { DEFAULT_CHIP_COLOUR } from '@lbptracker/cwlib/chips.ts';
-import { decodeRecords, groupNotes } from '@lbptracker/cwlib/notes.ts';
+import { readBackup } from '@lbptracker/cwlib/sequencer/backup.ts';
+import { DEFAULT_CHIP_COLOUR } from '@lbptracker/cwlib/sequencer/chips.ts';
+import { decodeRecords, groupNotes } from '@lbptracker/cwlib/sequencer/notes.ts';
 import { loadResourceFile, nodeInflate } from '@lbptracker/cwlib/platform/node.ts';
-import { readLevelProject, type Sequencer } from '@lbptracker/cwlib/project.ts';
+import { readLevelProject, type Sequencer } from '@lbptracker/cwlib/sequencer/project.ts';
 
 /** What `tools/prxrun.py`'s `rand()` returns: `standard(rand_constant=...)`. */
 const RAND = 0x13333333;

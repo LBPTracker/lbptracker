@@ -20,8 +20,8 @@ import { MasterBus, MASTER_DEFAULTS } from '../src/audio/master.ts';
 import { Agc } from '../src/audio/agc.ts';
 import { MasterStage } from '../src/audio/master-stage.ts';
 import { RATE, renderSequencer } from '../src/render.ts';
-import { DEFAULT_CHIP_COLOUR } from '@lbptracker/cwlib/chips.ts';
-import { type Sequencer } from '@lbptracker/cwlib/project.ts';
+import { DEFAULT_CHIP_COLOUR } from '@lbptracker/cwlib/sequencer/chips.ts';
+import { type Sequencer } from '@lbptracker/cwlib/sequencer/project.ts';
 
 /** A deterministic stereo signal: an LCG under a slow swell, peaking at `peak`. */
 function signal(frames: number, peak: number): [Float32Array, Float32Array] {
@@ -135,7 +135,7 @@ test('choosing the same bus again keeps its state, so a tempo change does not re
 
 /** One voice, hard left, no echo and no reverb, and a loader with its one sample. */
 async function hardLeft() {
-  const { groupNotes } = await import('@lbptracker/cwlib/notes.ts');
+  const { groupNotes } = await import('@lbptracker/cwlib/sequencer/notes.ts');
   const { DEFAULT_SLOT } = await import('../src/instrument.ts');
   const rec = (step: number, end: boolean) => ({
     step, pitch: 60, volume: 96, timbre: 0, modulation: 0, subStep: 0 as const, end,

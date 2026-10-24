@@ -20,7 +20,7 @@ import { MASTER_DEFAULTS } from '@lbptracker/lib/audio/master.ts';
 import type { MasterChoice } from '@lbptracker/lib/audio/master-stage.ts';
 import { shallowRef, watch } from 'vue';
 import { loaderFor, manifest, type Manifest } from '../assets.ts';
-import type { Sequencer } from '@lbptracker/cwlib/project.ts';
+import type { Sequencer } from '@lbptracker/cwlib/sequencer/project.ts';
 import { RATE, type InstrumentLoader } from '@lbptracker/lib/render.ts';
 import { VOICES_UNLIMITED } from '@lbptracker/lib/polyphony.ts';
 import {

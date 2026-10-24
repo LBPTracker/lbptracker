@@ -12,7 +12,7 @@
  * which a worker imports.
  */
 
-import type { Sequencer } from '@lbptracker/cwlib/project.ts';
+import type { Sequencer } from '@lbptracker/cwlib/sequencer/project.ts';
 import { songFromSequencer, songToJson, type Song } from '@lbptracker/lib/song.ts';
 
 export const SONG_FILE_SUFFIX = '.lbptracker.json';

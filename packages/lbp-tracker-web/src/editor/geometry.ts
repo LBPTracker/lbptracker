@@ -10,7 +10,7 @@
  * per pitch.
  */
 
-import { STEPS_PER_CELL } from '@lbptracker/cwlib/project.ts';
+import { STEPS_PER_CELL } from '@lbptracker/cwlib/sequencer/project.ts';
 import { BARS_PER_CELL, STEPS_PER_BAR } from '@lbptracker/lib/song.ts';
 
 export { BARS_PER_CELL, STEPS_PER_BAR, STEPS_PER_CELL };
@@ -87,7 +87,7 @@ export function rectsMeet(a: Rect, b: Rect): boolean {
 /**
  * The mixer channel a row feeds: the board cut into `channels` bands of equal
  * height, as `channelVolume` computes it. Kept here for drawing the bands;
- * the one that decides the gain is in `@lbptracker/cwlib/project.ts`.
+ * the one that decides the gain is in `@lbptracker/cwlib/sequencer/project.ts`.
  */
 export function bandOf(row: number, rows: number, channels: number): number {
   const count = Math.max(1, channels);

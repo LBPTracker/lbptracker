@@ -18,13 +18,13 @@
  * The mounting half lives in `widgets/open-panel.ts` for exactly that reason.
  *
  * ❗ **Nothing is uploaded.** Every byte is read from the `File` the browser
- * hands over, in the page, and the reading is `../cwlib-ts/src/backup.ts` which knows
+ * hands over, in the page, and the reading is `../cwlib-ts/src/sequencer/backup.ts` which knows
  * nothing about files at all. See `steering/game-assets.md`.
  */
 
 import {
   readBackup, readBackupZip, type BackupFile, type BackupResult,
-} from '@lbptracker/cwlib/backup.ts';
+} from '@lbptracker/cwlib/sequencer/backup.ts';
 import { webInflate, webInflateRaw } from '@lbptracker/cwlib/platform/web.ts';
 import { looksLikeSongJson, sequencerFromSong, songFromJson } from '@lbptracker/lib/song.ts';
 // A type and nothing else: the render worker imports this file (see the

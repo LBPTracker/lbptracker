@@ -57,8 +57,8 @@ import {
   type PooledNote,
   type PoolWalks,
 } from './polyphony.ts';
-import { channelVolume, schedule, type Sequencer } from '@lbptracker/cwlib/project.ts';
-import { type RInstrument } from '@lbptracker/cwlib/rinstrument.ts';
+import { channelVolume, schedule, type Sequencer } from '@lbptracker/cwlib/sequencer/project.ts';
+import { type RInstrument } from '@lbptracker/cwlib/resources/rinstrument.ts';
 import { blockRoot, notePitch } from './scale.ts';
 import { swungFrame } from './swing.ts';
 import { engineClock } from './engine-clock.ts';
