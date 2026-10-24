@@ -27,7 +27,7 @@ import path from 'node:path';
 
 import { resolveSlot, zoneCount } from '../src/instrument.ts';
 import { readLevelProject, schedule } from '@lbptracker/cwlib/sequencer/project.ts';
-import { readInstrument, usedSlots, type RInstrument } from '@lbptracker/cwlib/resources/rinstrument.ts';
+import { readInstrument, usedSlots, type RInstrument } from '@lbptracker/cwlib/resources/instrument.ts';
 import { loadResourceFile, nodeInflate } from '@lbptracker/cwlib/platform/node.ts';
 
 const LEVELS = process.argv[2] ?? 'C:/Users/sgdc3/Desktop/LBP/toolkit/tools/sequencerdump/data';

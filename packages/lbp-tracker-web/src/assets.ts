@@ -16,7 +16,7 @@ import { buildMipChain } from '@lbptracker/lib/audio/mipmap.ts';
 import { type SampleBuffer } from '@lbptracker/lib/audio/mixer.ts';
 import { loadResource } from '@lbptracker/cwlib/io/resource.ts';
 import { type LoadedInstrument } from '@lbptracker/lib/render.ts';
-import { readInstrument, usedSlots } from '@lbptracker/cwlib/resources/rinstrument.ts';
+import { readInstrument, usedSlots } from '@lbptracker/cwlib/resources/instrument.ts';
 import { engineSample, readWav } from '@lbptracker/lib/wav.ts';
 import { webInflate } from '@lbptracker/cwlib/platform/web.ts';
 

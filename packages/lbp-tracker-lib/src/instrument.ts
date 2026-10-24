@@ -3,13 +3,13 @@
  * the zone a note lands in.
  *
  * The resource itself -- `RInstrument`, `SampleSlot`, their layout and their
- * reader -- is cwlib-ts's (`@lbptracker/cwlib/resources/rinstrument.ts`). What is here,
+ * reader -- is cwlib-ts's (`@lbptracker/cwlib/resources/instrument.ts`). What is here,
  * the split and stacking semantics, comes from the engine's own zone walk and
  * stack loop, checked against all 68 instruments the game ships -- see
  * steering/sequencer-engine-inputs.md and steering/synth-engine.md.
  */
 
-import type { SampleSlot } from '@lbptracker/cwlib/resources/rinstrument.ts';
+import type { SampleSlot } from '@lbptracker/cwlib/resources/instrument.ts';
 
 export interface Instrument {
   readonly slots: readonly SampleSlot[];

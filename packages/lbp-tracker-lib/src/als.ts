@@ -66,7 +66,7 @@ import {
 import type { MasterSettings } from './audio/master.ts';
 import { evaluateParam } from './envelope.ts';
 import { OUTPUT_PARAMS, echoSendLevel } from './params.ts';
-import type { RInstrument } from '@lbptracker/cwlib/resources/rinstrument.ts';
+import type { RInstrument } from '@lbptracker/cwlib/resources/instrument.ts';
 import { clipStepsFor } from './song.ts';
 import { swungFrame } from './swing.ts';
 

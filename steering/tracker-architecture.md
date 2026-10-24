@@ -67,7 +67,7 @@ block size", and it catches a grid mistake within a minute of it being made.
 `swing.ts` are in `lib` despite being sequencer facts — they are readings of `fmodextinput.prx`,
 about what the *engine* does with the data. ❗ **Every resource's reader, writer and the types
 that hold its data are `cwlib`'s**, whichever package uses them — `RInstrument` included, which
-was `lib`'s `rinstrument.ts` until 2026-10-24 and is `@lbptracker/cwlib/resources/rinstrument.ts`; what
+was `lib`'s `rinstrument.ts` until 2026-10-24 and is `@lbptracker/cwlib/resources/instrument.ts`; what
 `lib` does with it — `instrument.ts`'s sampler model and zone walk — stays here. A test lives
 with the package it exercises; `notes.test.ts` tests `cwlib`'s records but reaches for `lib`'s
 `quantise`, so it sits in `lib` rather than put a `cwlib → lib` edge in a package that must not
@@ -577,7 +577,7 @@ the quietest (`polyphony.ts`).
 
 | where | what |
 |---|---|
-| `../cwlib-ts/src/` | `stream.ts` (big-endian reader, varints, `Revision` gates), `serializer.ts`, `resource.ts` (container, dependency table), `thing.ts` + `parts.ts` (the walk, 53 readers), `level.ts` (worlds, plans, chunks, `boardCell`), `project.ts` + `notes.ts` (the sequencer as data), `rinstrument.ts` (the sampler patch), `savearchive.ts`, `psf.ts`, `zip.ts`, `backup.ts`, `platform/` |
+| `../cwlib-ts/src/` | `io/stream.ts` (big-endian reader, varints, `Revision` gates), `io/serializer.ts`, `io/resource.ts` (container, dependency table), `things/thing.ts` + `things/parts.ts` (the walk, 53 readers), `things/level.ts` (worlds, plans, chunks, `boardCell`), `sequencer/project.ts` + `sequencer/notes.ts` (the sequencer as data), `resources/instrument.ts` (the sampler patch), `archives/savearchive.ts`, `archives/psf.ts`, `archives/zip.ts`, `sequencer/backup.ts`, `platform/` |
 | `packages/lbp-tracker-lib/src/` | `render.ts` (the pipeline), `audio/mixer.ts` (voices, resampling, panning, looping, per-chunk re-derivation), `audio/interpolate.ts` + `mipmap.ts` (default `linear`; `sinc8` kept for A/B), `audio/moog.ts`, `audio/lfo.ts`, `audio/effects.ts` (echo, reverb, fold constants), `audio/compressor.ts`, `audio/master-stage.ts` (the master bus: the game's, with the AGC of `audio/agc.ts` or without, the fold's gain alone, or ours in `audio/master.ts`), `audio/mixer-worklet.ts`, `instrument.ts` + `voice.ts`, `envelope.ts`, `params.ts`, `polyphony.ts`, `scale.ts`, `swing.ts`, `fsb.ts` + `ima.ts` + `wav.ts`, `midi.ts` + `smf.ts`, `als.ts` + `als-xml.ts` + `als-sampler.ts` (the Ableton Live set and its Samplers), `song.ts` (the editable song and its boundary with the records) |
 | `packages/lbp-tracker-web/` | `index.html` the app; `src/daw.ts` the shell (tabs, transport, files); `src/daw/session.ts` the one song, player and plan; `src/daw/arrange.ts`, `mixer.ts`, `render-view.ts`, `convert-view.ts` (with `als-export.ts` and `plan-export.ts`), `keyboard-view.ts` the views; `src/render-worker.ts`; `src/player.ts` the scheduler; `src/editor/` the board, the roll, the state and the panels; `src/controls/`, `src/widgets/`, `src/assets.ts`, `src/lbparchive.ts`, `src/footer.ts` |
 

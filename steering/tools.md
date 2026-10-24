@@ -279,7 +279,7 @@ a gain question out.
 | variable | read by | meaning |
 |---|---|---|
 | `LBP_LEVELS` | the corpus tests, `render-level.ts`, `verify-midi.ts`, `live-sim.ts`, `live-settings.ts` | a directory of level resources; default the toolkit checkout's `tools/sequencerdump/data`. The tests **skip** without it |
-| `LBP_RINST`, `LBP_SMP` | `instrument.test.ts`, `envelope.test.ts`, `fsb.test.ts` (and cwlib-ts's `test/rinstrument.test.ts`) | the extracted instruments and samples; default `fixtures/rinst`, `fixtures/smp` |
+| `LBP_RINST`, `LBP_SMP` | `instrument.test.ts`, `envelope.test.ts`, `fsb.test.ts` (and cwlib-ts's `test/instrument.test.ts`) | the extracted instruments and samples; default `fixtures/rinst`, `fixtures/smp` |
 | `LBP_FSB`, `LBP_PYTHON` | `fsb.test.ts` | a bank to decode against the Python oracle, and the interpreter to run `tools/` with |
 | `LBP_EBOOT`, `LBP_BINDINGS`, `LBP_DELTA` | `tools/ebconf.py` | the eboot dump, the binding table, the file↔vaddr delta |
 | `LBP_UID` | `render-level.ts`, `live-sim.ts`, `live-settings.ts` | which sequencer, by uid |

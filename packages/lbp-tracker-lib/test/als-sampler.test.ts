@@ -9,7 +9,7 @@ import { Ids } from '../src/als-xml.ts';
 import { liveDialHz, samplerDevice, samplerSampleFile, samplerZones, trackingRoot, type SamplerSample } from '../src/als-sampler.ts';
 import { kneeHz } from '../dev/ladder-knee.ts';
 import { ladderCoefficients, MoogLadder } from '../src/audio/moog.ts';
-import type { RInstrument, SampleSlot } from '@lbptracker/cwlib/resources/rinstrument.ts';
+import type { RInstrument, SampleSlot } from '@lbptracker/cwlib/resources/instrument.ts';
 
 /* ---------------------------------------------------------------- fixtures */
 

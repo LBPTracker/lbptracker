@@ -55,7 +55,7 @@ import path from 'node:path';
 
 import { buildMipChain } from '../src/audio/mipmap.ts';
 import { FOLD_GAIN, clipHeaderOrder, renderSequencer, type LoadedInstrument } from '../src/render.ts';
-import { readInstrument, usedSlots, type RInstrument } from '@lbptracker/cwlib/resources/rinstrument.ts';
+import { readInstrument, usedSlots, type RInstrument } from '@lbptracker/cwlib/resources/instrument.ts';
 import { clipStepsFor } from '../src/song.ts';
 import { engineSample, readWav } from '../src/wav.ts';
 import { readBackup } from '@lbptracker/cwlib/sequencer/backup.ts';

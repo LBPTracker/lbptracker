@@ -33,7 +33,7 @@ import { VOICES_UNLIMITED } from '../src/polyphony.ts';
 import { channelVolume, readLevelProject, type LevelProject } from '@lbptracker/cwlib/sequencer/project.ts';
 import { RATE, renderSequencer, type LoadedInstrument } from '../src/render.ts';
 import { loadResource } from '@lbptracker/cwlib/io/resource.ts';
-import { readInstrument, usedSlots } from '@lbptracker/cwlib/resources/rinstrument.ts';
+import { readInstrument, usedSlots } from '@lbptracker/cwlib/resources/instrument.ts';
 import { swungFrame } from '../src/swing.ts';
 import { engineClock } from '../src/engine-clock.ts';
 import { placeOnClock } from '../src/engine-place.ts';

@@ -3,7 +3,7 @@
 The parts a level carries — `PSequencer`, `PInstrument`, the note record, the circuit board — are
 read by cwlib, and their schemas are `../../cwlib-ts/steering/sequencer-data-model.md`. This file is
 the other half: what the engine makes of the sampler patch — whose layout and reader are cwlib-ts's
-([sequencer-data-model.md](../../cwlib-ts/steering/sequencer-data-model.md), *`RInstrument`*; `@lbptracker/cwlib/resources/rinstrument.ts`) — and what the game does with the parts once it
+([sequencer-data-model.md](../../cwlib-ts/steering/sequencer-data-model.md), *`RInstrument`*; `@lbptracker/cwlib/resources/instrument.ts`) — and what the game does with the parts once it
 has them — the clip it builds per placement, `Key` and `Scale`, the board's size limit and the
 sequencer's thermometer. Addresses are **vaddrs** in the eboot; [eboot-re.md](eboot-re.md) has the
 conventions. What the engine then does with the clip is [synth-engine.md](synth-engine.md).
@@ -44,7 +44,7 @@ This is what the values mean once the engine has them. The 27 `Params`, each a r
 all named in [synth-engine.md](synth-engine.md).
 
 **Measured across the game's 68 `.rinst` files** (`tools/ExtractGuid.java` pulls them out; every
-one parses exactly in cwlib-ts's `test/rinstrument.test.ts`):
+one parses exactly in cwlib-ts's `test/instrument.test.ts`):
 
 - `Splitnotes` is **descending** and `splitNotes[0]` is **87 in every instrument**; unused trailing
   entries are 0. Slot `i` covers `splitNotes[i+1] <= note < splitNotes[i]` — each bound belongs to

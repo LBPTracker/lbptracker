@@ -20,7 +20,7 @@ import path from 'node:path';
 
 import { readLevelProject } from '@lbptracker/cwlib/sequencer/project.ts';
 import { loadResourceFile, nodeInflate } from '@lbptracker/cwlib/platform/node.ts';
-import { readInstrument, usedSlots } from '@lbptracker/cwlib/resources/rinstrument.ts';
+import { readInstrument, usedSlots } from '@lbptracker/cwlib/resources/instrument.ts';
 
 const LIMIT = 1_000_000;
 const RINST = process.env.LBP_RINST ?? 'fixtures/rinst';

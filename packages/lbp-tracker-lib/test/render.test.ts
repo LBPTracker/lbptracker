@@ -10,7 +10,7 @@ import { type SampleBuffer } from '../src/audio/mixer.ts';
 import { RATE, renderSequencer, toPcm16, type LoadedInstrument } from '../src/render.ts';
 import { DEFAULT_CHIP_COLOUR } from '@lbptracker/cwlib/sequencer/chips.ts';
 import { readLevelProject, type Sequencer } from '@lbptracker/cwlib/sequencer/project.ts';
-import { readInstrument, usedSlots } from '@lbptracker/cwlib/resources/rinstrument.ts';
+import { readInstrument, usedSlots } from '@lbptracker/cwlib/resources/instrument.ts';
 import { loadResourceFile, nodeInflate } from '@lbptracker/cwlib/platform/node.ts';
 import { engineSample, readWav } from '../src/wav.ts';
 

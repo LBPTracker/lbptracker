@@ -13,7 +13,7 @@ import {
   evaluateAdsr,
   evaluateParam,
 } from '../src/envelope.ts';
-import { readInstrument } from '@lbptracker/cwlib/resources/rinstrument.ts';
+import { readInstrument } from '@lbptracker/cwlib/resources/instrument.ts';
 import { loadResourceFile } from '@lbptracker/cwlib/platform/node.ts';
 import { MAX_SCALE, SCALE_TABLES, notePitch, quantise } from '../src/scale.ts';
 

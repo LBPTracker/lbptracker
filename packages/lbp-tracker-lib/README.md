@@ -24,7 +24,7 @@ import { writeWav } from '@lbptracker/lib/wav.ts';
 | `audio/compressor.ts` | the SMS WaveHammer, transcribed from the PRX and checked against the module actually running |
 | `audio/moog.ts`, `audio/lfo.ts` | the ladder filter and the LFOs |
 | `audio/mixer-worklet.ts` | the AudioWorklet shell. ⚠️ Its import graph must stay inside this package — see below |
-| `rinstrument.ts`, `instrument.ts`, `voice.ts` | the `INSb` sampler patch, slots, key splits, pitch/gain/pan |
+| `instrument.ts`, `voice.ts` | the `INSb` sampler patch (read by cwlib's `resources/instrument.ts`): slots, key splits, pitch/gain/pan |
 | `envelope.ts`, `params.ts`, `polyphony.ts` | ADSR, the parameter tables, the 32-voice pool |
 | `scale.ts`, `swing.ts` | the scale quantiser and the step clock, both from `fmodextinput.prx` |
 | `fsb.ts`, `ima.ts`, `wav.ts` | FSB4 banks, IMA ADPCM, and 16-bit PCM RIFF |

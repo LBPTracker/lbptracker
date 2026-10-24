@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { loadResourceFile } from '@lbptracker/cwlib/platform/node.ts';
-import { readInstrument, usedSlots } from '@lbptracker/cwlib/resources/rinstrument.ts';
+import { readInstrument, usedSlots } from '@lbptracker/cwlib/resources/instrument.ts';
 
 /**
  * The .rinst files are extracted from the user's own game with
@@ -105,7 +105,7 @@ test('resolveSlot is the engine’s zone walk, on every shipped instrument', asy
     return;
   }
   const { resolveSlot } = await import('../src/instrument.ts');
-  const { readInstrument, usedSlots } = await import('@lbptracker/cwlib/resources/rinstrument.ts');
+  const { readInstrument, usedSlots } = await import('@lbptracker/cwlib/resources/instrument.ts');
   const { loadResourceFile } = await import('@lbptracker/cwlib/platform/node.ts');
 
   /** The loop above, with the record's bound array being `Splitnotes[1..8]`. */
