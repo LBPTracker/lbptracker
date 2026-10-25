@@ -153,6 +153,9 @@ only**; the `file` column is computed with the `0x8AD0` delta.
 | `PSequencer`, `PInstrument`, `RInstrument`, sample-slot serialisers; the array serialiser with its `movbe` | `v0xd37d10`, `v0xd36c60`, `v0xc68a70`, `v0xcc0e90`; `v0xcc0f20` (`v0xcc0f9d`, `v0xcc1025`) |
 | part-name table; the ordered `R*` resource-type names | file `0xe4e196+`; file `0xe4e405` |
 | the script→native funnel (one indirect call, callee in `rbx`) | file `0x3d9e72` |
+| `RLevel`'s binary loader (head-word gates) and its reflective serialiser (field names, no gates) | `v0xc51f60`, `v0xc52a20` — what they settle is in [cwlib's level-files.md](../../cwlib-ts/steering/level-files.md), *`readLevel` reads to the end* |
+| `RQuest`'s binary loader, its objective reader, the descriptor reader (u8 flag, GUID, SHA-1), and the reflective serialiser | `v0xdbd490`, `v0xdbc520`, `v0xbadab0`, `v0xdbe720`; found by the five calls to the wide-string reader `v0xbdd2a0` — cwlib's level-files.md, *Quests* |
+| no code for the Vita branch: no instruction compares with `0x4431` (the one `mov` of it is a texture-format table at `v0xaccd03`) | measured 2026-10-25 |
 
 Other useful script bindings: `StopSequencerPlayback__Q5Thingi`, `TriggerSequencerMusic__Q5Thing`,
 `GetElemPSequencer__Q5Thingi`, `GetSizePSequencer__Q5Thing`, `GetTimeLengthOnSequencer__Q5Thing`,
