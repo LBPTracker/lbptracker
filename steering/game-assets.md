@@ -1,7 +1,11 @@
 # Game assets — where the audio lives and how to read it
 
-All measurements are from the retail LBP3 PS4 build `CUSA00063` (patch 1.28) installed at
-`D:\PS4Games\CUSA00063\`. Nothing here is encrypted or obfuscated.
+All measurements are from the retail LBP3 PS4 build `CUSA00063`: its **01.00 install** at
+`D:\PS4Games\CUSA00063\` and its **01.28 update** at `D:\PS4Games\CUSA00063-patch\` — `APP_VER` in
+each folder's `sce_sys/param.sfo` (01.00, category `gd`; 01.28, `gp`), read 2026-10-25. The update
+is a second layer, with its own `eboot.bin`, FileDB, remap, `patch_001.farc` and level archives;
+what it changes is cwlib-ts's steering/level-files.md, *The 01.28 update*. The tree and the counts
+below are the install's. Nothing here is encrypted or obfuscated.
 
 ```
 D:\PS4Games\CUSA00063\
