@@ -4,6 +4,12 @@ What changed for the person using LBP Tracker, newest first. The site shows this
 version number in its status bar, so it is written for them: what they can do now that they could
 not before, never how it was done. No `--` or em dash in here; the site's text does without them.
 
+## 0.2.51 (2026-10-27)
+
+- Levels saved by older versions of the game, such as those made in LittleBigPlanet 1, now open
+  instead of stopping with an error. A LittleBigPlanet 1 level has no Music Sequencer, so there
+  is no song in it to play, but the tracker now says so rather than failing.
+
 ## 0.2.50 (2026-10-24)
 
 - Opening a song now shows what is happening and how far along it is: a progress bar with a
