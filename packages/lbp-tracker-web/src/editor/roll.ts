@@ -1165,6 +1165,14 @@ export class RollView {
     }));
   }
 
+  /** Forget what was copied, preview and all; false when there was nothing. */
+  clearClipboard(): boolean {
+    if (!this.clipboard.length) return false;
+    this.clipboard = [];
+    this.schedule();
+    return true;
+  }
+
   /** Ctrl+V with the pointer over the grid: put the clipboard down where it is drawn. */
   pasteAtCursor(): boolean {
     const clip = this.state.clip();

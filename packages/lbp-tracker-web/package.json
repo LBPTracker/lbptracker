@@ -1,6 +1,6 @@
 {
   "name": "@lbptracker/web",
-  "version": "0.2.52",
+  "version": "0.2.53",
   "private": true,
   "type": "module",
   "description": "The tracker's pages: the instrument bench, the live player, the offline renderer and the MIDI bridge.",

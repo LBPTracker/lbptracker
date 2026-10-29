@@ -526,6 +526,9 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
     const toBoard = onBoard || panel.hidden;
     switch (event.code) {
       case 'Escape': {
+        // First of all the copied notes: the paste preview on the roll goes
+        // with them, and the selection stays for the next press.
+        if (roll.clearClipboard()) return;
         // Once to drop the selection -- points, the cursor, a block of chips
         // down to the one the roll shows -- again to close the panel.
         const block = state.selection.clips.size > 1;

@@ -4,6 +4,11 @@ What changed for the person using LBP Tracker, newest first. The site shows this
 version number in its status bar, so it is written for them: what they can do now that they could
 not before, never how it was done. No `--` or em dash in here; the site's text does without them.
 
+## 0.2.53 (2026-10-29)
+
+- In the piano roll, Esc now forgets the notes you copied: the see-through preview goes away and
+  Ctrl+V no longer pastes them. Your selection stays, so a second Esc deselects as before.
+
 ## 0.2.52 (2026-10-29)
 
 - New: a metronome. The note button in the top bar, next to loop, makes a click on every beat
