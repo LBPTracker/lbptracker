@@ -640,6 +640,9 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
           pasteChips();
           break;
         }
+        // The pointer over the grid wins: the paste preview follows it, and
+        // the notes land where they are drawn.
+        if (roll.pasteAtCursor()) break;
         const clip = state.clip();
         let at: number | undefined;
         if (clip && player.hasPlan) {

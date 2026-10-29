@@ -49,7 +49,7 @@ import {
   VOICE_POOL_SIZE,
   type PoolWalks,
 } from '@lbptracker/lib/polyphony.ts';
-import { stepLength, swungFrame } from '@lbptracker/lib/swing.ts';
+import { STEPS_PER_BEAT, stepLength, swungFrame } from '@lbptracker/lib/swing.ts';
 import { samplesPerStep } from '@lbptracker/lib/voice.ts';
 import type { MasterChoice } from '@lbptracker/lib/audio/master-stage.ts';
 import { RATE, renderSequencer, type InstrumentLoader } from '@lbptracker/lib/render.ts';
@@ -1047,6 +1047,43 @@ export class Player {
    */
   private contextFrame(transport: number): number {
     return Math.round(this.startedAt * RATE + (transport - this.cursorFrames));
+  }
+
+  /**
+   * Where the song's beats fall in the next `seconds`, as audio-context times
+   * -- the same timeline the voices are posted on, so a click lands with the
+   * notes. A beat is `STEPS_PER_BEAT` steps from the start of the song, on the
+   * swung grid; `accent` marks the first of four. A looped section is gone
+   * round: the beats after its end are the ones after its start, one length
+   * later, as the pump posts the next pass.
+   */
+  beatsAhead(seconds: number): { when: number; accent: boolean }[] {
+    if (!this.playing || !this.context || this.stepFrames <= 0) return [];
+    const now = this.context.currentTime;
+    const pos = this.position();
+    const rg = this.regionFrames();
+    const reach = seconds * RATE;
+    const out: { when: number; accent: boolean }[] = [];
+    let offset = 0;
+    let beat = Math.ceil(this.stepAt(pos) / STEPS_PER_BEAT - 1e-6);
+    for (let guard = 0; guard < 64; guard += 1) {
+      let f = this.frameAt(beat * STEPS_PER_BEAT);
+      if (rg && f >= rg.endF) {
+        offset += rg.len;
+        beat = Math.ceil(rg.startF === 0 ? 0 : this.stepAt(rg.startF) / STEPS_PER_BEAT - 1e-6);
+        f = this.frameAt(beat * STEPS_PER_BEAT);
+      } else if (!rg && f > this.songFrames) break;
+      const ahead = f + offset - pos;
+      if (ahead > reach) break;
+      out.push({ when: now + Math.max(0, ahead) / RATE, accent: beat % 4 === 0 });
+      beat += 1;
+    }
+    return out;
+  }
+
+  /** The node the mix leaves by, after the master fader; `null` before the audio exists. */
+  get mixBus(): AudioNode | null {
+    return this.master;
   }
 
   /** The clock as it runs: past the end of a looped section, not folded. */

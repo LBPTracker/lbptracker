@@ -148,6 +148,10 @@ export class RollView {
   private clipboard: SongNote[] = [];
   /** Where they were lifted from, so a cut and a paste put them back. */
   private clipboardAt = 0;
+  /** The pitch of the clipboard's earliest point: the one a paste puts under the pointer. */
+  private clipboardPitch = 60;
+  /** The grid position under the pointer (snapped), or null when it is not over the grid. */
+  private cursor: { thirds: number; pitch: number } | null = null;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -170,6 +174,7 @@ export class RollView {
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     canvas.addEventListener('pointerleave', () => {
       this.hoverPitch = null;
+      this.cursor = null;
       this.cb.onHover('');
       this.schedule();
     });
@@ -568,6 +573,24 @@ export class RollView {
       ctx.restore();
     }
 
+    // What Ctrl+V would put down, translucent, where the pointer is.
+    const paste = this.pastePlan(clip);
+    if (paste && !this.drag) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(Math.max(startX, layout.keys), layout.ruler, Math.min(endX, viewW) - Math.max(startX, layout.keys), viewH - layout.ruler);
+      ctx.clip();
+      for (const note of paste) {
+        this.drawChain(note.points, 0.35, 1, px, py);
+        for (const p of note.points) {
+          ctx.fillStyle = timbreColour(p.timbre, 0.4);
+          ctx.beginPath();
+          ctx.arc(px(p.thirds), py(p.pitch), pointRadius(p.volume, layout.rowH), 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
     // The marquee.
     if (this.drag?.mode === 'marquee') {
       const d = this.drag;
@@ -831,6 +854,7 @@ export class RollView {
     const state = this.state;
     const drag = this.drag;
     if (!drag) {
+      this.trackCursor(clip, x, y, cx, cy);
       if (this.heldKey !== null) return;
       const pitch = cy >= this.layout.ruler ? rollPitchAt(this.layout, y) : null;
       if (pitch !== this.hoverPitch) {
@@ -1092,17 +1116,63 @@ export class RollView {
   copy(): void {
     const lifted = this.lift();
     if (!lifted.length) return;
-    this.clipboard = lifted;
-    this.clipboardAt = this.selectionStart();
+    this.keep(lifted);
   }
 
   /** Copy the selection and take it away, as one entry in the undo stack. */
   cut(): void {
     const lifted = this.lift();
     if (!lifted.length) return;
+    this.keep(lifted);
+    this.deleteSelection();
+  }
+
+  private keep(lifted: SongNote[]): void {
     this.clipboard = lifted;
     this.clipboardAt = this.selectionStart();
-    this.deleteSelection();
+    const first = lifted.flatMap((n) => n.points).find((p) => p.thirds === 0);
+    this.clipboardPitch = first?.pitch ?? 60;
+    this.schedule();
+  }
+
+  /** Follow the pointer over the grid, for the paste preview. */
+  private trackCursor(clip: Clip, x: number, y: number, cx: number, cy: number): void {
+    const over = cx >= this.layout.keys && cy >= this.layout.ruler
+      && rollThirdsAt(this.layout, x) >= 0 && rollThirdsAt(this.layout, x) < clip.steps * 3;
+    const next = over
+      ? { thirds: this.snapped(x, clip.steps), pitch: rollPitchAt(this.layout, y) }
+      : null;
+    const same = next === this.cursor
+      || (next !== null && this.cursor !== null
+        && next.thirds === this.cursor.thirds && next.pitch === this.cursor.pitch);
+    if (same) return;
+    this.cursor = next;
+    if (this.clipboard.length) this.schedule();
+  }
+
+  /** The clipboard as it would land at the pointer, or null when there is nothing to show. */
+  private pastePlan(clip: Clip): SongNote[] | null {
+    if (!this.cursor || !this.clipboard.length) return null;
+    const { thirds, pitch } = this.cursor;
+    const dp = pitch - this.clipboardPitch;
+    return this.clipboard.map((n) => ({
+      id: 0,
+      points: n.points.map((p) => ({
+        ...p,
+        thirds: Math.min(lastThirds(clip), p.thirds + thirds),
+        pitch: Math.max(0, Math.min(127, p.pitch + dp)),
+      })),
+    }));
+  }
+
+  /** Ctrl+V with the pointer over the grid: put the clipboard down where it is drawn. */
+  pasteAtCursor(): boolean {
+    const clip = this.state.clip();
+    if (!clip || !this.clipboard.length || !this.cursor) return false;
+    const plan = this.pastePlan(clip);
+    if (!plan) return false;
+    this.insert(plan, 0);
+    return true;
   }
 
   /**

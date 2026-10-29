@@ -40,6 +40,7 @@ import { mountRender } from './daw/render-view.ts';
 import { mountConvert } from './daw/convert-view.ts';
 import { mountKeyboard } from './daw/keyboard-view.ts';
 import { mountMediaKeys } from './daw/media-keys.ts';
+import { Metronome } from './metronome.ts';
 import type { Health } from './player.ts';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -93,6 +94,8 @@ $('homeOpen').addEventListener('click', () => $<HTMLDialogElement>('fileDialog')
 const playButton = $<HTMLButtonElement>('play');
 const stopButton = $<HTMLButtonElement>('stop');
 const loopButton = $<HTMLButtonElement>('loop');
+const metronomeButton = $<HTMLButtonElement>('metronome');
+const metronome = new Metronome(player);
 const clockLabel = $<HTMLSpanElement>('clock');
 const loadLabel = $<HTMLSpanElement>('load');
 const volSlider = $<HTMLInputElement>('vol');
@@ -167,8 +170,16 @@ onPlayer({
   playing: (on) => {
     playButton.textContent = on ? '⏸' : '▶';
     playButton.setAttribute('aria-label', on ? 'Pause' : 'Play');
+    metronome.playing(on);
     showLoad();
   },
+});
+// The metronome is ours and per viewer (kept in the browser, not in the song):
+// a click on every beat while the transport runs.
+metronomeButton.setAttribute('aria-pressed', String(metronome.enabled));
+metronomeButton.addEventListener('click', () => {
+  metronome.enabled = !metronome.enabled;
+  metronomeButton.setAttribute('aria-pressed', String(metronome.enabled));
 });
 onPlan(() => {
   playButton.disabled = false;

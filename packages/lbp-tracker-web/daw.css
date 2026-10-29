@@ -279,6 +279,12 @@ main { flex: 1 0 auto; width: 100%; box-sizing: border-box; margin: 0; max-width
 .group.off { opacity: .55; }
 .group.off .knob { opacity: .6; }
 .inspector { display: grid; grid-template-columns: 1fr; gap: .8rem; }
+.inspector-tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--line-soft); }
+.inspector-tabs button {
+  flex: 1; padding: .35rem .6rem; border: 0; border-bottom: 2px solid transparent;
+  border-radius: 6px 6px 0 0; background: none; color: inherit; opacity: .7;
+}
+.inspector-tabs button[aria-selected="true"] { opacity: 1; color: var(--accent); border-bottom-color: var(--accent); }
 
 kbd {
   font: .78rem ui-monospace, Consolas, monospace; background: var(--panel-2);

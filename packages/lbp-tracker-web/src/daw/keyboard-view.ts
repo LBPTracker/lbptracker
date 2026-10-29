@@ -141,6 +141,17 @@ async function ensureAudio(): Promise<AudioWorkletNode> {
   return node;
 }
 
+/**
+ * ❗ **The context is made at page load, before any gesture, so the browser
+ * starts it suspended** -- and nothing resumed it: every key and every MIDI
+ * note posted its voice to a worklet that was not running, and the view was
+ * silent. A key, a click or a MIDI note is the gesture; `Player.play` does the
+ * same for the song. Cheap when it is already running.
+ */
+function wake(ctx: AudioContext): void {
+  if (ctx.state !== 'running') void ctx.resume();
+}
+
 /** Pre-master peak, so clipping from summed voices is visible rather than guessed at. */
 function meter(): void {
   const buf = new Float32Array(analyser!.fftSize);
@@ -399,6 +410,7 @@ const sounding = new Map<number, Held>();
 function noteOn(note: number, velocity = 96, channel = LOCAL): void {
   const v = voiceFor(note);
   if (!v || !node || !context) return;
+  wake(context);
   // The browser-resampler control has no note-off; it stays timed, and says so.
   if (engine === 'browser') {
     playNote(note);
@@ -480,6 +492,7 @@ function pushEffects(): void {
 function playNote(note: number, atSeconds = 0): void {
   const v = voiceFor(note);
   if (!v || !node || !context) return;
+  wake(context);
   const held = noteSeconds();
   const adsr = currentAdsr();
   const filter = currentFilter();

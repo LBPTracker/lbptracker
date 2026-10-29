@@ -10,7 +10,7 @@
  * go through `state.edit` with a key per control, so a slider drag is one
  * undo step. The song object itself is not reactive -- see `state.ts`.
  */
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { SCALE_NAMES } from '@lbptracker/lib/scale.ts';
 import { CLIP_STEP_CHOICES, highestStep, resizeClip, type ChangeKindLike } from './inspector-support.ts';
 import { STEPS_PER_BAR, barOfCell, noteName, positionLabel } from './geometry.ts';
@@ -153,12 +153,29 @@ const setPoint = (field: 'pitch' | 'volume' | 'timbre') => (event: Event) => {
 };
 
 const fmt = (v: number, dp = 2) => v.toFixed(dp);
+
+/**
+ * Two tabs instead of two stacked groups: the point's sliders sat below the
+ * instrument's ten rows and a click on a point meant scrolling to them every
+ * time. Selecting a point opens its tab, selecting another chip opens the
+ * instrument's; the tab can still be picked by hand in between.
+ */
+const tab = ref<'instrument' | 'point'>('instrument');
+// The chip's watcher is declared first so that a click on a point of another
+// chip, which changes both, ends on the point's tab.
+watch(() => clip.value?.id, () => { tab.value = 'instrument'; });
+watch(() => point.value && `${point.value.note.id}:${point.value.index}`, (now) => {
+  if (now) tab.value = 'point';
+});
 </script>
 
 <template>
   <div class="inspector">
-    <div class="group" :class="{ off: !clip }">
-      <h3>instrument</h3>
+    <div class="inspector-tabs" role="tablist" aria-label="Inspector">
+      <button type="button" role="tab" :aria-selected="tab === 'instrument'" @click="tab = 'instrument'">instrument</button>
+      <button type="button" role="tab" :aria-selected="tab === 'point'" @click="tab = 'point'">point</button>
+    </div>
+    <div v-show="tab === 'instrument'" class="group" :class="{ off: !clip }">
       <template v-if="clip">
         <div class="knob">
           <label for="clipGuid">sound</label>
@@ -230,8 +247,7 @@ const fmt = (v: number, dp = 2) => v.toFixed(dp);
       <p v-else class="hintline">Select an instrument on the board.</p>
     </div>
 
-    <div class="group" :class="{ off: !point }">
-      <h3>point</h3>
+    <div v-show="tab === 'point'" class="group" :class="{ off: !point }">
       <template v-if="point">
         <div class="knob">
           <label for="ptPitch">pitch</label>

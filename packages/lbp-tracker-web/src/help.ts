@@ -198,9 +198,9 @@ export const HELP: Readonly<Record<HelpTopic, Topic>> = {
 
         'and paste (half a glide copies as half a glide), <kbd>Ctrl+A</kbd> takes every point in the chip and ' +
 
-        '<kbd>Ctrl+Z</kbd>/<kbd>Y</kbd> undo and redo. A paste lands at the playhead when it is inside the chip, ' +
+        '<kbd>Ctrl+Z</kbd>/<kbd>Y</kbd> undo and redo. With something copied, a translucent preview follows the pointer over the grid and Ctrl+V puts it down there. ' +
 
-        'otherwise a step after the selection, or back where it was cut from when nothing is selected.') +
+        'With the pointer elsewhere a paste lands at the playhead when it is inside the chip, otherwise a step after the selection, or back where it was cut from when nothing is selected.') +
 
       p('<kbd>T</kbd> switches to the triplet grid, three cells to the beat instead of four; notes on ' +
         'the other grid are drawn faded. The keyboard on the left plays the instrument.') +
