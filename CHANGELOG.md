@@ -4,6 +4,19 @@ What changed for the person using LBP Tracker, newest first. The site shows this
 version number in its status bar, so it is written for them: what they can do now that they could
 not before, never how it was done. No `--` or em dash in here; the site's text does without them.
 
+## 0.2.52 (2026-10-29)
+
+- New: a metronome. The note button in the top bar, next to loop, makes a click on every beat
+  while the song plays, with a higher click on the first beat of each bar. It follows the tempo,
+  the swing and any loop, and it is only for you: it is never part of the song or of a render.
+- The panel for the selected instrument now has two tabs, instrument and point, so the point's
+  settings are one click away instead of a scroll down. Selecting a point opens its tab, and
+  selecting another instrument goes back to the first.
+- In the piano roll, once you have copied some notes, a see-through preview follows the pointer
+  over the grid, and Ctrl+V puts them down exactly where it is shown.
+- Fixed: the Keyboard view could stay silent, because the browser had not started its audio. It
+  now starts it on the first note.
+
 ## 0.2.51 (2026-10-27)
 
 - Levels saved by older versions of the game, such as those made in LittleBigPlanet 1, now open
