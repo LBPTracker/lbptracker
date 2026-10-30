@@ -225,8 +225,8 @@ export const HELP: Readonly<Record<HelpTopic, Topic>> = {
         '<strong>colour</strong> is the chip\'s own on the board, the way the game keeps it: a new chip takes the ' +
         'colour its instrument comes with in the popit, <em>reset</em> puts it back, and it travels in a MIDI ' +
         'file and in an exported plan. Nothing plays it. ' +
-        'Around the instrument the grid shows what the rest of the row plays, faded: one bar before it, and ' +
-        'everything after it. That is how you see the join with what came before and what comes next, since ' +
+        'Around the instrument the grid shows what the rest of the row plays, faded: the instrument before it, and ' +
+        'the one after it. That is how you see the join with what came before and what comes next, since ' +
         'instruments on a row overlap. Nothing in the faded parts can be clicked or moved, and ' +
         '<em>find the notes</em> ignores them. ' +
         '<strong>Follow</strong> is whether the grid moves to whichever instrument the playhead is inside on ' +

@@ -4,6 +4,16 @@ What changed for the person using LBP Tracker, newest first. The site shows this
 version number in its status bar, so it is written for them: what they can do now that they could
 not before, never how it was done. No `--` or em dash in here; the site's text does without them.
 
+## 0.2.55 (2026-10-30)
+
+- The piano roll no longer slides from one instrument into the next. Every instrument has its
+  own piano roll again: when the playhead moves on to the next instrument of the row, the roll
+  simply switches to it, opening at its start. The board still slides.
+- The piano roll now scrolls only as far as the instruments just before and just after the open
+  one, and it no longer scrolls by itself to chase the playhead: you scroll it.
+- Clicking an instrument still shows its notes as Find the notes does; switching to the next
+  one while following no longer moves the view up or down.
+
 ## 0.2.54 (2026-10-30)
 
 - The piano roll has a toolbar in its title bar. On the left: draw, select and erase tools (also

@@ -57,7 +57,6 @@ import {
   TRIPLET_THIRDS,
   ghostWindow,
   onGrid,
-  HEAD_STEPS,
   gridUnit,
   isBlackKey,
   noteName,
@@ -79,7 +78,6 @@ import {
 import { SCALE_TABLES, quantise } from '@lbptracker/lib/scale.ts';
 import { STEPS_PER_CELL } from '@lbptracker/cwlib/sequencer/project.ts';
 import { capture, release } from './pointer.ts';
-import { Follow } from './follow.ts';
 import type { EditorState } from './state.ts';
 
 export interface RollCallbacks {
@@ -168,24 +166,11 @@ export class RollView {
   private ghostHead = 0;
   private ghostTail = 0;
   private playStep: number | null = null;
-  /** Following the playhead, unless the person scrolled away from it. */
-  private readonly follow: Follow;
   private drag: Drag | null = null;
   private hoverPitch: number | null = null;
   private heldKey: number | null = null;
   private frame = 0;
   private lastClipId: number | null = null;
-  /** The cell of the clip the view was last laid out for. */
-  private lastCell: number | null = null;
-  /** The song is playing: set by the page, for what the roll does when a clip is opened. */
-  playing = false;
-  /**
-   * Steps of the song before the clip kept in the grid while the view carries
-   * on across a clip change: the old clip's time, drawn as the ghost it now is.
-   */
-  private carryHead = 0;
-  /** Which carry a glide's end belongs to: a later clip change makes an earlier one's end moot. */
-  private carryToken = 0;
   /** Notes copied with Ctrl+C, relative to their first position. */
   private clipboard: SongNote[] = [];
   /** Where they were lifted from, so a cut and a paste put them back. */
@@ -238,47 +223,26 @@ export class RollView {
       this.schedule();
     });
     scroller.addEventListener('scroll', () => this.schedule());
-    this.follow = new Follow(scroller, () => {
-      if (this.playStep === null) return true;
-      const x = rollStepX(this.layout, this.playStep) - scroller.scrollLeft;
-      return x >= this.layout.keys && x <= scroller.clientWidth;
-    });
     new ResizeObserver(() => this.schedule()).observe(scroller);
     state.onChange(() => {
       const clip = state.clip();
       if ((clip?.id ?? null) !== this.lastClipId) {
         this.lastClipId = clip?.id ?? null;
-        const wasCell = this.lastCell;
-        this.lastCell = clip?.cell ?? null;
-        if (clip && wasCell !== null && state.followedNow) {
-          // The follow moved on to the next clip: keep what the view showed where it was
-          // on the song's own time line, so the playhead carries on across the join and
-          // the next page-turn glides as it does inside a clip.
-          this.keepTimeAcross(wasCell, clip.cell);
-        } else {
-          // A new clip opened: its notes are put in view up and down, as `find the notes` does.
-          // Along the time axis, while the scroller is following the playhead, the view goes to
-          // the playhead when it is inside this clip and to the clip's start when it is not;
-          // only a view the person scrolled away searches sideways too.
-          // ⚠️ Not "leave it to the follow" when the playhead is elsewhere: the follow never
-          // scrolls a clip the playhead is not in, so the old clip's scroll position stayed,
-          // landing anywhere in the new one -- its end, or the bar before it, faded.
-          // A carry belonged to the clip before; this one lays out without it. No scroll to
-          // keep: the view is placed afresh just below.
-          this.carryToken += 1;
-          this.carryHead = 0;
-          const following = this.follow.on;
-          window.requestAnimationFrame(() => {
-            if (!following) {
-              this.scrollToNotes();
-              return;
-            }
-            this.scrollToNotes(true, false);
-            const step = this.playStep;
-            if (step !== null && step >= 0 && step <= this.layout.steps) this.showPlayhead();
-            else this.follow.jump(0);
-          });
-        }
+        // Every clip has its own roll. A clip the person opens is shown as `find the notes`
+        // shows it; one the follow switched to opens at its start, the previous clip's last
+        // bar in view, and is not searched: nothing but the person moves it after that.
+        // ⚠️ The roll never scrolls itself to keep the playhead in view, and a view carried on
+        // across the join (the old clip a ghost, the new one slid in) was built and dropped by
+        // the owner: one clip, one roll, and its scrolling is the person's.
+        const followed = state.followedNow;
+        window.requestAnimationFrame(() => {
+          if (!followed) {
+            this.scrollToNotes();
+            return;
+          }
+          this.measure();
+          this.scroller.scrollLeft = this.startLeft();
+        });
       }
       this.schedule();
     });
@@ -319,7 +283,7 @@ export class RollView {
       // Nothing to find: middle C in the middle, as an empty grid always did.
       const middleC = Math.max(0, rollY(layout, 60) - this.scroller.clientHeight / 2);
       if (vertical) this.scroller.scrollTop = middleC;
-      if (horizontal) this.scroller.scrollLeft = 0;
+      if (horizontal) this.scroller.scrollLeft = this.startLeft();
       return;
     }
     const boxes = clip.notes.map((n) => {
@@ -360,12 +324,10 @@ export class RollView {
     // its own `steps`: `find the notes` looks at this chip's notes and at
     // nothing in the lead-in or the tail.
     //
-    // ⚠️ **The head is deliberately NOT added back here.** In content pixels
-    // the clip's step 0 sits a bar in, so adding it would park that bar off
-    // the left edge and the lead-in would have to be scrolled to -- which is
-    // the whole thing it exists to save. Leaving it off frames the window a
-    // bar early, which is the run-up an author wants to see anyway.
-    if (horizontal) this.scroller.scrollLeft = Math.max(0, best.step * layout.stepW);
+    // ⚠️ **Not the whole head added back, only all of it but a bar** (`startLeft`):
+    // adding it all would park the previous clip's last bar off the left edge, and
+    // that lead-in is the run-up an author wants to see.
+    if (horizontal) this.scroller.scrollLeft = this.startLeft() + best.step * layout.stepW;
   }
 
   /** The other clips of a clip's row: what the grid draws through as ghosts. */
@@ -373,78 +335,35 @@ export class RollView {
     return this.state.song.clips.filter((c) => c.row === clip.row && c.id !== clip.id);
   }
 
-  /** The carried time goes, and the view stays on what it shows. */
-  private dropCarry(): void {
-    this.carryToken += 1;
-    if (this.carryHead === 0) return;
-    const before = this.layout.head;
-    this.carryHead = 0;
-    this.measure();
-    this.follow.jump(Math.max(0, this.scroller.scrollLeft - (before - this.layout.head) * this.layout.stepW));
-    this.schedule();
+  /**
+   * Where a clip's view starts: its own grid with the previous clip's last bar
+   * before it. The head reaches back over the whole previous clip, and the rest
+   * of it is there to be scrolled to.
+   */
+  private startLeft(): number {
+    return Math.max(0, (this.layout.head - STEPS_PER_BAR) * this.layout.stepW);
   }
 
   /**
-   * The follow moved the roll on to the next clip while the song plays. Only
-   * the active clip is ever drawn in colour, so the old one becomes a ghost at
-   * once -- and to keep the view where it was, the grid keeps in front of the
-   * new clip as much of the song's time as the old view showed (`carryHead`).
-   * Then it glides straight on to the playhead's place in the new clip's own
-   * view, and gives any borrowed time back without the picture moving.
-   *
-   * ⚠️ Straight on, with no pause and even when nothing was borrowed: leaving the
-   * view where it was until the playhead reached its far edge, or holding it a
-   * moment first, read as the scroll stalling at every join.
-   *
-   * ⚠️ Drawn live, never as a picture of the old frame: a snapshot carried the
-   * old clip's colours across the change, which is the one thing it must not do.
+   * How far the grid reaches either side of the clip: back to the start of the
+   * row's previous clip and on to the end of the next one, no further -- each
+   * clip has its own roll, and its neighbours are what it joins.
    */
-  private keepTimeAcross(wasCell: number, cell: number): void {
-    const was = this.layout;
-    const leftStep = wasCell * STEPS_PER_CELL + this.scroller.scrollLeft / was.stepW - was.head;
-    const clip = this.state.clip();
-    if (!clip) return;
-    this.carryToken += 1;
-    const token = this.carryToken;
-    const start = cell * STEPS_PER_CELL;
-    this.carryHead = Math.max(0, Math.min(start, Math.ceil(start - leftStep)));
-    this.measure();
-    const now = this.layout;
-    this.follow.jump(Math.max(0, (leftStep - start + now.head) * now.stepW));
-    this.draw();
-    const own = ghostWindow(clip, this.rowOthers(clip)).head;
-    const borrowed = Math.max(0, (now.head - own) * now.stepW);
-    // ⚠️ The playhead is still in the old clip's steps here: the page moves it after this.
-    const step = this.playStep !== null ? wasCell * STEPS_PER_CELL + this.playStep - start : null;
-    const onPlayhead = step !== null ? rollStepX(now, step) - now.keys - 40 : 0;
-    const settle = () => {
-      if (token === this.carryToken) this.dropCarry();
-    };
-    // Never short of the borrowed time, so giving it back cannot ask for a scroll before the start.
-    if (!this.follow.scrollTo(Math.max(borrowed, onPlayhead), true, 0, settle)) settle();
-  }
-
-  /** The view on the playhead at once, or on the clip's start when the playhead is not in it. */
-  private showPlayhead(): void {
-    const step = this.playStep;
-    const inside = step !== null && step >= 0 && step <= this.layout.steps;
-    this.follow.jump(inside ? Math.max(0, rollStepX(this.layout, step) - this.layout.keys - 40) : 0);
-  }
-
-  /** Keep a step in view while the song plays. */
-  followStep(stepInClip: number): void {
-    if (!this.follow.on) return;
-    const x = rollStepX(this.layout, stepInClip);
-    const left = this.scroller.scrollLeft;
-    const width = this.scroller.clientWidth;
-    if (x - left > width - 40 || x - left < this.layout.keys) {
-      this.follow.scrollTo(Math.max(0, x - this.layout.keys - 40), true);
+  private neighbourReach(clip: Clip, others: readonly Clip[]): { head: number; tail: number } {
+    const start = clip.cell * STEPS_PER_CELL;
+    const end = start + clip.steps;
+    let before: number | undefined;
+    let after: Clip | undefined;
+    for (const c of others) {
+      const s = c.cell * STEPS_PER_CELL;
+      if (s < start && (before === undefined || s > before)) before = s;
+      if (s > start && (!after || s < after.cell * STEPS_PER_CELL)) after = c;
     }
-  }
-
-  /** A seek or a play: follow again from wherever the view is. */
-  followAgain(): void {
-    this.follow.resume();
+    const tail = after ? Math.max(0, after.cell * STEPS_PER_CELL + after.steps - end) : 0;
+    return {
+      head: before === undefined ? 0 : start - before,
+      tail: Math.ceil(tail / STEPS_PER_BAR) * STEPS_PER_BAR,
+    };
   }
 
   // ----------------------------------------------------------------- drawing
@@ -454,17 +373,18 @@ export class RollView {
     // ❗ **Neither side exists unless something is in it.** An empty bar of
     // grid nobody can write in is scroll for nothing, and a row whose chips do
     // not reach past this one keeps the roll it always had.
-    const key = `${clip?.id ?? 0}:${this.state.version.value}:${this.carryHead}`;
+    const key = `${clip?.id ?? 0}:${this.state.version.value}`;
     if (key !== this.ghostKey) {
       this.ghostKey = key;
+      const others = clip ? this.rowOthers(clip) : [];
+      const reach = clip ? this.neighbourReach(clip, others) : { head: 0, tail: 0 };
       const window_ = clip
-        ? ghostWindow(clip, this.rowOthers(clip), Math.max(HEAD_STEPS, this.carryHead))
+        ? ghostWindow(clip, others, reach.head)
         : { ghosts: [], head: 0, tail: 0 };
       this.ghosts = window_.ghosts;
       this.rowClips = clip ? this.state.song.clips.filter((c) => c.row === clip.row) : [];
-      // A carry keeps its whole run of time even where the row is silent: the view stands on it.
-      this.ghostHead = clip ? Math.max(window_.head, Math.min(this.carryHead, clip.cell * STEPS_PER_CELL)) : 0;
-      this.ghostTail = window_.tail;
+      this.ghostHead = window_.head;
+      this.ghostTail = Math.min(window_.tail, reach.tail);
     }
     this.layout = {
       ...this.layout,

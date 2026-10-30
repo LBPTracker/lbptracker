@@ -1,7 +1,8 @@
 /**
  * Whether a scrolling view should keep the playhead in sight.
  *
- * The board and the roll scroll to follow the playhead while the song plays,
+ * The board scrolls to follow the playhead while the song plays (the roll
+ * does not: its scrolling is the person's alone),
  * and that used to win over the person: scroll ahead to look at the next
  * bars, or back to an earlier one, and the next tick dragged the view back to
  * the playhead. So the follow is a state, not a rule: a scroll by the person
@@ -25,8 +26,6 @@ export class Follow {
   private glide = 0;
   /** When that glide ought to be over; a frame request that never ran (a hidden tab) must not hold the view for ever. */
   private glideUntil = 0;
-  /** Told when the glide in progress ends, however it ends. */
-  private onDone: (() => void) | null = null;
 
   private readonly scroller: HTMLElement;
   /** Whether the playhead is in the view as it is scrolled now; true when there is none. */
@@ -44,18 +43,10 @@ export class Follow {
   }
 
   private stop(): void {
-    if (this.glide) {
-      cancelAnimationFrame(this.glide);
-      this.glide = 0;
-      this.knownLeft = this.scroller.scrollLeft;
-    }
-    this.finish();
-  }
-
-  private finish(): void {
-    const done = this.onDone;
-    this.onDone = null;
-    done?.();
+    if (!this.glide) return;
+    cancelAnimationFrame(this.glide);
+    this.glide = 0;
+    this.knownLeft = this.scroller.scrollLeft;
   }
 
   /** A change of position since the view last looked is the person's: follow or not by where the playhead is now. */
@@ -73,22 +64,17 @@ export class Follow {
   /** Whether to follow right now, the person's scrolls taken into account. */
   get on(): boolean {
     this.notice();
-    // The playhead is in view again, by its own movement rather than by a scroll: follow it out of the view's far edge too.
-    if (!this.following && this.playheadInView()) this.following = true;
     return this.following;
   }
 
   /**
    * The view's own scroll, to keep the playhead in sight. `glide` turns the
    * page into a short ease-out slide instead of a jump; a call while one is
-   * running is ignored, so the slide keeps the target it set out for: the
-   * return says whether this one was taken. `delay` holds the view still that
-   * long before it moves, and `done` is told when it is over, cut short included.
+   * running is ignored, so the slide keeps the target it set out for.
    */
-  scrollTo(left: number, glide = false, delay = 0, done?: () => void): boolean {
-    if (this.glide && performance.now() < this.glideUntil) return false;
+  scrollTo(left: number, glide = false): void {
+    if (this.glide && performance.now() < this.glideUntil) return;
     this.stop();
-    this.onDone = done ?? null;
     const from = this.scroller.scrollLeft;
     // A target past the end of the scroll range would be reached by the first few frames and then held by the clamp: the slide has to be the distance it really covers.
     left = Math.max(0, Math.min(left, this.scroller.scrollWidth - this.scroller.clientWidth));
@@ -96,13 +82,12 @@ export class Follow {
     if (!glide || reduced || Math.abs(left - from) < 4) {
       this.scroller.scrollLeft = left;
       this.knownLeft = this.scroller.scrollLeft;
-      this.finish();
-      return true;
+      return;
     }
-    const start = performance.now() + delay;
+    const start = performance.now();
     this.glideUntil = start + GLIDE_MS + 100;
     const step = (now: number): void => {
-      const k = Math.max(0, Math.min(1, (now - start) / GLIDE_MS));
+      const k = Math.min(1, (now - start) / GLIDE_MS);
       const eased = 1 - (1 - k) ** 3;
       this.scroller.scrollLeft = from + (left - from) * eased;
       this.knownLeft = this.scroller.scrollLeft;
@@ -110,18 +95,9 @@ export class Follow {
         this.glide = requestAnimationFrame(step);
       } else {
         this.glide = 0;
-        this.finish();
       }
     };
     this.glide = requestAnimationFrame(step);
-    return true;
-  }
-
-  /** Put the view somewhere at once, a glide in progress cancelled: for a view whose content has just changed under it. */
-  jump(left: number): void {
-    this.stop();
-    this.scroller.scrollLeft = left;
-    this.knownLeft = this.scroller.scrollLeft;
   }
 
   /** A seek, or play pressed: back to following, wherever the view was left. */

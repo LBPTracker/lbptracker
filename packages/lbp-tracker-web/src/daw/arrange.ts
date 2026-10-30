@@ -104,7 +104,6 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
       if (!player.hasPlan) return;
       player.seek(player.frameAt(Math.max(0, step)));
       board.followAgain();
-      roll.followAgain();
     },
     onMove: (clips, shift) => {
       state.edit('notes', (s) => { moveClips(s, clips.map((c) => c.id), shift); });
@@ -344,7 +343,7 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
   const followButton = $<HTMLButtonElement>('followPlayhead');
   const showFollow = () => followButton.setAttribute('aria-pressed', String(state.followPlayhead));
   /**
-   * The selection as the last frame left it.
+   * The chip the selection was last seen on, by the listener below.
    *
    * ⚠️ **The rule below is a transition, and it has to be.** "Selected the
    * chip the playhead is in, so follow again" read as a position first, and
@@ -358,23 +357,13 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
   state.liveChipId = () => liveChip()?.id ?? null;
   followButton.addEventListener('click', () => {
     state.followPlayhead = !state.followPlayhead;
-    if (state.followPlayhead) {
-      // Following again is following from here: both views go back to the playhead, whatever
-      // the person scrolled to, and the chip is opened on the playhead, not where the old
-      // chip's view was (that carry-over is for the playhead crossing into the next chip).
-      board.followAgain();
-      roll.followAgain();
-    }
-    const was = state.selection.clipId;
+    // Following again is following from here: the board goes back to the playhead, whatever
+    // the person scrolled to (the roll only ever scrolls by hand), and the chip under it opens.
+    if (state.followPlayhead) board.followAgain();
     const under = state.followPlayhead ? liveChip() : undefined;
-    if (under) state.followClip(under.id, false);
-    if (state.followPlayhead && player.hasPlan && !player.playing) {
-      // Stopped, no frame will scroll them: bring the playhead into view now.
-      const step = player.stepAt(player.position());
-      board.followStep(step);
-      const clip = state.clip();
-      if (clip && clip.id === was) roll.followStep(step - clip.cell * STEPS_PER_CELL);
-    }
+    if (under) state.followClip(under.id);
+    // Stopped, no frame will scroll the board: bring the playhead into view now.
+    if (state.followPlayhead && player.hasPlan && !player.playing) board.followStep(player.stepAt(player.position()));
     showFollow();
   });
   state.onChange(showFollow);
@@ -406,24 +395,15 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
     const step = player.stepAt(player.position());
     board.setPlayhead(step);
     const live = chipUnder(step)?.id ?? null;
-    // ❗ **Moving the roll ONTO the playhead's chip is following again**,
-    // however it got there -- the click that selects it, the button, or the
-    // follow itself. The same self-healing rule `follow.ts` uses for the
-    // scroll, where a scroll that brings the playhead back into view switches
-    // that one on too.
-    const moved = state.selection.clipId !== seenSelection;
-    seenSelection = state.selection.clipId;
-    if (moved && live !== null && state.selection.clipId === live) state.followPlayhead = true;
-    else if (state.followPlayhead && live !== null && live !== state.selection.clipId) {
-      state.followClip(live);
-      seenSelection = live;
-    }
+    // The playhead has crossed into another chip: the follow takes the roll there. Moving
+    // the roll ONTO the playhead's chip turning the follow on is the selection listener's.
+    if (state.followPlayhead && live !== null && live !== state.selection.clipId) state.followClip(live);
     showFollow();
     const clip = state.clip();
     if (clip) {
       const inClip = step - clip.cell * STEPS_PER_CELL;
+      // The roll is not scrolled to it: past the edge, the person scrolls.
       roll.setPlayhead(inClip);
-      if (player.playing && opts.isActive() && inClip >= 0 && inClip <= clip.steps) roll.followStep(inClip);
     } else roll.setPlayhead(null);
     if (player.playing && opts.isActive()) board.followStep(step);
   }
@@ -460,12 +440,8 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
   onPlayer({
     tick: () => { paint(); startSmoothing(); },
     playing: (on) => {
-      roll.playing = on;
       // Play pressed: the view follows again from wherever it was left.
-      if (on) {
-        board.followAgain();
-        roll.followAgain();
-      }
+      if (on) board.followAgain();
       startSmoothing();
     },
   });
@@ -482,8 +458,7 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
   $('fitNotes').addEventListener('click', () => roll.scrollToNotes());
 
   // ----------------------------------------------------- the grid's toolbar
-  // Tools, zoom, and the two commands that want a button: the keys are in
-  // each one's tooltip and in the help.
+  // Tools and zoom: the keys are in each one's tooltip and in the help.
   const toolButtons: Record<RollTool, HTMLButtonElement> = {
     draw: $<HTMLButtonElement>('toolDraw'),
     select: $<HTMLButtonElement>('toolSelect'),
@@ -605,20 +580,14 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
   });
   window.addEventListener('lbp:stop', () => dropChipLoop());
   // Stopped, and so back at the start: a roll that follows goes back to the row's first chip,
-  // and both views to the playhead. `lbp:stop` is not this: closing the panel sends it too.
+  // and the board to the playhead. `lbp:stop` is not this: closing the panel sends it too.
   window.addEventListener('lbp:stopped', () => {
     if (!state.followPlayhead) return;
     board.followAgain();
-    roll.followAgain();
     const first = state.firstClipOnRow(state.selection.row);
-    const moved = first !== undefined && first.id !== state.selection.clipId;
-    if (moved) state.followClip(first.id, false);
+    if (first && first.id !== state.selection.clipId) state.followClip(first.id);
     paint();
-    const step = player.hasPlan ? player.stepAt(player.position()) : 0;
-    board.followStep(step);
-    // A clip just opened places its own view (the roll's clip change); the same clip is scrolled here.
-    const clip = state.clip();
-    if (clip && !moved) roll.followStep(step - clip.cell * STEPS_PER_CELL);
+    board.followStep(player.hasPlan ? player.stepAt(player.position()) : 0);
   });
 
   // ---------------------------------------------------------- loop region

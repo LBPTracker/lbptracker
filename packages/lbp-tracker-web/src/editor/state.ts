@@ -341,7 +341,7 @@ export class EditorState {
    * and held forever if it was not.
    */
   followPlayhead = true;
-  /** True only while listeners are told about a chip the follow switched to, so a view can glide there instead of jumping. */
+  /** True only while listeners are told about a chip the follow switched to: the roll opens it without searching. */
   followedNow = false;
   /** The chip the playhead is inside, if any: set by the page, which owns the player. */
   liveChipId: () => number | null = () => null;
@@ -393,7 +393,7 @@ export class EditorState {
    * ⚠️ Not `selectClip`: that collapses the block, and the playhead crosses
    * a chip every few seconds.
    */
-  followClip(id: number, carry = true): void {
+  followClip(id: number): void {
     if (this.selection.clipId === id) return;
     const was = this.selection.clipId;
     const { clips } = this.selection;
@@ -403,7 +403,7 @@ export class EditorState {
     this.selection.clipId = id;
     this.selection.points = new Map();
     this.selection.point = null;
-    this.followedNow = carry;
+    this.followedNow = true;
     try {
       this.notify('selection');
     } finally {

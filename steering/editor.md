@@ -224,16 +224,17 @@ The editor draws both, as faithfully as the data allows and no further:
   `Ascetic` places one every two cells — so the notes on either side of the one being edited
   belong to chips this grid does not show, and both joins were invisible. The roll draws every
   note of the row's other chips that reaches the window, shifted onto this grid, at `GHOST_ALPHA`.
-  - **The two sides are deliberately not symmetric.** Before is one bar (`HEAD_STEPS`): enough to
-    see what you are answering, and no more, or the grid would open somewhere in the middle of the
-    row's history. After is *everything*, to the last note the row holds, rounded up to a bar —
-    what comes next is what an author is writing towards. On `Ascetic`'s busiest row that is a
-    4,992-step tail and 1,459 ghosts, drawn in 0.26–0.58 ms a frame because the list is computed
-    once per song version and each note is culled against the visible thirds.
-  - ⚠️ **The head is scrolled to, not scrolled past.** `scrollToNotes` deliberately does not add
-    the head back to the scroll it computes: the clip's step 0 sits a bar into the content, so
-    adding it would park the lead-in off the left edge, which is the whole thing it exists to
-    save. The owner asked for it visible on open, and this is where that is decided.
+  - **The grid reaches the neighbours and no further** (`neighbourReach` in `roll.ts`, the owner's
+    decision of 2026-10-30): back to the start of the row's previous chip and on to the end of the
+    next one, rounded up to a bar. `ghostWindow`'s own defaults — one bar before (`HEAD_STEPS`),
+    everything after — are what it does unasked; the roll narrows them. A side with no note in it
+    still does not exist. Each clip has its own roll: the old "everything after" was a
+    4,992-step tail on `Ascetic`'s busiest row, scroll the owner did not want.
+  - ⚠️ **A clip opens on its own grid with the previous chip's last bar in view** (`startLeft`):
+    the rest of the head is there to scroll back to. `scrollToNotes` adds all of the head but a
+    bar, so the lead-in stays visible, which the owner asked for. A clip the follow switched to
+    opens the same way, unsearched; the roll never scrolls itself after that — not to the
+    playhead, not across a join — and `find the notes` runs only for a click or its button.
   - ⚠️ **Measured rather than eyeballed**: at 0.45 a ghost's bluest pixel came back (54,116,210)
     against a real note's (66,140,255), which reads as a note; 0.28 gives (42,91,166), which reads
     as not yours.
