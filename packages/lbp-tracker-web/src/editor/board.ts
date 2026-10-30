@@ -294,7 +294,7 @@ export class BoardView {
     const left = this.scroller.scrollLeft;
     const width = this.scroller.clientWidth;
     if (x - left > width - 30 || x - left < this.layout.gutter) {
-      this.follow.scrollTo(Math.max(0, x - this.layout.gutter - 60));
+      this.follow.scrollTo(Math.max(0, x - this.layout.gutter - 60), true);
     }
   }
 

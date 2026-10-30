@@ -89,7 +89,13 @@ export function mountMediaKeys(): void {
     ['play', () => player.play()],
     // Pause where it is, which is what this transport's own pause does.
     ['pause', () => player.stop()],
-    ['stop', () => { player.stop(); player.seek(0); }],
+    // The Stop button's own events: the chip loop drops (`lbp:stop`), the views go back (`lbp:stopped`).
+    ['stop', () => {
+      window.dispatchEvent(new Event('lbp:stop'));
+      player.stop();
+      player.seek(0);
+      window.dispatchEvent(new Event('lbp:stopped'));
+    }],
     // One song is open, so the track keys are the start and the end of it.
     ['previoustrack', () => player.seek(0)],
     ['nexttrack', () => player.seek(player.frameAt(0) + Math.round(player.songSeconds * RATE))],

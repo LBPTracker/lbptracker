@@ -195,6 +195,8 @@ stopButton.addEventListener('click', () => {
   window.dispatchEvent(new Event('lbp:stop'));
   player.stop();
   player.seek(0);
+  // Back at the start: the views that follow go back with it (`arrange.ts`).
+  window.dispatchEvent(new Event('lbp:stopped'));
 });
 // Loop is the song's own flag -- the same one the Song/Mixer view ticks -- so
 // the button edits the song, and the header pass mirrors it into the player.
@@ -487,6 +489,7 @@ async function openLevel(opened: Opened): Promise<void> {
 
 const startNew = async () => {
   if (state.dirty && !(await confirmDialog('Throw away the unsaved changes?', 'throw them away'))) return;
+  fileDialog.close();
   songs = new Map();
   pickerRows = [];
   picker.setRows([]);
@@ -499,7 +502,7 @@ const startNew = async () => {
   state.touch('selection');
   showView('arrange');
 };
-$('newSong').addEventListener('click', () => void startNew());
+$('fileNew').addEventListener('click', () => void startNew());
 $('homeNew').addEventListener('click', () => void startNew());
 
 // ❗ **A demo is a link somebody pressed for you.** The song is named in the

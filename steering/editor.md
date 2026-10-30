@@ -156,9 +156,13 @@ The editor draws both, as faithfully as the data allows and no further:
   file. It edits with the `look` kind: nothing plays an author.
 - **Whether the roll follows the playhead is a state, and the person owns it** —
   `EditorState.followPlayhead`, the switch in the panel head, and `test/editor-follow.test.ts`.
-  Clicking a chip means "show me this one" and switches it off; choosing a row means "watch this
-  row" and switches it on, as do opening a song, the button, and moving the roll back onto the
-  chip the playhead is in. That last one is a **transition, not a position**: read as a position,
+  Clicking a chip means "show me this one" and switches it off — **unless it is the chip the
+  playhead is in** (the stopped playhead counts where it stands, 0 after a stop), which is where
+  following would take the roll anyway, so it stays on, decided at the click rather than at the
+  next frame (`EditorState.liveChipId`, set by the page). A block taken any other way — a
+  rectangle, everything, a copy — switches it off. Choosing a row means "watch this row" and
+  switches it on, as do opening a song, the button, and moving the roll back onto the chip the
+  playhead is in. Stop with the follow on puts the roll back on the row's first chip. That last one is a **transition, not a position**: read as a position,
   the button could not be switched off at all while the roll sat on the playing chip, because the
   next frame put it back. It is the same decision `editor/follow.ts` records for the scroll, and
   it was made for the same reason. ⚠️ **Before this the follow was neither on nor off**, and both
@@ -198,8 +202,9 @@ The editor draws both, as faithfully as the data allows and no further:
   of a step**: a beat is four steps, twelve thirds, so the triplet grid has three four-third cells
   to the beat and is *sparser* than the whole-step grid (`TRIPLET_THIRDS` in `geometry.ts`) — the
   triplet positions 1⅓ and 2⅔ are the sub-steps 1 and 2 the corpus holds in equal measure. A
-  note with a point off the current grid's cells is drawn through at 30% (`onGrid`), still
-  there and editable. ⚠️ For a day the triplet grid was thirds of a step, three cells per step;
+  note with a point off the current grid's cells is drawn through at 60% (`onGrid`,
+  `OFF_GRID_ALPHA`), still there and editable — a level of its own, apart from the row's other
+  chips at 28% (`GHOST_ALPHA`): at 30% the owner could not tell the two apart. ⚠️ For a day the triplet grid was thirds of a step, three cells per step;
   the owner called it far too dense, and it was.
   ⚠️ Every point sat at the centre of its *third* for a day — a sixth into the step on a whole-step
   grid, "all shifted left" — and then, briefly, on the grid lines; the owner settled it here.

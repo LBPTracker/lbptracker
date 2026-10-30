@@ -56,11 +56,12 @@ import {
   STEPS_PER_BAR,
   TRIPLET_THIRDS,
   ghostWindow,
+  onGrid,
+  HEAD_STEPS,
   gridUnit,
   isBlackKey,
   noteName,
   bestNoteWindow,
-  onGrid,
   pointLineHalf,
   pointRadius,
   positionLabel,
@@ -75,6 +76,8 @@ import {
   timbreColour,
   type RollLayout,
 } from './geometry.ts';
+import { SCALE_TABLES, quantise } from '@lbptracker/lib/scale.ts';
+import { STEPS_PER_CELL } from '@lbptracker/cwlib/sequencer/project.ts';
 import { capture, release } from './pointer.ts';
 import { Follow } from './follow.ts';
 import type { EditorState } from './state.ts';
@@ -88,6 +91,8 @@ export interface RollCallbacks {
   onAuditionPitch(clip: Clip, pitch: number): void;
   /** Something to say under the grid about what is under the pointer. */
   onHover(text: string): void;
+  /** The clipboard was filled or emptied: nothing in the song changed, so no state change says so. */
+  onClipboard?(): void;
 }
 
 /**
@@ -99,6 +104,13 @@ export interface RollCallbacks {
  * the value where the two cannot be confused.
  */
 const GHOST_ALPHA = 0.28;
+/**
+ * A note of the open clip that is off the grid being shown (a triplet under the
+ * step grid, or the other way round): see-through too, but half way between a
+ * note and a ghost, because it is still this clip's and still editable. The two
+ * levels must not be confused -- at 0.3 this was the ghosts' 0.28 again.
+ */
+const OFF_GRID_ALPHA = 0.6;
 
 const KEYS = 56;
 const RULER = 20;
@@ -106,12 +118,29 @@ const STEP_W = 22;
 const ROW_H = 13;
 const HIT = 4;
 
+/** What a plain click and drag on the grid does; `D`, `V` and `E` pick one. */
+export type RollTool = 'draw' | 'select' | 'erase';
+
+/** How far the grid zooms: pixels per step across, pixels per semitone down. */
+const STEP_W_RANGE = [8, 64] as const;
+const ROW_H_RANGE = [8, 32] as const;
+/** The audition while a point is dragged is a note per row crossed; not faster than this. */
+const DRAG_AUDITION_MS = 70;
+
 type Drag =
-  | { mode: 'create'; note: SongNote; startThirds: number; startPitch: number; extended: boolean }
-  /** Dragging the selected points. One mode, whether that is one point or fifty. */
-  | { mode: 'move'; startThirds: number; startPitch: number; lastThirds: number; lastPitch: number; moved: boolean }
+  | { mode: 'create'; note: SongNote; startThirds: number; startPitch: number; lastPitch: number; extended: boolean }
+  /**
+   * Dragging the selected points. One mode, whether that is one point or fifty.
+   * `origin` is the selection as it was when the drag began, drawn faint where
+   * it came from so the distance travelled reads at a glance.
+   */
+  | {
+    mode: 'move'; startThirds: number; startPitch: number; lastThirds: number; lastPitch: number;
+    moved: boolean; origin: SongNote[];
+  }
   | { mode: 'volume' | 'timbre'; startY: number; startValues: Map<string, number>; moved: boolean }
-  | { mode: 'marquee'; x0: number; y0: number; x1: number; y1: number; add: boolean };
+  | { mode: 'marquee'; x0: number; y0: number; x1: number; y1: number; add: boolean }
+  | { mode: 'erase' };
 
 export class RollView {
   private readonly canvas: HTMLCanvasElement;
@@ -134,6 +163,8 @@ export class RollView {
    */
   private ghosts: { note: SongNote; shift: number }[] = [];
   private ghostKey = '';
+  /** The open clip's row, the clip included: the ruler numbers each bar by the clip it is in. */
+  private rowClips: Clip[] = [];
   private ghostHead = 0;
   private ghostTail = 0;
   private playStep: number | null = null;
@@ -144,6 +175,17 @@ export class RollView {
   private heldKey: number | null = null;
   private frame = 0;
   private lastClipId: number | null = null;
+  /** The cell of the clip the view was last laid out for. */
+  private lastCell: number | null = null;
+  /** The song is playing: set by the page, for what the roll does when a clip is opened. */
+  playing = false;
+  /**
+   * Steps of the song before the clip kept in the grid while the view carries
+   * on across a clip change: the old clip's time, drawn as the ghost it now is.
+   */
+  private carryHead = 0;
+  /** Which carry a glide's end belongs to: a later clip change makes an earlier one's end moot. */
+  private carryToken = 0;
   /** Notes copied with Ctrl+C, relative to their first position. */
   private clipboard: SongNote[] = [];
   /** Where they were lifted from, so a cut and a paste put them back. */
@@ -151,7 +193,14 @@ export class RollView {
   /** The pitch of the clipboard's earliest point: the one a paste puts under the pointer. */
   private clipboardPitch = 60;
   /** The grid position under the pointer (snapped), or null when it is not over the grid. */
-  private cursor: { thirds: number; pitch: number } | null = null;
+  /** The pointer over the grid: `raw` is where it is, `thirds` where the grid's own snap puts it. */
+  private cursor: { thirds: number; raw: number; pitch: number } | null = null;
+  /** Shift and Alt as last seen, which lock the paste preview to one axis. */
+  private mods = { shift: false, alt: false };
+  private tool: RollTool = 'draw';
+  /** What the pointer is doing, said beside it while a drag is under way: canvas coordinates. */
+  private readout: { cx: number; cy: number; text: string } | null = null;
+  private lastDragAudition = 0;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -172,6 +221,16 @@ export class RollView {
     canvas.addEventListener('pointercancel', this.onUp);
     canvas.addEventListener('dblclick', this.onDouble);
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    // Not passive: Ctrl+wheel is the grid's zoom and must not become the page's.
+    canvas.addEventListener('wheel', this.onWheel, { passive: false });
+    const syncMods = (e: KeyboardEvent) => {
+      if (e.shiftKey === this.mods.shift && e.altKey === this.mods.alt) return;
+      this.mods = { shift: e.shiftKey, alt: e.altKey };
+      if (this.clipboard.length) this.schedule();
+    };
+    window.addEventListener('keydown', syncMods);
+    window.addEventListener('keyup', syncMods);
+    canvas.style.cursor = 'crosshair';
     canvas.addEventListener('pointerleave', () => {
       this.hoverPitch = null;
       this.cursor = null;
@@ -189,8 +248,37 @@ export class RollView {
       const clip = state.clip();
       if ((clip?.id ?? null) !== this.lastClipId) {
         this.lastClipId = clip?.id ?? null;
-        // A new clip: put its notes in view rather than whatever row was there.
-        window.requestAnimationFrame(() => this.scrollToNotes());
+        const wasCell = this.lastCell;
+        this.lastCell = clip?.cell ?? null;
+        if (clip && wasCell !== null && state.followedNow) {
+          // The follow moved on to the next clip: keep what the view showed where it was
+          // on the song's own time line, so the playhead carries on across the join and
+          // the next page-turn glides as it does inside a clip.
+          this.keepTimeAcross(wasCell, clip.cell);
+        } else {
+          // A new clip opened: its notes are put in view up and down, as `find the notes` does.
+          // Along the time axis, while the scroller is following the playhead, the view goes to
+          // the playhead when it is inside this clip and to the clip's start when it is not;
+          // only a view the person scrolled away searches sideways too.
+          // ⚠️ Not "leave it to the follow" when the playhead is elsewhere: the follow never
+          // scrolls a clip the playhead is not in, so the old clip's scroll position stayed,
+          // landing anywhere in the new one -- its end, or the bar before it, faded.
+          // A carry belonged to the clip before; this one lays out without it. No scroll to
+          // keep: the view is placed afresh just below.
+          this.carryToken += 1;
+          this.carryHead = 0;
+          const following = this.follow.on;
+          window.requestAnimationFrame(() => {
+            if (!following) {
+              this.scrollToNotes();
+              return;
+            }
+            this.scrollToNotes(true, false);
+            const step = this.playStep;
+            if (step !== null && step >= 0 && step <= this.layout.steps) this.showPlayhead();
+            else this.follow.jump(0);
+          });
+        }
       }
       this.schedule();
     });
@@ -221,7 +309,7 @@ export class RollView {
    * position would actually show and takes the best, and it moves nothing when
    * a tie means the old centring was as good.
    */
-  scrollToNotes(): void {
+  scrollToNotes(vertical = true, horizontal = true): void {
     const clip = this.state.clip();
     this.measure();
     const layout = this.layout;
@@ -229,8 +317,9 @@ export class RollView {
     const viewW = this.scroller.clientWidth - layout.keys;
     if (!clip || !clip.notes.length) {
       // Nothing to find: middle C in the middle, as an empty grid always did.
-      this.scroller.scrollTop = Math.max(0, rollY(layout, 60) - this.scroller.clientHeight / 2);
-      this.scroller.scrollLeft = 0;
+      const middleC = Math.max(0, rollY(layout, 60) - this.scroller.clientHeight / 2);
+      if (vertical) this.scroller.scrollTop = middleC;
+      if (horizontal) this.scroller.scrollLeft = 0;
       return;
     }
     const boxes = clip.notes.map((n) => {
@@ -266,7 +355,7 @@ export class RollView {
         step: 0,
       },
     );
-    this.scroller.scrollTop = Math.max(0, best.row * layout.rowH);
+    if (vertical) this.scroller.scrollTop = Math.max(0, best.row * layout.rowH);
     // ❗ **`best.step` is in the clip's own steps**, and `stepCount` above was
     // its own `steps`: `find the notes` looks at this chip's notes and at
     // nothing in the lead-in or the tail.
@@ -276,7 +365,70 @@ export class RollView {
     // the left edge and the lead-in would have to be scrolled to -- which is
     // the whole thing it exists to save. Leaving it off frames the window a
     // bar early, which is the run-up an author wants to see anyway.
-    this.scroller.scrollLeft = Math.max(0, best.step * layout.stepW);
+    if (horizontal) this.scroller.scrollLeft = Math.max(0, best.step * layout.stepW);
+  }
+
+  /** The other clips of a clip's row: what the grid draws through as ghosts. */
+  private rowOthers(clip: Clip): Clip[] {
+    return this.state.song.clips.filter((c) => c.row === clip.row && c.id !== clip.id);
+  }
+
+  /** The carried time goes, and the view stays on what it shows. */
+  private dropCarry(): void {
+    this.carryToken += 1;
+    if (this.carryHead === 0) return;
+    const before = this.layout.head;
+    this.carryHead = 0;
+    this.measure();
+    this.follow.jump(Math.max(0, this.scroller.scrollLeft - (before - this.layout.head) * this.layout.stepW));
+    this.schedule();
+  }
+
+  /**
+   * The follow moved the roll on to the next clip while the song plays. Only
+   * the active clip is ever drawn in colour, so the old one becomes a ghost at
+   * once -- and to keep the view where it was, the grid keeps in front of the
+   * new clip as much of the song's time as the old view showed (`carryHead`).
+   * Then it glides straight on to the playhead's place in the new clip's own
+   * view, and gives any borrowed time back without the picture moving.
+   *
+   * ⚠️ Straight on, with no pause and even when nothing was borrowed: leaving the
+   * view where it was until the playhead reached its far edge, or holding it a
+   * moment first, read as the scroll stalling at every join.
+   *
+   * ⚠️ Drawn live, never as a picture of the old frame: a snapshot carried the
+   * old clip's colours across the change, which is the one thing it must not do.
+   */
+  private keepTimeAcross(wasCell: number, cell: number): void {
+    const was = this.layout;
+    const leftStep = wasCell * STEPS_PER_CELL + this.scroller.scrollLeft / was.stepW - was.head;
+    const clip = this.state.clip();
+    if (!clip) return;
+    this.carryToken += 1;
+    const token = this.carryToken;
+    const start = cell * STEPS_PER_CELL;
+    this.carryHead = Math.max(0, Math.min(start, Math.ceil(start - leftStep)));
+    this.measure();
+    const now = this.layout;
+    this.follow.jump(Math.max(0, (leftStep - start + now.head) * now.stepW));
+    this.draw();
+    const own = ghostWindow(clip, this.rowOthers(clip)).head;
+    const borrowed = Math.max(0, (now.head - own) * now.stepW);
+    // ⚠️ The playhead is still in the old clip's steps here: the page moves it after this.
+    const step = this.playStep !== null ? wasCell * STEPS_PER_CELL + this.playStep - start : null;
+    const onPlayhead = step !== null ? rollStepX(now, step) - now.keys - 40 : 0;
+    const settle = () => {
+      if (token === this.carryToken) this.dropCarry();
+    };
+    // Never short of the borrowed time, so giving it back cannot ask for a scroll before the start.
+    if (!this.follow.scrollTo(Math.max(borrowed, onPlayhead), true, 0, settle)) settle();
+  }
+
+  /** The view on the playhead at once, or on the clip's start when the playhead is not in it. */
+  private showPlayhead(): void {
+    const step = this.playStep;
+    const inside = step !== null && step >= 0 && step <= this.layout.steps;
+    this.follow.jump(inside ? Math.max(0, rollStepX(this.layout, step) - this.layout.keys - 40) : 0);
   }
 
   /** Keep a step in view while the song plays. */
@@ -286,7 +438,7 @@ export class RollView {
     const left = this.scroller.scrollLeft;
     const width = this.scroller.clientWidth;
     if (x - left > width - 40 || x - left < this.layout.keys) {
-      this.follow.scrollTo(Math.max(0, x - this.layout.keys - 40));
+      this.follow.scrollTo(Math.max(0, x - this.layout.keys - 40), true);
     }
   }
 
@@ -302,14 +454,16 @@ export class RollView {
     // ❗ **Neither side exists unless something is in it.** An empty bar of
     // grid nobody can write in is scroll for nothing, and a row whose chips do
     // not reach past this one keeps the roll it always had.
-    const key = `${clip?.id ?? 0}:${this.state.version.value}`;
+    const key = `${clip?.id ?? 0}:${this.state.version.value}:${this.carryHead}`;
     if (key !== this.ghostKey) {
       this.ghostKey = key;
       const window_ = clip
-        ? ghostWindow(clip, this.state.song.clips.filter((c) => c.row === clip.row && c.id !== clip.id))
+        ? ghostWindow(clip, this.rowOthers(clip), Math.max(HEAD_STEPS, this.carryHead))
         : { ghosts: [], head: 0, tail: 0 };
       this.ghosts = window_.ghosts;
-      this.ghostHead = window_.head;
+      this.rowClips = clip ? this.state.song.clips.filter((c) => c.row === clip.row) : [];
+      // A carry keeps its whole run of time even where the row is silent: the view stands on it.
+      this.ghostHead = clip ? Math.max(window_.head, Math.min(this.carryHead, clip.cell * STEPS_PER_CELL)) : 0;
       this.ghostTail = window_.tail;
     }
     this.layout = {
@@ -390,6 +544,26 @@ export class RollView {
     }
   }
 
+  /** Notes drawn see-through, for what a paste would put down and where a drag began. */
+  private drawPreview(
+    notes: readonly SongNote[],
+    lineAlpha: number,
+    dotAlpha: number,
+    px: (thirds: number) => number,
+    py: (pitch: number) => number,
+  ): void {
+    const { ctx, layout } = this;
+    for (const note of notes) {
+      this.drawChain(note.points, lineAlpha, 1, px, py);
+      for (const p of note.points) {
+        ctx.fillStyle = timbreColour(p.timbre, dotAlpha);
+        ctx.beginPath();
+        ctx.arc(px(p.thirds), py(p.pitch), pointRadius(p.volume, layout.rowH), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
   private draw(): void {
     this.measure();
     const { ctx, layout, state } = this;
@@ -424,11 +598,22 @@ export class RollView {
     );
 
     // Row shading: black-key rows darker, as the game's grid does.
+    // ❗ **And the clip's scale on top of it.** A note written off the scale does
+    // not sound where it is drawn: the engine snaps it to the tone the scale's
+    // table gives (`quantise`), so the rows that table leaves alone are lifted
+    // and the rest darkened -- the grid says where a note will actually land.
+    // The key transposes afterwards and does not move which rows are tones.
+    const table = clip.scale > 0 ? SCALE_TABLES[clip.scale] : undefined;
     for (let row = rowTop; row <= rowBottom; row += 1) {
       const pitch = PITCHES - 1 - row;
       const y = layout.ruler + row * layout.rowH - sy;
       ctx.fillStyle = isBlackKey(pitch) ? 'rgba(0,0,0,0.22)' : 'rgba(255,255,255,0.025)';
       ctx.fillRect(layout.keys, y, viewW - layout.keys, layout.rowH);
+      if (table) {
+        const within = pitch % 12;
+        ctx.fillStyle = table[within] === within ? 'rgba(111,211,160,0.07)' : 'rgba(0,0,0,0.2)';
+        ctx.fillRect(layout.keys, y, viewW - layout.keys, layout.rowH);
+      }
       if (pitch % 12 === 0) {
         ctx.fillStyle = 'rgba(255,255,255,0.09)';
         ctx.fillRect(layout.keys, y + layout.rowH - 1, viewW - layout.keys, 1);
@@ -494,7 +679,7 @@ export class RollView {
       // rings below say which ones, since the selection is of points.
       const on = selected.has(note.id);
       const pts = note.points;
-      const fade = dimmed(note) ? 0.3 : 1;
+      const fade = dimmed(note) ? OFF_GRID_ALPHA : 1;
       /**
        * A segment is drawn as a ribbon, not a stroke: its half-width at each
        * end is that point's volume (`pointLineHalf`) and its colour at each
@@ -511,7 +696,7 @@ export class RollView {
     }
     for (const note of clip.notes) {
       const chosen = selected.get(note.id);
-      const fade = dimmed(note) ? 0.3 : 1;
+      const fade = dimmed(note) ? OFF_GRID_ALPHA : 1;
       note.points.forEach((p, i) => {
         const r = pointRadius(p.volume, layout.rowH);
         const x = px(p.thirds);
@@ -580,16 +765,12 @@ export class RollView {
       ctx.beginPath();
       ctx.rect(Math.max(startX, layout.keys), layout.ruler, Math.min(endX, viewW) - Math.max(startX, layout.keys), viewH - layout.ruler);
       ctx.clip();
-      for (const note of paste) {
-        this.drawChain(note.points, 0.35, 1, px, py);
-        for (const p of note.points) {
-          ctx.fillStyle = timbreColour(p.timbre, 0.4);
-          ctx.beginPath();
-          ctx.arc(px(p.thirds), py(p.pitch), pointRadius(p.volume, layout.rowH), 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
+      this.drawPreview(paste, 0.35, 0.4, px, py);
       ctx.restore();
+    }
+    // Where the points being dragged came from, faint: how far they have gone.
+    if (this.drag?.mode === 'move' && this.drag.moved) {
+      this.drawPreview(this.drag.origin, 0.22, 0.28, px, py);
     }
     // The marquee.
     if (this.drag?.mode === 'marquee') {
@@ -611,6 +792,23 @@ export class RollView {
       ctx.moveTo(x, layout.ruler);
       ctx.lineTo(x, viewH);
       ctx.stroke();
+    }
+    // What the drag is at, beside the pointer: the number is where the eye is.
+    if (this.readout) {
+      const { cx, cy, text } = this.readout;
+      ctx.font = '11px ui-monospace, Consolas, monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const w = ctx.measureText(text).width + 12;
+      const x = cx + 16 + w > viewW - 4 ? cx - 16 - w : cx + 16;
+      const y = cy - 30 < layout.ruler + 2 ? cy + 18 : cy - 30;
+      ctx.fillStyle = 'rgba(15,18,24,0.92)';
+      ctx.fillRect(x, y, w, 20);
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, 19);
+      ctx.fillStyle = ink;
+      ctx.fillText(text, x + 6, y + 10.5);
     }
     ctx.restore();
 
@@ -640,13 +838,22 @@ export class RollView {
     ctx.font = '10px ui-monospace, Consolas, monospace';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    for (let step = stepLeft; step < stepRight; step += 4) {
+    // Each clip counts its own bars from 1: over a neighbour's ghost the numbers are the
+    // neighbour's, so the ruler restarts where a clip does. The song's bar goes in front.
+    const rowClips = this.rowClips;
+    const origin = clip.cell * STEPS_PER_CELL;
+    // From a beat line: the view can start anywhere, and a label off the beat read `2.2.75`.
+    for (let step = Math.ceil(stepLeft / 4) * 4; step < stepRight; step += 4) {
       const x = rollStepX(layout, step) - sx;
       if (x < layout.keys) continue;
-      const bar = Math.floor(step / STEPS_PER_BAR) + 1;
-      const beat = ((step % STEPS_PER_BAR) / 4) + 1;
+      const owner = rowClips.find((c) => c.cell * STEPS_PER_CELL <= origin + step && origin + step < c.cell * STEPS_PER_CELL + c.steps);
+      const rel = owner ? origin + step - owner.cell * STEPS_PER_CELL : step;
+      const bar = Math.floor(rel / STEPS_PER_BAR) + 1;
+      const beat = ((((rel % STEPS_PER_BAR) + STEPS_PER_BAR) % STEPS_PER_BAR) / 4) + 1;
+      // A bar line carries both numbers: the song's bar, as the board counts it, then the clip's own.
+      const songBar = Math.floor((origin + step) / STEPS_PER_BAR) + 1;
       ctx.fillStyle = beat === 1 ? ink : dim;
-      ctx.fillText(beat === 1 ? `${bar}` : `${bar}.${beat}`, x + 3, layout.ruler / 2);
+      ctx.fillText(beat === 1 ? `${songBar} · ${bar}` : `${bar}.${beat}`, x + 3, layout.ruler / 2);
     }
     ctx.fillStyle = '#171b21';
     ctx.fillRect(0, 0, layout.keys, layout.ruler);
@@ -766,6 +973,11 @@ export class RollView {
     }
     if (event.button !== 0) return;
     capture(this.canvas, event);
+    if (this.tool === 'erase') {
+      this.drag = { mode: 'erase' };
+      this.eraseAt(clip, x, y);
+      return;
+    }
     if (hitP) {
       const { note, index } = hitP;
       const here = { noteId: note.id, index };
@@ -796,7 +1008,10 @@ export class RollView {
       } else {
         const t = this.snapped(x, clip.steps);
         const p = rollPitchAt(this.layout, y);
-        this.drag = { mode: 'move', startThirds: t, startPitch: p, lastThirds: t, lastPitch: p, moved: false };
+        this.drag = {
+          mode: 'move', startThirds: t, startPitch: p, lastThirds: t, lastPitch: p,
+          moved: false, origin: this.snapshotSelection(),
+        };
       }
       this.cb.onAudition(clip, note);
       return;
@@ -818,11 +1033,16 @@ export class RollView {
       state.beginDrag();
       const t = this.snapped(x, clip.steps);
       const p = rollPitchAt(this.layout, y);
-      this.drag = { mode: 'move', startThirds: t, startPitch: p, lastThirds: t, lastPitch: p, moved: false };
+      this.drag = {
+        mode: 'move', startThirds: t, startPitch: p, lastThirds: t, lastPitch: p,
+        moved: false, origin: this.snapshotSelection(),
+      };
       this.cb.onAudition(clip, note);
       return;
     }
-    if (event.shiftKey) {
+    // The select tool takes a plain drag on empty grid for a rectangle, which
+    // is what Shift does under the draw tool.
+    if (event.shiftKey || this.tool === 'select') {
       this.drag = { mode: 'marquee', x0: x, y0: y, x1: x, y1: y, add: event.ctrlKey || event.metaKey };
       this.schedule();
       return;
@@ -843,7 +1063,7 @@ export class RollView {
     });
     const note = created!;
     state.selectPoints([[note.id, 0]], { noteId: note.id, index: 0 });
-    this.drag = { mode: 'create', note, startThirds: thirds, startPitch: pitch, extended: false };
+    this.drag = { mode: 'create', note, startThirds: thirds, startPitch: pitch, lastPitch: pitch, extended: false };
     this.cb.onAudition(clip, note);
   };
 
@@ -854,6 +1074,10 @@ export class RollView {
     const state = this.state;
     const drag = this.drag;
     if (!drag) {
+      if (event.shiftKey !== this.mods.shift || event.altKey !== this.mods.alt) {
+        this.mods = { shift: event.shiftKey, alt: event.altKey };
+        if (this.clipboard.length) this.schedule();
+      }
       this.trackCursor(clip, x, y, cx, cy);
       if (this.heldKey !== null) return;
       const pitch = cy >= this.layout.ruler ? rollPitchAt(this.layout, y) : null;
@@ -877,11 +1101,14 @@ export class RollView {
       } else {
         const t = this.snapped(x, clip.steps);
         const n = this.state.selectedCount;
+        // An off-scale row plays as the tone the scale snaps it to.
+        const snapsTo = pitch !== null && clip.scale > 0 ? quantise(pitch, clip.scale) : null;
+        const scaleNote = snapsTo !== null && snapsTo !== pitch ? ` (plays as ${noteName(snapsTo)})` : '';
         // With something selected the line says what the keys will do to it:
         // the commands are otherwise only in the help.
         this.cb.onHover(n === 0
-          ? `${noteName(pitch ?? 0)} at ${positionLabel(t)}  ·  shift+drag selects points`
-          : `${noteName(pitch ?? 0)} at ${positionLabel(t)}  ·  ${n} point${n === 1 ? '' : 's'} selected`
+          ? `${noteName(pitch ?? 0)}${scaleNote} at ${positionLabel(t)}  ·  shift+drag selects points`
+          : `${noteName(pitch ?? 0)}${scaleNote} at ${positionLabel(t)}  ·  ${n} point${n === 1 ? '' : 's'} selected`
             + '  ·  ctrl+D duplicate, ctrl+X cut, ctrl+C copy, ctrl+V paste, Delete removes');
       }
       return;
@@ -899,6 +1126,12 @@ export class RollView {
           const end = drag.note.points[drag.note.points.length - 1];
           movePoint(clip, drag.note, end, { thirds: Math.max(drag.startThirds, thirds), pitch });
         });
+        const end = drag.note.points[drag.note.points.length - 1];
+        this.showReadout(cx, cy, `${noteName(end.pitch)} · ${positionLabel(end.thirds)}`);
+        if (pitch !== drag.lastPitch) {
+          drag.lastPitch = pitch;
+          this.auditionDrag(clip, pitch);
+        }
         break;
       }
       case 'move': {
@@ -928,6 +1161,13 @@ export class RollView {
         state.during(() => {
           for (const { note, indices } of chosen) movePoints(clip, note, indices, dtOk, dpOk);
         });
+        // The point under the pointer is the one the readout and the sound follow.
+        const lead = state.point()?.point;
+        if (lead) {
+          const n = state.selectedCount;
+          this.showReadout(cx, cy, `${noteName(lead.pitch)} · ${positionLabel(lead.thirds)}${n > 1 ? ` · ${n} points` : ''}`);
+          if (dpOk !== 0) this.auditionDrag(clip, lead.pitch);
+        }
         break;
       }
       case 'volume':
@@ -949,8 +1189,12 @@ export class RollView {
         drag.moved = true;
         const n = state.selectedCount;
         this.cb.onHover(`${field} ${last}${n > 1 ? ` on ${n} points` : ''}`);
+        this.showReadout(cx, cy, `${field} ${last}${field === 'timbre' ? ' / 15' : ''}${n > 1 ? ` · ${n} points` : ''}`);
         break;
       }
+      case 'erase':
+        this.eraseAt(clip, x, y);
+        break;
       case 'marquee': {
         drag.x1 = x;
         drag.y1 = y;
@@ -974,9 +1218,13 @@ export class RollView {
     const drag = this.drag;
     if (!drag) return;
     this.drag = null;
+    this.readout = null;
+    this.schedule();
     const state = this.state;
     const clip = state.clip();
     switch (drag.mode) {
+      case 'erase':
+        break;
       case 'create':
         state.endDrag('notes', true);
         break;
@@ -1133,6 +1381,7 @@ export class RollView {
     const first = lifted.flatMap((n) => n.points).find((p) => p.thirds === 0);
     this.clipboardPitch = first?.pitch ?? 60;
     this.schedule();
+    this.cb.onClipboard?.();
   }
 
   /** Follow the pointer over the grid, for the paste preview. */
@@ -1140,7 +1389,7 @@ export class RollView {
     const over = cx >= this.layout.keys && cy >= this.layout.ruler
       && rollThirdsAt(this.layout, x) >= 0 && rollThirdsAt(this.layout, x) < clip.steps * 3;
     const next = over
-      ? { thirds: this.snapped(x, clip.steps), pitch: rollPitchAt(this.layout, y) }
+      ? { thirds: this.snapped(x, clip.steps), raw: rollThirdsAt(this.layout, x), pitch: rollPitchAt(this.layout, y) }
       : null;
     const same = next === this.cursor
       || (next !== null && this.cursor !== null
@@ -1150,10 +1399,30 @@ export class RollView {
     if (this.clipboard.length) this.schedule();
   }
 
+  /**
+   * Which grid a paste snaps to. ⚠️ **The clipboard's own, not the one the roll is set to**: a
+   * clip of whole-step notes put down on cells of four thirds lands off the step grid, and the
+   * grid then draws them as triplets they never were. Notes all on the step grid paste on it,
+   * notes all on the triplet grid on that, and anything else follows the roll's setting.
+   */
+  private pasteTriplets(): boolean {
+    const at = this.clipboardAt;
+    const all = this.clipboard.flatMap((n) => n.points.map((p) => p.thirds + at));
+    if (all.length === 0) return this.state.triplets;
+    if (all.every((t) => t % 3 === 0)) return false;
+    if (all.every((t) => t % TRIPLET_THIRDS === 0)) return true;
+    return this.state.triplets;
+  }
+
   /** The clipboard as it would land at the pointer, or null when there is nothing to show. */
   private pastePlan(clip: Clip): SongNote[] | null {
     if (!this.cursor || !this.clipboard.length) return null;
-    const { thirds, pitch } = this.cursor;
+    // Shift holds the pitch it was copied at and slides along the time; Alt
+    // holds the time and slides along the pitch.
+    const thirds = this.mods.alt
+      ? this.clipboardAt
+      : snapThirds(this.cursor.raw, this.pasteTriplets(), clip.steps);
+    const pitch = this.mods.shift ? this.clipboardPitch : this.cursor.pitch;
     const dp = pitch - this.clipboardPitch;
     return this.clipboard.map((n) => ({
       id: 0,
@@ -1165,11 +1434,110 @@ export class RollView {
     }));
   }
 
+  // ------------------------------------------------------------------ tools
+
+  get currentTool(): RollTool {
+    return this.tool;
+  }
+
+  setTool(tool: RollTool): void {
+    this.tool = tool;
+    this.canvas.style.cursor = tool === 'select' ? 'default' : tool === 'erase' ? 'not-allowed' : 'crosshair';
+    this.schedule();
+  }
+
+  /** The selection as it stands, as notes with absolute positions. */
+  private snapshotSelection(): SongNote[] {
+    return this.state.selectedPoints().map(({ note, indices }) => ({
+      id: 0,
+      points: indices.map((i) => ({ ...note.points[i] })),
+    }));
+  }
+
+  private showReadout(cx: number, cy: number, text: string): void {
+    this.readout = { cx, cy, text };
+    this.schedule();
+  }
+
+  /** Play the pitch a drag has just reached, not more often than a note a moment. */
+  private auditionDrag(clip: Clip, pitch: number): void {
+    const now = performance.now();
+    if (now - this.lastDragAudition < DRAG_AUDITION_MS) return;
+    this.lastDragAudition = now;
+    this.cb.onAuditionPitch(clip, pitch);
+  }
+
+  /** The erase tool: the point under the pointer goes, or else the note whose line it is on. */
+  private eraseAt(clip: Clip, x: number, y: number): void {
+    const state = this.state;
+    const hitP = this.hitPoint(clip, x, y);
+    if (hitP) {
+      state.edit('notes', () => removePoint(clip, hitP.note, hitP.point), 'erase');
+      state.selectPoints([]);
+      return;
+    }
+    const hitL = this.hitLine(clip, x, y);
+    if (hitL) {
+      state.edit('notes', () => removeNote(clip, hitL.note.id), 'erase');
+      state.selectPoints([]);
+    }
+  }
+
+  // -------------------------------------------------------------------- zoom
+
+  private onWheel = (event: WheelEvent): void => {
+    // Plain wheel scrolls as it always did. Ctrl zooms the time axis and Alt the
+    // pitch axis, never both; a trackpad pinch arrives as Ctrl+wheel and lands
+    // on the first.
+    if (!event.ctrlKey && !event.altKey) return;
+    event.preventDefault();
+    const factor = Math.exp(-(event.deltaY || event.deltaX) * 0.0015);
+    const box = this.canvas.getBoundingClientRect();
+    const pitch = event.altKey;
+    this.zoom(pitch ? 1 : factor, pitch ? factor : 1, event.clientX - box.left, event.clientY - box.top);
+  };
+
+  /**
+   * Scale the grid by `fx` across and `fy` down, keeping what is under
+   * (`ax`, `ay`), in canvas pixels, where it is: the middle of the view when
+   * no anchor is given.
+   */
+  zoom(fx: number, fy: number, ax?: number, ay?: number): void {
+    const was = this.layout;
+    const anchorX = ax ?? was.keys + (this.scroller.clientWidth - was.keys) / 2;
+    const anchorY = ay ?? was.ruler + (this.scroller.clientHeight - was.ruler) / 2;
+    const unitX = (anchorX + this.scroller.scrollLeft - was.keys) / was.stepW;
+    const unitY = (anchorY + this.scroller.scrollTop - was.ruler) / was.rowH;
+    const clamp = (v: number, [lo, hi]: readonly [number, number]) => Math.max(lo, Math.min(hi, v));
+    this.layout = {
+      ...was,
+      stepW: clamp(was.stepW * fx, STEP_W_RANGE),
+      rowH: clamp(was.rowH * fy, ROW_H_RANGE),
+    };
+    // The spacer has to be the new size before the scroll position can land.
+    this.measure();
+    const now = this.layout;
+    this.scroller.scrollLeft = Math.max(0, now.keys + unitX * now.stepW - anchorX);
+    this.scroller.scrollTop = Math.max(0, now.ruler + unitY * now.rowH - anchorY);
+    this.schedule();
+  }
+
+  /** The grid's own size again, as it opens. */
+  resetZoom(): void {
+    this.layout = { ...this.layout, stepW: STEP_W, rowH: ROW_H };
+    this.measure();
+    this.scrollToNotes();
+    this.schedule();
+  }
+
+  // ------------------------------------------------------------ clipboard
+
   /** Forget what was copied, preview and all; false when there was nothing. */
   clearClipboard(): boolean {
     if (!this.clipboard.length) return false;
     this.clipboard = [];
     this.schedule();
+    this.cb.onClipboard?.();
     return true;
   }
 

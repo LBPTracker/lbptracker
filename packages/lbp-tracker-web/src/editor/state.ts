@@ -341,13 +341,19 @@ export class EditorState {
    * and held forever if it was not.
    */
   followPlayhead = true;
+  /** True only while listeners are told about a chip the follow switched to, so a view can glide there instead of jumping. */
+  followedNow = false;
+  /** The chip the playhead is inside, if any: set by the page, which owns the player. */
+  liveChipId: () => number | null = () => null;
 
   /** Select a clip alone, and with it the row it sits on. Any block selected before goes. */
   selectClip(id: number | null): void {
-    // The person is pointing at a chip: stop following until asked again.
-    this.followPlayhead = false;
     const clip = this.clip(id);
     if (clip) this.selection.row = clip.row;
+    // The person is pointing at a chip: stop following until asked again -- unless it is the
+    // chip the playhead is in, which is where following would take the roll anyway.
+    // ⚠️ After the row: `liveChipId` looks on the selected row, and the old one is the wrong one.
+    this.followPlayhead = clip !== undefined && this.liveChipId() === clip.id;
     this.selection.clips = new Set(clip ? [clip.id] : []);
     if (this.selection.clipId === id) {
       this.notify('selection');
@@ -387,7 +393,7 @@ export class EditorState {
    * ⚠️ Not `selectClip`: that collapses the block, and the playhead crosses
    * a chip every few seconds.
    */
-  followClip(id: number): void {
+  followClip(id: number, carry = true): void {
     if (this.selection.clipId === id) return;
     const was = this.selection.clipId;
     const { clips } = this.selection;
@@ -397,7 +403,12 @@ export class EditorState {
     this.selection.clipId = id;
     this.selection.points = new Map();
     this.selection.point = null;
-    this.notify('selection');
+    this.followedNow = carry;
+    try {
+      this.notify('selection');
+    } finally {
+      this.followedNow = false;
+    }
   }
 
   /**
@@ -407,7 +418,6 @@ export class EditorState {
    * where it is.
    */
   selectClips(ids: Iterable<number>, lead?: number): void {
-    this.followPlayhead = false;
     const next = new Set<number>();
     for (const id of ids) if (this.clip(id)) next.add(id);
     this.selection.clips = next;
@@ -420,6 +430,10 @@ export class EditorState {
     }
     const shown = this.clip();
     if (shown) this.selection.row = shown.row;
+    // A chip pointed at (`lead`) that is the one the playhead is in keeps it following, as in
+    // `selectClip`; a block taken any other way -- a rectangle, everything, a copy -- stops it,
+    // or a follow the person switched off would come back on with it.
+    this.followPlayhead = lead !== undefined && shown?.id === lead && this.liveChipId() === lead;
     this.notify('selection');
   }
 

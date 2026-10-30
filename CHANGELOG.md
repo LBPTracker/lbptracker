@@ -4,6 +4,39 @@ What changed for the person using LBP Tracker, newest first. The site shows this
 version number in its status bar, so it is written for them: what they can do now that they could
 not before, never how it was done. No `--` or em dash in here; the site's text does without them.
 
+## 0.2.54 (2026-10-30)
+
+- The piano roll has a toolbar in its title bar. On the left: draw, select and erase tools (also
+  D, V and E), zoom buttons for time and for pitch, the triplet grid (still T), and copy, cut,
+  paste and duplicate. Ctrl+wheel zooms the time, Alt+wheel the pitch, Ctrl+0 goes back to the
+  normal size. The instrument's name sits in the middle.
+- With select, a drag on empty grid draws a rectangle round notes. With erase, clicking or
+  dragging over notes removes them.
+- When the instrument has a scale, the rows it plays are lit and the others darkened, and the
+  line under the grid says which note a dark row really plays as.
+- Dragging a note now shows its note and position beside the pointer, plays each pitch it
+  reaches, and leaves a faint copy where it started.
+- Pasting: hold Shift to keep the notes at the pitch they were copied at, Alt to keep them at
+  their time. Notes on the normal grid now always land on the normal grid, even with the triplet
+  grid on, so they no longer turn into triplets.
+- The bar numbers above the piano roll show the song's bar and the instrument's own bar, and
+  start again at every instrument.
+- Notes of the open instrument that sit on the other grid are drawn half see-through, clearly
+  apart from the other instruments of the row, which stay faint.
+- Following the playhead is smoother: the board and the piano roll slide to the next page
+  instead of jumping, and the roll slides straight on into the next instrument of the row, with
+  only the open one in full colour.
+- Clicking the instrument the playhead is in keeps the follow on. Turning the follow on brings
+  the roll to the playhead at once, even when the song is stopped. Stop with the follow on goes
+  back to the row's first instrument.
+- Opening an instrument puts its notes in view, and only Find the notes moves the view up and
+  down after that.
+- New undo and redo buttons in the top bar, right of the volume. The metronome has a new icon.
+- New song is now in the Open window. The duplicate and remove buttons left the instrument panel:
+  Ctrl+D and Delete still do both.
+- The footer links to the terms of service, the privacy policy and the cookie policy. The site
+  collects nothing about you and sets no cookies.
+
 ## 0.2.53 (2026-10-29)
 
 - In the piano roll, Esc now forgets the notes you copied: the see-through preview goes away and

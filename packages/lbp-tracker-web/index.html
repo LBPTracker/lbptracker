@@ -61,13 +61,17 @@
     <button id="play" type="button" aria-label="Play" disabled>&#9654;</button>
     <button id="stop" type="button" aria-label="Stop, and back to the start" title="Stop, and back to the start" disabled>&#9632;</button>
     <button id="loop" type="button" aria-label="Loop the song" title="Loop the song" aria-pressed="false">&#8635;</button>
-    <button id="metronome" type="button" aria-label="Metronome" title="Click on every beat while the song plays" aria-pressed="false">&#9833;</button>
+    <button id="metronome" type="button" aria-label="Metronome" title="Click on every beat while the song plays" aria-pressed="false"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path d="M5.2 1.5h5.6l2.7 13H2.5z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 11.5 11 3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><rect x="9.3" y="5.2" width="2.6" height="1.9" rx=".4" transform="rotate(20 10.6 6.1)" fill="currentColor"/></svg></button>
     <span id="clock">0:00 / 0:00</span>
     <label for="tempoBox" class="hintline" style="margin:0">BPM</label>
     <input id="tempoBox" type="number" min="20" max="400" step="1" value="240" aria-label="Tempo" autocomplete="off">
     <div class="vol">
       <canvas id="vu" width="120" height="10" aria-label="Output level, left and right"></canvas>
       <input id="vol" type="range" min="0" max="1" step="0.01" value="1" aria-label="Volume" autocomplete="off">
+    </div>
+    <div class="seg" role="group" aria-label="History">
+      <button id="undo" type="button" aria-label="Undo" title="Undo (Ctrl+Z)" disabled><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 3L2.5 6l3 3"/><path d="M2.5 6h6a4 4 0 010 8H6"/></svg></button>
+      <button id="redo" type="button" aria-label="Redo" title="Redo (Ctrl+Y)" disabled><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 3l3 3-3 3"/><path d="M13.5 6h-6a4 4 0 000 8H10"/></svg></button>
     </div>
   </div>
   <span class="spacer"></span>
@@ -76,10 +80,9 @@
     <span id="songName">untitled</span>
     <span id="songAuthor" hidden></span>
   </span>
-  <button id="newSong" type="button">new</button>
   <button id="openToggle" type="button">open</button>
   <button id="save" type="button" class="primary">save</button>
-  <button type="button" class="help-btn" data-help="app" title="Help" aria-label="Help">?</button>
+  <button type="button" class="bar-help" data-help="app" title="Help" aria-label="Help">?</button>
 </header>
 
 <dialog id="helpDialog" class="picker-dialog help-dialog">
@@ -103,6 +106,7 @@
     <div id="open"></div>
     <div id="seq" style="margin-top:.8rem"></div>
     <div class="row picker-foot">
+      <button id="fileNew" type="button" title="Start from an empty song">new song</button>
       <button id="fileDemo" type="button" title="A song from the community, fetched from the public archive: every one plays once before any plays again">play a demo song</button>
       <span class="spacer"></span>
       <button id="fileClose" type="button">close</button>
@@ -161,16 +165,39 @@
     <div id="chipPanel" class="chip-panel" hidden>
       <div id="panelGrip" class="panel-grip" title="Drag to resize"></div>
       <div class="panel-head">
+        <div class="roll-tools" role="toolbar" aria-label="Note grid tools">
+          <div class="seg" role="group" aria-label="Tool">
+            <button id="toolDraw" type="button" aria-pressed="true" title="Draw (D): click an empty cell for a note, drag for its end" aria-label="Draw"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 13.5l.7-3L11 2.7a1.4 1.4 0 012 2L5.5 12.8z"/><path d="M9.8 3.9l2.3 2.3"/></svg></button>
+            <button id="toolSelect" type="button" aria-pressed="false" title="Select (V): drag a rectangle round points. Shift does the same under the draw tool" aria-label="Select"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1" stroke-dasharray="2.2 2"/></svg></button>
+            <button id="toolErase" type="button" aria-pressed="false" title="Erase (E): click or drag over points and lines to remove them" aria-label="Erase"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 13.5h7.5"/><path d="M3.2 10.3l5.6-6.6a1.2 1.2 0 011.7-.1l2.4 2a1.2 1.2 0 01.1 1.7L8.4 13.5H5.6z"/><path d="M5.2 8l4.2 3.6"/></svg></button>
+          </div>
+          <span class="sep"></span>
+          <div class="seg" role="group" aria-label="Time zoom">
+            <button id="zoomTimeOut" type="button" aria-label="Zoom time out" title="Zoom the time out (Ctrl+wheel)">&harr;&minus;</button>
+            <button id="zoomTimeIn" type="button" aria-label="Zoom time in" title="Zoom the time in (Ctrl+wheel)">&harr;+</button>
+          </div>
+          <div class="seg" role="group" aria-label="Pitch zoom">
+            <button id="zoomPitchOut" type="button" aria-label="Zoom pitch out" title="Zoom the pitch out (Alt+wheel)">&varr;&minus;</button>
+            <button id="zoomPitchIn" type="button" aria-label="Zoom pitch in" title="Zoom the pitch in (Alt+wheel)">&varr;+</button>
+          </div>
+          <span class="sep"></span>
+          <button id="triplets" type="button" aria-pressed="false" aria-label="Triplet grid" title="Triplet grid (T): three cells to the beat instead of four"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 6.5V3.5h12v3"/><text x="8" y="14" font-size="9.5" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">3</text></svg></button>
+          <span class="sep"></span>
+          <div class="seg" role="group" aria-label="Clipboard">
+            <button id="editCopy" type="button" title="Copy (Ctrl+C)" aria-label="Copy" disabled><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.2"/><path d="M10.5 3.5v-.3A1.2 1.2 0 009.3 2H3.7a1.2 1.2 0 00-1.2 1.2v5.6a1.2 1.2 0 001.2 1.2h.3"/></svg></button>
+            <button id="editCut" type="button" title="Cut (Ctrl+X)" aria-label="Cut" disabled><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="4.5" cy="11.8" r="1.8"/><circle cx="11.5" cy="11.8" r="1.8"/><path d="M5.7 10.4L12 2.5M10.3 10.4L4 2.5"/></svg></button>
+            <button id="editPaste" type="button" title="Paste at the playhead, or after the selection (Ctrl+V)" aria-label="Paste" disabled><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3.5" width="10" height="10.5" rx="1.2"/><path d="M6 3.5V2.6A.6.6 0 016.6 2h2.8a.6.6 0 01.6.6v.9"/><path d="M5.5 8h5M5.5 10.5h5"/></svg></button>
+            <button id="editDuplicate" type="button" title="Duplicate one step further on (Ctrl+D)" aria-label="Duplicate" disabled><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4.5" width="6" height="7" rx="1"/><rect x="9" y="4.5" width="5" height="7" rx="1" stroke-dasharray="2 1.6"/></svg></button>
+          </div>
+        </div>
         <span class="title" id="rollTitle">no instrument selected</span>
-        <span class="spacer"></span>
-        <label class="check">
-          <input id="triplets" type="checkbox" autocomplete="off"> triplet grid
-        </label>
-        <button id="followPlayhead" type="button" aria-pressed="true" title="Show whichever instrument the playhead is inside, on this row. Clicking an instrument turns it off">&#9678; follow</button>
-        <button id="loopChip" type="button" aria-pressed="false" title="Play this instrument's bars round and round, the other rows turned down">&#8635; loop this chip</button>
-        <button id="fitNotes" type="button" title="Scroll the grid to the notes">find the notes</button>
-        <button type="button" class="help-btn" data-help="notes" title="Help" aria-label="Help">?</button>
-        <button id="panelClose" type="button" aria-label="Close the panel" title="Close (Esc)">&times;</button>
+        <div class="head-right">
+          <button id="followPlayhead" type="button" aria-pressed="true" title="Show whichever instrument the playhead is inside, on this row. Clicking an instrument turns it off">&#9678; follow</button>
+          <button id="loopChip" type="button" aria-pressed="false" title="Play this instrument's bars round and round, the other rows turned down">&#8635; loop this chip</button>
+          <button id="fitNotes" type="button" title="Scroll the grid to the notes">find the notes</button>
+          <button type="button" class="bar-help" data-help="notes" title="Help" aria-label="Help">?</button>
+          <button id="panelClose" type="button" aria-label="Close the panel" title="Close (Esc)">&times;</button>
+        </div>
       </div>
       <div class="panel-body">
         <div class="panel-roll">
@@ -432,7 +459,7 @@
 </main>
 <footer class="daw-foot">
   <div id="status">start a new song, or open a level</div>
-  <span class="credit"><b>LBP Tracker</b> <span class="v" id="version" role="button" tabindex="0" data-help="changelog" title="What changed"></span> · by <b>sgdc3</b> · MIT licensed</span>
+  <span class="credit"><b>LBP Tracker</b> <span class="v" id="version" role="button" tabindex="0" data-help="changelog" title="What changed"></span> · by <a href="https://sgdc3.it" target="_blank" rel="noreferrer noopener"><b>sgdc3</b></a> · <a role="button" tabindex="0" data-help="terms">terms</a> · <a role="button" tabindex="0" data-help="privacy">privacy</a> · <a role="button" tabindex="0" data-help="cookies">cookies</a></span>
   <span id="load">idle</span>
 </footer>
 <script type="module" src="./src/daw.ts"></script>

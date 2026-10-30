@@ -27,7 +27,7 @@ const props = defineProps<{
   /** Prices for the sound picker, given the chip whose sound is changing. */
   costs?: (clipId: number) => ((guid: number) => { text: string; over: boolean }) | undefined;
 }>();
-const emit = defineEmits<{ duplicate: []; remove: []; status: [text: string] }>();
+const emit = defineEmits<{ status: [text: string] }>();
 
 // Every computed below touches `version` first so that it re-runs on a change.
 // ⚠️ `clip` is a COPY: the song is a plain object and Vue re-runs a computed's
@@ -239,9 +239,6 @@ watch(() => point.value && `${point.value.note.id}:${point.value.index}`, (now) 
         </div>
         <div class="row" style="margin-top:.6rem">
           <span class="hintline" style="margin:0">bar {{ barOfCell(clip.cell) }}, row {{ clip.row }} · {{ clip.notes.length }} note{{ clip.notes.length === 1 ? '' : 's' }}</span>
-          <span class="spacer"></span>
-          <button type="button" @click="emit('duplicate')" title="Ctrl+D">duplicate</button>
-          <button type="button" @click="emit('remove')" title="Delete">remove</button>
         </div>
       </template>
       <p v-else class="hintline">Select an instrument on the board.</p>

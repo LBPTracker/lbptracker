@@ -17,7 +17,7 @@ import {
 import { confirmDialog, noticeDialog } from '../confirm.ts';
 import { focusOwnsKeys, hasTextSelection } from '../keys.ts';
 import { BoardView } from '../editor/board.ts';
-import { RollView } from '../editor/roll.ts';
+import { RollView, type RollTool } from '../editor/roll.ts';
 import { STEPS_PER_BAR, barOfCell } from '../editor/geometry.ts';
 import { pickInstrument } from '../editor/instrument-picker.ts';
 import Inspector from '../editor/Inspector.vue';
@@ -40,7 +40,7 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
   const rollScroller = $<HTMLDivElement>('rollScroller');
   const rollTitle = $<HTMLSpanElement>('rollTitle');
   const hoverLine = $<HTMLDivElement>('hover');
-  const tripletsBox = $<HTMLInputElement>('triplets');
+  const tripletsButton = $<HTMLButtonElement>('triplets');
   const view = $<HTMLDivElement>('view-arrange');
   const panel = $<HTMLDivElement>('chipPanel');
   const grip = $<HTMLDivElement>('panelGrip');
@@ -135,6 +135,8 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
       },
       onAudition: auditionNote,
       onAuditionPitch: auditionPitch,
+      // Defined further down; only ever called from a person's copy, cut or Esc.
+      onClipboard: () => paintEditButtons(),
       onHover: (text) => {
         hoverLine.textContent = text;
       },
@@ -295,9 +297,6 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
       state,
       instruments: instruments.value,
       costs: pickerCosts,
-      // The panel's buttons are for the chip it shows, whatever the board has selected.
-      onDuplicate: () => { const c = state.clip(); if (c) duplicateChips([c]); },
-      onRemove: () => { const c = state.clip(); if (c) removeChips([c]); },
       onStatus: (text: string) => setStatus(text, true),
     }),
   }).mount('#inspector');
@@ -353,17 +352,50 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
    * that chip: the click cleared the flag and the next frame put it back.
    */
   let seenSelection: number | null = null;
-  /** The chip the playhead is inside on the selected row, or none. */
+  /** The chip the playhead is inside on the selected row, or none; with no plan built yet the playhead is at the start. */
   const liveChip = (): Clip | undefined =>
-    (player.hasPlan ? chipUnder(player.stepAt(player.position())) : undefined);
+    chipUnder(player.hasPlan ? player.stepAt(player.position()) : 0);
+  state.liveChipId = () => liveChip()?.id ?? null;
   followButton.addEventListener('click', () => {
     state.followPlayhead = !state.followPlayhead;
+    if (state.followPlayhead) {
+      // Following again is following from here: both views go back to the playhead, whatever
+      // the person scrolled to, and the chip is opened on the playhead, not where the old
+      // chip's view was (that carry-over is for the playhead crossing into the next chip).
+      board.followAgain();
+      roll.followAgain();
+    }
+    const was = state.selection.clipId;
     const under = state.followPlayhead ? liveChip() : undefined;
-    if (under) state.followClip(under.id);
+    if (under) state.followClip(under.id, false);
+    if (state.followPlayhead && player.hasPlan && !player.playing) {
+      // Stopped, no frame will scroll them: bring the playhead into view now.
+      const step = player.stepAt(player.position());
+      board.followStep(step);
+      const clip = state.clip();
+      if (clip && clip.id === was) roll.followStep(step - clip.cell * STEPS_PER_CELL);
+    }
     showFollow();
   });
   state.onChange(showFollow);
   showFollow();
+  // ⚠️ Selecting the chip the playhead is in is following again, and it is decided at the
+  // selection, playing or not: a stopped playhead sits at its position (0 after a stop), so
+  // clicking the chip in the first bar follows at once. Left to the next frame, the click and
+  // the Play press were two moments and the follow came on at the second.
+  state.onChange(() => {
+    const id = state.selection.clipId;
+    if (id === seenSelection) return;
+    seenSelection = id;
+    // The roll's playhead is in the clip's own steps: a new clip moves it even with the song
+    // stopped, when no frame comes along to do it.
+    const shown = state.clip();
+    roll.setPlayhead(shown && player.hasPlan ? player.stepAt(player.position()) - shown.cell * STEPS_PER_CELL : null);
+    if (id !== null && liveChip()?.id === id) {
+      state.followPlayhead = true;
+      showFollow();
+    }
+  });
 
   function paint(): void {
     if (!player.hasPlan) {
@@ -428,6 +460,7 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
   onPlayer({
     tick: () => { paint(); startSmoothing(); },
     playing: (on) => {
+      roll.playing = on;
       // Play pressed: the view follows again from wherever it was left.
       if (on) {
         board.followAgain();
@@ -441,11 +474,82 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
     if (kind === 'settings') paint();
   });
 
-  tripletsBox.addEventListener('change', () => {
-    state.triplets = tripletsBox.checked;
+  tripletsButton.addEventListener('click', () => {
+    state.triplets = !state.triplets;
+    tripletsButton.setAttribute('aria-pressed', String(state.triplets));
     state.touch('selection');
   });
   $('fitNotes').addEventListener('click', () => roll.scrollToNotes());
+
+  // ----------------------------------------------------- the grid's toolbar
+  // Tools, zoom, and the two commands that want a button: the keys are in
+  // each one's tooltip and in the help.
+  const toolButtons: Record<RollTool, HTMLButtonElement> = {
+    draw: $<HTMLButtonElement>('toolDraw'),
+    select: $<HTMLButtonElement>('toolSelect'),
+    erase: $<HTMLButtonElement>('toolErase'),
+  };
+  const setTool = (tool: RollTool) => {
+    roll.setTool(tool);
+    for (const [name, button] of Object.entries(toolButtons)) button.setAttribute('aria-pressed', String(name === tool));
+  };
+  for (const [name, button] of Object.entries(toolButtons)) {
+    button.addEventListener('click', () => {
+      setTool(name as RollTool);
+      rollScroller.focus({ preventScroll: true });
+    });
+  }
+  $('zoomTimeIn').addEventListener('click', () => roll.zoom(1.25, 1));
+  $('zoomTimeOut').addEventListener('click', () => roll.zoom(0.8, 1));
+  $('zoomPitchIn').addEventListener('click', () => roll.zoom(1, 1.25));
+  $('zoomPitchOut').addEventListener('click', () => roll.zoom(1, 0.8));
+
+  // The grid's clipboard buttons: the keys' own commands.
+  /** Ctrl+V's choice with the pointer off the grid: the playhead when it is in the chip, else after the selection. */
+  const pasteNear = () => {
+    const clip = state.clip();
+    let at: number | undefined;
+    if (clip && player.hasPlan) {
+      const inClip = player.stepAt(player.position()) - clip.cell * STEPS_PER_CELL;
+      if (inClip >= 0 && inClip < clip.steps) at = Math.round(inClip) * 3;
+    }
+    roll.paste(at);
+  };
+  const editButtons: Array<[string, () => void, 'selection' | 'clipboard']> = [
+    ['editCopy', () => roll.copy(), 'selection'],
+    ['editCut', () => roll.cut(), 'selection'],
+    ['editPaste', pasteNear, 'clipboard'],
+    ['editDuplicate', () => roll.duplicateSelection(), 'selection'],
+  ];
+  function paintEditButtons(): void {
+    const hasClip = state.clip() !== undefined;
+    for (const [id, , needs] of editButtons) {
+      $<HTMLButtonElement>(id).disabled = !hasClip
+        || (needs === 'selection' && state.selectedCount === 0)
+        || (needs === 'clipboard' && !roll.hasClipboard);
+    }
+  }
+  for (const [id, run] of editButtons) {
+    $(id).addEventListener('click', () => {
+      run();
+      paintEditButtons();
+      rollScroller.focus({ preventScroll: true });
+    });
+  }
+  state.onChange(paintEditButtons);
+  paintEditButtons();
+
+  // Undo and redo: one history for the board and the grid alike.
+  const undoButton = $<HTMLButtonElement>('undo');
+  const redoButton = $<HTMLButtonElement>('redo');
+  undoButton.addEventListener('click', () => state.undo());
+  redoButton.addEventListener('click', () => state.redo());
+  const paintHistory = () => {
+    undoButton.disabled = !state.canUndo;
+    redoButton.disabled = !state.canRedo;
+  };
+  state.onChange(paintHistory);
+  paintHistory();
 
   // ------------------------------------------------------------ chip loop
   // The selected chip's bars round and round, its row at full volume and
@@ -500,6 +604,22 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
     else aimChipLoop(clip, clip.id !== loopingClip);
   });
   window.addEventListener('lbp:stop', () => dropChipLoop());
+  // Stopped, and so back at the start: a roll that follows goes back to the row's first chip,
+  // and both views to the playhead. `lbp:stop` is not this: closing the panel sends it too.
+  window.addEventListener('lbp:stopped', () => {
+    if (!state.followPlayhead) return;
+    board.followAgain();
+    roll.followAgain();
+    const first = state.firstClipOnRow(state.selection.row);
+    const moved = first !== undefined && first.id !== state.selection.clipId;
+    if (moved) state.followClip(first.id, false);
+    paint();
+    const step = player.hasPlan ? player.stepAt(player.position()) : 0;
+    board.followStep(step);
+    // A clip just opened places its own view (the roll's clip change); the same clip is scrolled here.
+    const clip = state.clip();
+    if (clip && !moved) roll.followStep(step - clip.cell * STEPS_PER_CELL);
+  });
 
   // ---------------------------------------------------------- loop region
   // Dragged out on the board's ruler (`BoardView`), kept on the state, and the
@@ -582,8 +702,7 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
         return;
       case 'KeyT':
         if (ctrl) return;
-        tripletsBox.checked = !tripletsBox.checked;
-        tripletsBox.dispatchEvent(new Event('change'));
+        tripletsButton.click();
         return;
       // ⚠️ The letters live here rather than in the shell: the Keyboard view
       // plays notes on `Z S X D C V G B H N J M , L .`, and a global binding
@@ -591,6 +710,20 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
       case 'KeyL':
         if (ctrl) return;
         state.edit('selection', (s) => { s.loop = !s.loop; });
+        return;
+      // The grid's tools: only when the grid has the keys, and
+      // never with Ctrl, which `Ctrl+D` and `Ctrl+V` below still own.
+      case 'KeyD':
+        if (ctrl || toBoard) break;
+        setTool('draw');
+        return;
+      case 'KeyV':
+        if (ctrl || toBoard) break;
+        setTool('select');
+        return;
+      case 'KeyE':
+        if (ctrl || toBoard) break;
+        setTool('erase');
         return;
       case 'KeyM':
         if (ctrl) return;
@@ -613,6 +746,12 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
       case 'KeyY':
         event.preventDefault();
         state.redo();
+        break;
+      case 'Digit0':
+        // The grid's normal size; the browser's own zoom reset stays for the board.
+        if (toBoard) break;
+        event.preventDefault();
+        roll.resetZoom();
         break;
       // The clipboard keys go to the board when it has them (`toBoard`), and
       // to the roll otherwise -- unless the roll has nothing for them: no
@@ -646,13 +785,7 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
         // The pointer over the grid wins: the paste preview follows it, and
         // the notes land where they are drawn.
         if (roll.pasteAtCursor()) break;
-        const clip = state.clip();
-        let at: number | undefined;
-        if (clip && player.hasPlan) {
-          const inClip = player.stepAt(player.position()) - clip.cell * STEPS_PER_CELL;
-          if (inClip >= 0 && inClip < clip.steps) at = Math.round(inClip) * 3;
-        }
-        roll.paste(at);
+        pasteNear();
         break;
       }
       case 'KeyD':

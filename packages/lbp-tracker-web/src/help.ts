@@ -27,7 +27,10 @@ export type HelpTopic =
   | 'als'
   | 'plan'
   | 'import'
-  | 'keyboard';
+  | 'keyboard'
+  | 'terms'
+  | 'privacy'
+  | 'cookies';
 
 interface Topic {
   readonly title: string;
@@ -98,8 +101,8 @@ export const HELP: Readonly<Record<HelpTopic, Topic>> = {
         'on screen or on a headset: play, pause, stop, and the skip keys, which go to the start and the end of the ' +
         'song. The song’s name shows there while it plays.') +
       h('Files') +
-      p('<strong>new</strong> starts an empty song, <strong>open</strong> takes a level, a backup, a zip or a song file, ' +
-        'and <strong>save</strong> writes the song as a file this site can open again. A dot before the name means ' +
+      p('<strong>open</strong> takes a level, a backup, a zip or a song file, and its <em>new song</em> starts an empty one; ' +
+        '<strong>save</strong> writes the song as a file this site can open again. A dot before the name means ' +
         'there are unsaved changes; the name itself is set under Song/Mixer. Nothing you open leaves your computer.'),
   },
   open: {
@@ -200,10 +203,21 @@ export const HELP: Readonly<Record<HelpTopic, Topic>> = {
 
         '<kbd>Ctrl+Z</kbd>/<kbd>Y</kbd> undo and redo. With something copied, a translucent preview follows the pointer over the grid and Ctrl+V puts it down there. ' +
 
+        'Holding <kbd>Shift</kbd> keeps the preview at the pitch it was copied at, <kbd>Alt</kbd> at its time. ' +
+
         'With the pointer elsewhere a paste lands at the playhead when it is inside the chip, otherwise a step after the selection, or back where it was cut from when nothing is selected.') +
 
-      p('<kbd>T</kbd> switches to the triplet grid, three cells to the beat instead of four; notes on ' +
-        'the other grid are drawn faded. The keyboard on the left plays the instrument.') +
+      p('The bar above the grid picks the tool: <strong>draw</strong> (<kbd>D</kbd>), <strong>select</strong> (<kbd>V</kbd>), which ' +
+        'drags a rectangle on empty grid, and <strong>erase</strong> (<kbd>E</kbd>), which removes what the pointer crosses. ' +
+        '<kbd>Ctrl</kbd>+wheel zooms the time and <kbd>Alt</kbd>+wheel the pitch, each with its own pair of buttons, and ' +
+        '<kbd>Ctrl+0</kbd> goes back to the normal size. ' +
+        'When the instrument has a scale, the rows it uses are ' +
+        'lit and the others darkened: a note on a dark row plays as the scale tone it is snapped to, and the line under the grid says which. Dragging shows the note and position ' +
+        'beside the pointer, sounds each pitch it reaches, and leaves the points\' old place faintly drawn.') +
+
+      p('<kbd>T</kbd> switches to the triplet grid, three cells to the beat instead of four. ' +
+        'Notes on the other grid are drawn faded, and so are the row&rsquo;s other chips around the open instrument. ' +
+        'The keyboard on the left plays the instrument.') +
       h('The instrument') +
       p('<strong>grid</strong> is how long the instrument is, in bars. <strong>key</strong> and <strong>scale</strong> ' +
         'transpose and fold its notes the way the game does. <strong>level</strong> and <strong>pan</strong> are its own ' +
@@ -395,6 +409,105 @@ export const HELP: Readonly<Record<HelpTopic, Topic>> = {
       p('Three buttons play set sequences: every sample of the instrument at its own note, a scale, and a chromatic ' +
         'run. <strong>Note length</strong> is how long those hold each note. The engine and sampler choices play the ' +
         'same thing through different resamplers, to compare them by ear.'),
+  },
+  terms: {
+    title: 'Terms of service',
+    body:
+      p('<em>Last updated 30 October 2026.</em>') +
+      p('These terms cover your use of LBP Tracker, the website at lbptracker.sgdc3.it, run by sgdc3 (&ldquo;I&rdquo;). ' +
+        'By using the site you agree to them. If you do not, please do not use it.') +
+      h('What this is') +
+      p('LBP Tracker is a free, open-source editor and player for the music sequencer of LittleBigPlanet&nbsp;3. ' +
+        'It runs in your browser. It is a fan project, with no connection to Sony Interactive Entertainment or ' +
+        'Media Molecule, and not endorsed by either. LittleBigPlanet is a trademark of Sony Interactive Entertainment.') +
+      h('Your files and your work') +
+      p('Songs, levels and backups you open stay on your computer; the site does not receive them. ' +
+        'You keep whatever rights you have in what you make. You are responsible for having the right to use the files ' +
+        'you open, and for what you do with the songs, WAV files, MIDI files and plans you export. Levels from the ' +
+        'online archive and from Bonsai are their creators&rsquo; work: they are fetched for you to listen to and edit ' +
+        'on your own machine, not republished by this site.') +
+      h('Game material') +
+      p('The instrument sounds and the instrument pictures come from the game and belong to their rights holders. ' +
+        'They are here so a song can be heard as the game plays it, and for no other purpose. They are not covered by ' +
+        'the software licence, and you may not use them outside this site in ways the rights holders have not allowed. ' +
+        'If you hold rights in something shown here and want it changed or removed, tell me (see Contact) and I will look at it promptly.') +
+      h('The software licence') +
+      p('The source code is published under the MIT licence, which applies to the code only and is in the project&rsquo;s ' +
+        'repository. These terms are about using the website, not about the code you may copy.') +
+      h('Use it fairly') +
+      p('Do not use the site to break the law, to attack it or other people&rsquo;s systems, or to put an unreasonable ' +
+        'load on it with automated requests. I may change or remove features, or block abuse, at any time.') +
+      h('No warranty') +
+      p('The site is provided &ldquo;as is&rdquo;, free of charge, with no promise that it is correct, always available, ' +
+        'or fit for any purpose. It aims to reproduce the game&rsquo;s sequencer faithfully but may differ from it, and ' +
+        'a plan exported from here may not behave in the game as expected. Keep your own backups: a song that is not ' +
+        'saved is lost when the page closes.') +
+      h('Limit of liability') +
+      p('As far as the law allows, I am not liable for any loss or damage arising from your use of the site, including ' +
+        'lost work or a level damaged by importing an exported plan. Nothing here limits liability that cannot be ' +
+        'limited by law, including your rights as a consumer where they apply.') +
+      h('Changes and law') +
+      p('I may update these terms; the date above says when. Using the site after a change means you accept it. ' +
+        'The terms are governed by Italian law, without removing any protection that mandatory law of your own country gives you.') +
+      h('Contact') +
+      p('Use the contact details on <a href="https://sgdc3.it" target="_blank" rel="noreferrer noopener">sgdc3.it</a>, or the <a href="https://github.com/LBPTracker/lbptracker/issues" target="_blank" rel="noreferrer noopener">issues page</a> of the project.'),
+  },
+  privacy: {
+    title: 'Privacy policy',
+    body:
+      p('<em>Last updated 30 October 2026.</em>') +
+      p('The short version: <strong>the site does not collect your personal data.</strong> It has no accounts, no ' +
+        'analytics, no advertising and no tracking, and the songs and levels you open are not uploaded.') +
+      h('Who is responsible') +
+      p('sgdc3, an individual, runs lbptracker.sgdc3.it. Contact: the contact details on <a href="https://sgdc3.it" target="_blank" rel="noreferrer noopener">sgdc3.it</a>, or the <a href="https://github.com/LBPTracker/lbptracker/issues" target="_blank" rel="noreferrer noopener">issues page</a> of the project.') +
+      h('What stays on your computer') +
+      p('Everything you open or make is processed inside your browser. The site keeps a few settings in your browser&rsquo;s ' +
+        'own storage so they survive a reload: the height of the note panel, the board zoom and whether the metronome is on. ' +
+        'They never leave your device. The <a role="button" tabindex="0" data-help="cookies">cookie policy</a> lists them.') +
+      h('What the hosting provider sees') +
+      p('The site is served by Cloudflare. As with any website, the host receives the technical details of each request: ' +
+        'your IP address, the address asked for, the time, and your browser&rsquo;s type. Cloudflare handles this ' +
+        'under its own privacy policy, to deliver the site and keep it secure. I do not use it to identify or follow you.') +
+      h('When you ask for something from another site') +
+      p('Opening a level from the <strong>online archive</strong> asks archive.org for it, and opening one from ' +
+        '<strong>Bonsai</strong> asks lbp.lbpbonsai.com. Your browser contacts them directly, so they see your IP address ' +
+        'and which level you asked for, under their own policies. This happens only when you choose to open such a level. ' +
+        'Nothing is sent to them otherwise.') +
+      h('Your device&rsquo;s features') +
+      p('If you use a MIDI controller, the browser asks your permission first, and what it sends is used on your device ' +
+        'only. Audio is played through your browser; the site does not record anything.') +
+      h('Your rights') +
+      p('Because the site holds no personal data about you, there is normally nothing to access, correct or delete. ' +
+        'If you are in the European Economic Area or the UK, you have rights over personal data, including access, ' +
+        'correction, erasure and objection, and the right to complain to your data protection authority ' +
+        '(in Italy, the Garante per la protezione dei dati personali). Write to me and I will answer.') +
+      h('Children') +
+      p('The site is not aimed at children and asks nobody for personal details.') +
+      h('Changes') +
+      p('If this ever changes, for instance if analytics were added, this page will say so before it happens. The date above says when it was last updated.'),
+  },
+  cookies: {
+    title: 'Cookie policy',
+    body:
+      p('<em>Last updated 30 October 2026.</em>') +
+      p('<strong>The site does not set any cookies.</strong> It has no advertising, analytics or tracking cookies, so there is ' +
+        'no banner to accept or refuse.') +
+      h('What it does store in your browser') +
+      p('To work and to remember your layout, the site uses your browser&rsquo;s own storage. None of it is sent to a server and ' +
+        'none of it identifies you:') +
+      '<ul>' +
+      '<li><strong>Local storage</strong>: the height of the note panel, the board zoom and whether the metronome is on.</li>' +
+      '<li><strong>Cache storage</strong>: a copy of the site&rsquo;s files and of the sounds it fetched, kept by the site&rsquo;s ' +
+      'service worker so the page can open without a network. It is replaced on every visit that has a connection.</li>' +
+      '</ul>' +
+      h('Controlling it') +
+      p('You can clear all of this in your browser&rsquo;s settings (look for site data or storage). The site then starts from its ' +
+        'defaults. Blocking it works too; the site still runs, but forgets your settings and cannot open offline.') +
+      h('Other sites') +
+      p('Levels from the online archive or Bonsai are fetched from those sites only when you ask, and they have their own ' +
+        'policies. See the <a role="button" tabindex="0" data-help="privacy">privacy policy</a>.') +
+      h('If this changes') +
+      p('If cookies are ever added, this page will list them and ask first where the law requires it.'),
   },
 };
 
