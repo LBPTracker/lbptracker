@@ -16,9 +16,11 @@
 import { createApp, h, watch } from 'vue';
 import Checks from '../controls/Checks.vue';
 import Choice from '../controls/Choice.vue';
+import Fader from '../controls/Fader.vue';
 import { render } from '../controls/render.ts';
 import { CONTROLS } from '../controls/kit.ts';
-import { VOICES_UNLIMITED, VOICE_POOL_SIZE } from '@lbptracker/lib/polyphony.ts';
+import { POOL_UNLIMITED_AT } from '../controls/engine.ts';
+import { VOICES_UNLIMITED } from '@lbptracker/lib/polyphony.ts';
 import { reverbSummary } from '@lbptracker/lib/audio/effects.ts';
 import { audibleSequencer, clock, setError, state } from './session.ts';
 
@@ -27,7 +29,6 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 export function mountRender(opts: { isActive: () => boolean }): void {
   for (const [at, group] of [
     ['#rd-opt-range', 'range'],
-    ['#rd-opt-pool', 'pool'],
     ['#rd-opt-stage', 'stage'],
     ['#rd-opt-clip', 'clip'],
   ] as const) {
@@ -38,10 +39,12 @@ export function mountRender(opts: { isActive: () => boolean }): void {
   const masterApp = createApp({ render: () => h(Choice, { group: 'master' }) });
   masterApp.provide(CONTROLS, render);
   masterApp.mount('#rd-opt-master');
+  const voicesApp = createApp({ render: () => h(Fader, { id: 'renderVoices' }) });
+  voicesApp.provide(CONTROLS, render);
+  voicesApp.mount('#rd-voices');
   const rangeFields = $<HTMLSpanElement>('rd-rangeFields');
   const fromInput = $<HTMLInputElement>('rd-from');
   const toInput = $<HTMLInputElement>('rd-to');
-  const voicesInput = $<HTMLInputElement>('rd-voices');
   const goButton = $<HTMLButtonElement>('rd-go');
   const saveButton = $<HTMLButtonElement>('rd-save');
   const statusLine = $<HTMLDivElement>('rd-status');
@@ -56,21 +59,11 @@ export function mountRender(opts: { isActive: () => boolean }): void {
   const qualitySelect = $<HTMLSelectElement>('rd-quality');
   const qualityRow = $<HTMLDivElement>('rd-qualityRow');
 
-  voicesInput.value = String(VOICE_POOL_SIZE);
-
-  const readVoices = (): number | null => {
-    if (render.on('optNoCap')) return VOICES_UNLIMITED;
-    const text = voicesInput.value.trim();
-    if (text === '') return VOICE_POOL_SIZE;
-    const value = Number(text);
-    return Number.isInteger(value) && value > 0 ? value : null;
+  /** The slider's last step is no cap at all, as on the engine card. */
+  const readVoices = (): number => {
+    const size = render.raw('renderVoices');
+    return size >= POOL_UNLIMITED_AT ? VOICES_UNLIMITED : size;
   };
-  const syncVoiceCap = () => {
-    voicesInput.disabled = render.on('optNoCap');
-    if (render.on('optNoCap')) voicesInput.classList.remove('bad');
-  };
-  watch(() => render.on('optNoCap'), syncVoiceCap);
-  syncVoiceCap();
 
   const worker = new Worker(new URL('../render-worker.ts', import.meta.url), { type: 'module' });
 
@@ -442,12 +435,6 @@ export function mountRender(opts: { isActive: () => boolean }): void {
       return;
     }
     const voiceLimit = readVoices();
-    if (voiceLimit === null) {
-      voicesInput.classList.add('bad');
-      goButton.disabled = false;
-      setStatus('the voice pool is a whole number, or "off"', true);
-      return;
-    }
     resetResults();
     setBar(0);
     worker.postMessage({
