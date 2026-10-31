@@ -15,6 +15,7 @@ import {
   detailFrom,
   fold,
   makerOf,
+  openTarget,
   rowsFrom,
   searchSongs,
   shardFile,
@@ -111,6 +112,12 @@ test('a detail entry, with and without something to open', () => {
   assert.equal(detail.levels[0].origin, true);
   assert.equal(detail.levels[1].origin, false);
   assert.equal(detail.levels[1].target, undefined, 'a hash that is not one is not opened');
+  assert.deepEqual(openTarget(detail), { target: { sha1: sha, uid: 32211 }, original: true },
+    'the origin level first, though the main variant is elsewhere');
+  const unopenable = { ...detail, levels: [{ ...detail.levels[0], target: undefined }, detail.levels[1]] };
+  assert.deepEqual(openTarget(unopenable), { target: { sha1: sha, uid: 189814 }, original: false },
+    'then the main variant');
+  assert.equal(openTarget({ ...unopenable, variants: [detail.variants[1]] }), undefined);
   assert.equal(shardFile(80, 256), 'song/080.json');
   assert.equal(shardFile(33141, 256), 'song/117.json');
 });
@@ -132,4 +139,14 @@ test('the real index, when this checkout has one', async (t) => {
   assert.ok(detail.variants.length >= 1);
   assert.ok(detail.variants.some((v) => v.target), 'something to open');
   assert.ok(detail.levels.every((l) => l.target === undefined || /^[0-9a-f]{40}$/.test(l.target.sha1)));
+
+  // "Haze - Velvet--Audio": the main variant's copy is in "LittleBigCity 2",
+  // and open has to go to the gallery it came from.
+  const haze = rows.find((r) => r.name === 'Haze - Velvet--Audio' && r.author === 'Velvet--Audio');
+  if (haze) {
+    const entry = detailFrom(JSON.parse(await readFile(path.join(root, head.version, shardFile(haze.id, head.shards)), 'utf8'))[haze.id]);
+    const origin = entry.levels.find((l) => l.origin);
+    assert.equal(origin?.name, "Velvet--Audio's Music Gallery (V.2)");
+    assert.deepEqual(openTarget(entry), { target: origin.target, original: true });
+  }
 });

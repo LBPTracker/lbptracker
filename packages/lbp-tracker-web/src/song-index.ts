@@ -195,6 +195,24 @@ export function detailFrom(raw: { o: number; v: unknown[][]; a: unknown[][]; l: 
   };
 }
 
+/**
+ * The copy "open" means with no more said: the one in the level the song was
+ * first published in by its maker, else the main variant's, else the first
+ * that can be fetched. `original` says which, for the button.
+ *
+ * ❗ **The origin level before the main variant's copy**, because the export
+ * puts a variant's copy in its most played level: "Haze - Velvet--Audio" opened
+ * in kitanohydros' "LittleBigCity 2" rather than in Velvet--Audio's Music
+ * Gallery (V.2), where it came from. The origin's copy may be another variant
+ * than the main one; it is still the song as its maker placed it.
+ */
+export function openTarget(detail: SongDetail): { readonly target: Target; readonly original: boolean } | undefined {
+  const origin = detail.levels.find((l) => l.origin && l.target)?.target;
+  if (origin) return { target: origin, original: true };
+  const target = detail.variants.find((v) => v.target)?.target;
+  return target && { target, original: false };
+}
+
 /** The detail file a song is in, under the version's directory. */
 export const shardFile = (id: number, shards: number): string =>
   `song/${String(id % shards).padStart(3, '0')}.json`;

@@ -84,6 +84,11 @@ format and the search, tested by `test/song-index.test.ts`), `song-index-panel.t
   No note data is shipped. The archive panel's `open` takes a `report` for this route: its lines
   go to the song's detail and a failure leaves the archive's tab where it is, so a copy that will
   not download is reported beside it and another can be picked.
+- ❗ **The song's own open button goes to its origin level, not to the main variant's copy.** The
+  export puts a variant's copy in its most played level, so "Haze - Velvet--Audio" opened in
+  "LittleBigCity 2" (1.2M plays) instead of *Velvet--Audio's Music Gallery (V.2)*, where it was
+  first published. `openTarget` in `song-index.ts` takes the origin level's copy when it has one
+  (the button then says "Open the original") and the main variant's otherwise.
 - ✔ **The SHA-1 may be a plan or a chunk, not only a level root**, and the archive route opens
   both: measured in the page on 2026-10-31 with a song that exists only in a plan ("Game Over",
   `1c870946…`, `seq=11`) and one only in an LBP3 chunk ("'Ghost von Frost'", `3ac0e254…`,

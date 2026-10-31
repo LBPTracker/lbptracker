@@ -15,7 +15,7 @@
  * `ui.css`), which keeps the same promise.
  */
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue';
-import { makerOf, type Relation, type SongDetail, type SongFilter, type SongRow, type SortKey, type Target } from '../song-index.ts';
+import { makerOf, openTarget, type Relation, type SongDetail, type SongFilter, type SongRow, type SortKey, type Target } from '../song-index.ts';
 
 const props = defineProps<{
   note: string;
@@ -81,8 +81,9 @@ const date = (ms: number) => (ms ? new Date(ms).toLocaleDateString('en-GB') : '�
 const percent = (s: number | null) => (s == null ? '–' : `${Math.round(s * 100)}%`);
 const named = (name: string) => name || 'untitled';
 
-/** The copy "open" means with no more said: the main variant, or the first that can be fetched. */
-const main = computed(() => props.detail?.variants.find((v) => v.target)?.target);
+/** The copy "open" means with no more said (`openTarget` in `song-index.ts`). */
+const opening = computed(() => (props.detail ? openTarget(props.detail) : undefined));
+const main = computed(() => opening.value?.target);
 
 /**
  * The variants as the list shows them: oldest first, so the song reads as it
@@ -98,7 +99,7 @@ const variants = computed(() =>
 
 /**
  * ↑ and ↓ in the field walk the table, choosing as they go; Enter opens the
- * chosen song's main variant. The field keeps the focus throughout, so typing
+ * chosen song's original copy (`openTarget`). The field keeps the focus throughout, so typing
  * more narrows the list without a click back into it.
  */
 const onKey = (event: KeyboardEvent) => {
@@ -188,7 +189,7 @@ const onScroll = () => {
           by {{ makerOf(chosen) }}<template v-if="chosen.game">, from its story mode: every copy was placed from the game’s own item</template><template v-if="chosen.origin">, first in <i>{{ chosen.origin }}</i><template v-if="chosen.originAuthor && chosen.originAuthor !== chosen.author"> by {{ chosen.originAuthor }}</template></template>
         </p>
         <button type="button" class="primary songindex-open" :disabled="busy || !main" @click="main && emit('open', main)">
-          {{ busy ? 'Opening…' : 'Open the main variant' }}
+          {{ busy ? 'Opening…' : opening?.original ? 'Open the original' : 'Open the main variant' }}
         </button>
         <p v-if="detailNote" class="archive-note" :class="{ bad: detailBad }">{{ detailNote }}</p>
         <dl class="songindex-facts">

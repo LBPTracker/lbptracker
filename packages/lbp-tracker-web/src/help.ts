@@ -121,7 +121,7 @@ export const HELP: Readonly<Record<HelpTopic, Topic>> = {
         'same notes, or nearly, are variants of one song, whatever they were called. Search by a name, a maker or ' +
         'the level a song came from; click a column to sort by it; pick a song to see its variants, everyone whose ' +
         'name is on a copy, and the levels that use it. Up and down walk the list from the search field, and Enter ' +
-        'opens the main variant.') +
+        'opens the song in the level it was first published in, or its main variant when that level is not in the archive.') +
       p('The <strong>online archive</strong> opens a level published before the official servers closed, by the ' +
         'root level hash on its page at zaprit.fish. <strong>Bonsai</strong> searches the levels published on Bonsai, ' +
         'a community server, by title or by a creator’s whole name in any capitals, reuploads included, or opens one ' +
