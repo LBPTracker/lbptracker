@@ -78,7 +78,7 @@ defineExpose({ pick });
 const copied = ref<'' | 'yes' | 'no'>('');
 let clearCopied = 0;
 const copyLabel = computed(() =>
-  copied.value === 'yes' ? 'link copied' : copied.value === 'no' ? 'here it is' : 'copy the link');
+  copied.value === 'yes' ? 'Link copied' : copied.value === 'no' ? 'Here it is' : 'Copy the link');
 
 /**
  * The link itself, shown only when the clipboard refused it.
@@ -158,7 +158,7 @@ const onKey = async (event: KeyboardEvent) => {
         title="Save the chosen song as a song file"
         :disabled="!current"
         @click="current && onSave(current.key)"
-      >save as a song file</button>
+      >Save as a song file</button>
     </div>
     <!-- Only after a copy the browser would not do: the link, to take by hand. -->
     <input

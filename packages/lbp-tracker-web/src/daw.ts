@@ -301,7 +301,12 @@ const chose = (key: string): void => {
   rememberSequencer(pickerRows.find((r) => r.key === key), uidIsUnique);
 };
 
-const picker = seqPicker($<HTMLDivElement>('seq'), async (key) => {
+// ❗ **Mounted before the picker, which lives inside it** (the "this level"
+// tab). `openLevel` reaches `picker` only after a fetch or a read has been
+// awaited, so the links this starts cannot meet it uninitialised.
+const drop = mountOpen('#open', { onOpen: (opened) => openLevel(opened) });
+
+const picker = seqPicker(drop.seqHost, async (key) => {
   const seq = songs.get(key);
   if (!seq) return;
   // ❗ **Picking the song already open just closes the picker.** It is a
@@ -344,7 +349,6 @@ const picker = seqPicker($<HTMLDivElement>('seq'), async (key) => {
   },
 });
 
-const drop = mountOpen('#open', { onOpen: (opened) => openLevel(opened) });
 
 /**
  * Put text on the clipboard, saying whether it went.
@@ -471,7 +475,10 @@ async function openLevel(opened: Opened): Promise<void> {
       // straight from an empty page to a song, and the other fifteen in the
       // level would be invisible. A link that named one has chosen already.
       if (rows.length === 1 || wanted) fileDialog.close();
-      else if (!fileDialog.open) fileDialog.showModal();
+      else {
+        drop.showLevel();
+        if (!fileDialog.open) fileDialog.showModal();
+      }
     } else if (note) setStatus(note, true);
     else if (result.failed.length) setStatus(`nothing to open: ${result.failed[0].why}`, true);
     else setStatus('no sequencers in there', true);

@@ -1,13 +1,14 @@
 {
   "name": "lbptracker",
-  "version": "0.2.55",
+  "version": "0.2.56",
   "private": true,
   "type": "module",
   "description": "A faithful re-implementation of LittleBigPlanet 3's in-game Music Sequencer.",
   "license": "MIT",
   "workspaces": [
     "packages/lbp-tracker-lib",
-    "packages/lbp-tracker-web"
+    "packages/lbp-tracker-web",
+    "packages/lbp-tracker-tools"
   ],
   "engines": {
     "node": ">=24"
@@ -20,7 +21,8 @@
     "serve": "npm run dev -w @lbptracker/web",
     "preview": "npm run preview -w @lbptracker/web",
     "stage": "npm run stage -w @lbptracker/web",
-    "deploy": "npm run deploy -w @lbptracker/web"
+    "deploy": "npm run deploy -w @lbptracker/web",
+    "song-index": "npm run song-index -w @lbptracker/tools --"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",

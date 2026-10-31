@@ -1,6 +1,7 @@
 # Tools — reference implementations, RE helpers and harnesses
 
-Read before reaching for anything in `tools/` or `packages/*/dev/`. Every script carries its own
+Read before reaching for anything in `tools/`, `packages/*/dev/` or `packages/lbp-tracker-tools`
+(the song index's builder: *The song index*, below). Every script carries its own
 command lines in its docstring; this file says what each is *for*, the trap it exists because of,
 and the environment variables that steer it. Nothing here is a fact about the game — those live in
 the descriptive files — but several of the traps below are why a fact took a session longer than
@@ -274,10 +275,46 @@ half-applied stereo fold sat unnoticed for two days until a listener played the 
 does not. Several tests normalise too; check the level with something that does not before ruling
 a gain question out.
 
+## The song index — `packages/lbp-tracker-tools/src/song-index/`
+
+`@lbptracker/tools` is the workspace for command-line tools: Node programs run on a developer's
+machine against data that lives there, never bundled or shipped. ❗ **A package of its own, not
+`web`'s `dev/`**: the song index is a program in its own right (a downloader, a reader pool, a
+database), it needs no Vue and is typechecked with the real `tsc`, and its tests are not the app's.
+
+Builds the files the open dialog's song index reads (`fixtures/songindex`), from the public
+archive: `npm run song-index -- <step>`, each step's options in `cli.ts`'s header. What it found,
+and the format, are in [level-sources.md](level-sources.md), *The song index*; this is how to run
+it. All TypeScript, all Node; the Python downloader it began as is gone.
+
+| step | what it does | measured 2026-10-31 |
+|---|---|---|
+| `list` | the levels over `--min-plays` (and up to `--max-plays`), most played first, one per line, and how many: what `download` would take | 97,816 LBP2/LBP3 levels over 1,000 plays |
+| `download` | those levels and every resource they depend on, into `LBP_ARCHIVE`: byte ranges of the dry23 zips, many entries a request, SHA-1 checked (`archive.ts`, `zip-ranges.ts`). Indexes the 256 zips first, once | 184,588 levels (LBP1 included then) in 42.5 min, 29.9 GB, no 429 |
+| `scan` | every sequencer of every level, plan and chunk, read once, into `LBP_SONG_DB` (`scan.ts`, a thread pool on `scan-worker.ts`); `--retry-failed` reads again only what a reader could not open | 23.5 min whole; 3.4 min for the 1,813 failures after cwlib 0.4.68 |
+| `cluster` | copies into songs, makers, origins, the game's own songs (`cluster.ts`, `signature.ts`); rebuilt whole every run | about 8 s |
+| `export` | the database as `fixtures/songindex/<version>/`, then `index.json` pointing at it (`export.ts`) | about 11 s, 25 MB |
+| `build` | `scan`, `cluster`, `export` | |
+| `set-author <song> <maker>` | a maker by hand where the rule is wrong; kept on the song's main variant, so it survives re-clustering. `''` clears it | |
+
+- ❗ **Everything resumes.** A level with a manifest in `LBP_ARCHIVE/levels` is not fetched again, a
+  resource recorded in the database is not read again, and an export is written under
+  `<version>.part` and renamed only when whole. Stopping any step loses at most the group in flight.
+- ⚠️ **The scan reads with the cwlib this repository has installed**, not the sibling checkout:
+  after a reader fix there, `npm update @lbptracker/cwlib` here, then `scan --retry-failed`.
+- ⚠️ **32 requests in flight, not more.** 64 went 1.4× faster and archive.org began closing idle
+  connections; a 429 pauses every worker for at least a minute (`ZipClient`), and the progress
+  line counts them. `--min-free-gb` (10) stops starting new groups before the disk fills.
+- The download keeps the manifests' format of the Python version, so an archive fetched by either
+  is the same archive.
+
 ## Environment variables
 
 | variable | read by | meaning |
 |---|---|---|
+| `LBP_DRY_DB` | `song-index` | the archive's own index, `dry.db` (<https://archive.org/details/dry23db>, 2.65 GB) |
+| `LBP_ARCHIVE` | `song-index` | the folder the archive is downloaded into: `res/aa/bb/<sha1>`, `levels/<id>.json`. About 30 GB for the levels over 1,000 plays; no default, it lives wherever there is room |
+| `LBP_SONG_DB`, `LBP_ZIP_INDEX` | `song-index` | the song database (250 MB) and the zips' index (2.4 GB); default `songindex.db` and `zipindex.db` in `LBP_ARCHIVE`. The zips' index can be shared by two copies of the archive |
 | `LBP_LEVELS` | the corpus tests, `render-level.ts`, `verify-midi.ts`, `live-sim.ts`, `live-settings.ts` | a directory of level resources; default the toolkit checkout's `tools/sequencerdump/data`. The tests **skip** without it |
 | `LBP_RINST`, `LBP_SMP` | `instrument.test.ts`, `envelope.test.ts`, `fsb.test.ts` (and cwlib-ts's `test/instrument.test.ts`) | the extracted instruments and samples; default `fixtures/rinst`, `fixtures/smp` |
 | `LBP_FSB`, `LBP_PYTHON` | `fsb.test.ts` | a bank to decode against the Python oracle, and the interpreter to run `tools/` with |

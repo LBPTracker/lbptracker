@@ -61,12 +61,85 @@ exactly one of the two:
 | `archive.org/cors/dry23db/dry.db` | ✘ ignored: `200 OK`, `Content-Length: 2651348992` | ✔ echoes the origin |
 
 If a serverless search is ever wanted, the way in is our own index — `dry.db` reduced to id, name,
-author, hearts and root hash, sharded by search prefix — or one header upstream
+author, hearts and root hash, sharded by search prefix (the song index below is that, for songs
+rather than levels) — or one header upstream
 (`Access-Control-Allow-Origin: *` on `/search` and `/slot/{id}`). What was learned scraping the
 site, for whoever tries again: every route is Go `html/template` with no API; the result table has
 ten fixed columns; the level page carries the SHA-1 in a `<span class="code">`; and ⚠️ the site's
 `?page=` is zero-based (offset `page * 50`) while the template prints `page + 1` except on a full
 page, where the handler overwrites it with `page`.
+
+## The song index — every published sequencer, as static files
+
+The open dialog's first tab, "song index", searches **songs** rather than levels: every music
+sequencer in the archive's LBP2 and LBP3 levels with more than 1,000 plays, grouped so that copies
+of one song are its variants. The page's side is `packages/lbp-tracker-web/src/song-index.ts` (the
+format and the search, tested by `test/song-index.test.ts`), `song-index-panel.ts` and
+`widgets/SongIndexPanel.vue`.
+
+- ❗ **The index says where a song is, never what it is.** Every variant and every level row
+  carries a resource SHA-1 and the sequencer's uid, and **open** is the demo button's route:
+  `rememberSong(sha1, uid)` then the archive panel's `open`, so the song arrives through
+  `?level=…&seq=…` like any shared link, with the game's samples, and the address bar is its link.
+  No note data is shipped. The archive panel's `open` takes a `report` for this route: its lines
+  go to the song's detail and a failure leaves the archive's tab where it is, so a copy that will
+  not download is reported beside it and another can be picked.
+- ✔ **The SHA-1 may be a plan or a chunk, not only a level root**, and the archive route opens
+  both: measured in the page on 2026-10-31 with a song that exists only in a plan ("Game Over",
+  `1c870946…`, `seq=11`) and one only in an LBP3 chunk ("'Ghost von Frost'", `3ac0e254…`,
+  `seq=6987912`), each opened the named sequencer with no error. The export still prefers a copy
+  inside a level root where one exists.
+- **The files** (format 3, and 2 is still read), under `fixtures/songindex/`: `index.json` (`format`, `version`, `generated`,
+  `songs`, `shards`) names the current export and is fetched with `cache: 'no-cache'`; the export
+  is a directory named by its version holding `songs.json` (the list, column-major: one array per
+  field) and `song/000.json`…`song/255.json` (a song's variants, makers and every level that uses it, in
+  the file `id % 256`). A new export is a new directory, so a cached list can never meet a detail
+  file from another export. Measured on the 2026-10-31 export: 33,141 songs, `songs.json` 2.2 MB
+  (518 KB brotli), detail files about 18 KB brotli each, 22 MB in all; the list loads in about
+  100 ms from the dev server and a search over it is a filter in the page. With every level of
+  every song (no cap since the same day) and cwlib 0.4.68's readers: 32,742 songs, 25 MB.
+- **Where it comes from**: `npm run song-index` (`packages/lbp-tracker-tools/src/song-index/`, how
+  to run it in [tools.md](tools.md), *The song index*), from the archive's whole download: 184,588
+  levels with more than 1,000 plays, every level, plan and chunk read with cwlib and every
+  sequencer clustered. It is not game data: names, numbers and the hashes of levels that are
+  already public. ⚠️ So it is **optional**: `dev/stage-site.ts` ships the current export when the
+  checkout has one and says so when it has none, and the panel then says the index is not
+  available.
+- ⚠️ **A variant is decided by notes, not by name.** Two copies are one song when they play the
+  same notes or nearly (a MinHash over the notes on the grid and over each clip's pattern, at a
+  similarity of 0.5 or more to the song's most widespread copy); the name a copy carries plays no
+  part, which is why a song shows the other names it goes by.
+- ⚠️ **A longer or shorter version has a low similarity and is still the song.** "LittleBigMe" by
+  Velvet--Audio exists at 6,531 notes and at 18,920: the long one holds the short one, but the
+  two share only 41% of their union, under the 0.5 above. So a copy also joins when nearly all of
+  the shorter is inside the longer (containment 0.8 or more, taken on the similarity 1.5 standard
+  errors below the measured one, the shorter at least 200 notes and a fifth of the longer). Its
+  row says `extended` or `shortened` (a variant row's last field since format 2) and the panel tags it "Longer"
+  or "Shorter", because a 41% bar would otherwise read as a mistake. 529 of 42,641 copies
+  joined this way on 2026-10-31.
+- ⚠️ **The maker is not the name on the most copies.** Whoever saves a copy into a plan of their
+  own becomes the creator the sequencer's group names, and a copy that spreads further outnumbers
+  the original ("Inner Space": Festerd_Jester from April 2011 in 32 levels, SonicBoomXD from
+  October 2011 in 60). The maker is chosen among the names first seen within 30 days of the oldest
+  (a date being the archived version of a level that holds the copy), then by copies. The archive
+  has no creation date for a sequencer, so some songs stay ambiguous; `song-index set-author`
+  keeps a manual override for those.
+- ❗ **A song out of the game is the game's, whoever's level it is in.** "Dew Shimmers" and the
+  8-bit and chiptune remixes come out of LBP2's story; players placed them from the game's own
+  items, and cwlib's `sequencerAuthor` skips the game's `MM_Studio` group and climbs to the
+  player's, so they were credited to whoever used them most (wurmstich23). Every such copy keeps
+  the item's `planGuid` (197129 for "Dew Shimmers") under a group of `MM_Studio`'s. ⚠️ The popit's
+  empty music sequencer is a game item too, 120863, under 32,381 songs; the seventeen other items
+  with a sequencer are under 26 at most, so 100 songs is the line. A song is the game's when most
+  of its copies came from such an item **and** it is the item's main song or its copies still
+  carry the game's own text key for a name (`MOVE_DEW_SHIMMERS_MUSIC_NAME`: 388 copies of 197129
+  over 20 songs, the item's parts and versions). The rest of an item's songs are players' edits
+  and stay theirs; one stray copy in an LBP3 chunk with a game GUID made "FORGOT, LOL." the game's
+  until the majority rule. 83 songs from 11 items on 2026-10-31; `songs.json`'s `game` column
+  (format 3) marks them, the panel shows "LittleBigPlanet (the game)" as their maker, and they have
+  no origin level, the story being on the disc and not in the archive.
+- ⚠️ **A search word has to start a word**, after accents are folded and punctuation becomes a
+  space: "inner" inside "Award Winner" found an unrelated song before the rule.
 
 ## Bonsai — a live server, searchable from the page
 

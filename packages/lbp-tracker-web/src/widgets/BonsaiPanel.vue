@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The fourth way to open a level: off Bonsai, by its link or number, or by
+ * The "Bonsai" tab: a level off Bonsai, by its link or number, or by
  * searching for it here.
  *
  * ❗ **A search box, where the archive's panel has only a hash field**, and the
@@ -57,10 +57,10 @@ const broken = reactive(new Set<string>());
       @keydown.enter.prevent="emit('submit')"
     >
     <button type="button" class="archive-go primary" :disabled="busy"
-            @click="emit('submit')">go</button>
+            @click="emit('submit')">Search</button>
     <!-- ⚠️ `autocomplete="off"`: see the same switch in `ArchivePanel.vue`. -->
     <label class="check archive-deep">
-      <input v-model="deep" type="checkbox" autocomplete="off"> whole backup
+      <input v-model="deep" type="checkbox" autocomplete="off"> Whole backup
     </label>
   </div>
   <p class="archive-note" :class="{ bad }">{{ note || DEFAULT_NOTE }}</p>
@@ -98,18 +98,14 @@ const broken = reactive(new Set<string>());
         <span class="picker-uid">#{{ level.id }}</span>
       </button>
       <button v-if="more" type="button" class="ghost bonsai-more" :disabled="busy"
-              @click="emit('more')">more…</button>
+              @click="emit('more')">More…</button>
     </div>
   </template>
+  <!-- The rest of what used to be here, whole backup included, is the "open" help topic. -->
   <p class="archive-hint">
     Levels published on
     <a :href="host" target="_blank" rel="noreferrer noopener">Bonsai</a>, a community server the
-    game is still played on. Words find titles and descriptions, best match first; a creator’s
-    whole name, in any capitals, also finds what they made, reuploads included. A number is the one
-    at the end of a level’s address there. The page asks Bonsai directly, so nothing goes through
-    this site. The search shows LBP2 and LBP3 levels:
-    LBP1 and PSP have no music sequencer, and Vita levels do not open here yet.
-    <b>Whole backup</b> also fetches the plans, chunks and levels it depends on, up to sixty, since
-    Bonsai lets a browser download about seventy files a minute.
+    game is still played on, asked for directly by this page. A creator’s whole name finds what
+    they made; a number is the one at the end of a level’s address there.
   </p>
 </template>

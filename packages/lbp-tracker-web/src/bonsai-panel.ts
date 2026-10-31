@@ -1,5 +1,5 @@
 /**
- * The fourth way to open a song: a level off Bonsai.
+ * The open dialog's "Bonsai" tab: a level off Bonsai.
  *
  * The archive panel (`archive-panel.ts`) opens what Mm's servers held until
  * 2021; this opens what has been published since, to the community server LBP
@@ -51,6 +51,8 @@ const AT_A_TIME = 4;
 export interface BonsaiOpen {
   /** Open a level by its number, as if its link had been pasted into the box. */
   open(id: number, opts?: { deep?: boolean }): Promise<void>;
+  /** The tab has come into view: put the cursor in the field. */
+  shown(): void;
 }
 
 const SLOW_DOWN = 'Bonsai asked to slow down; try again in half a minute';
@@ -150,20 +152,20 @@ async function findAuthor(query: string): Promise<Author | undefined> {
 }
 
 /**
- * Wire a button to a panel it builds itself.
+ * Build the panel into `host`, a tab of the open dialog.
  *
  * `onOpen` gets the same shape a dropped file produces, so a page needs no new
  * code path: the level arrives as `BackupFile`s named after their SHA-1, which
  * is what they are called in a real backup too.
  */
 export function wireBonsaiOpen(opts: {
-  button: HTMLElement;
   host: HTMLElement;
+  /** Select this panel's tab. */
+  show: () => void;
   onOpen: (opened: Opened) => void | Promise<void>;
 }): BonsaiOpen {
-  const { button, host, onOpen } = opts;
+  const { host, show, onOpen } = opts;
   host.classList.add('archive', 'bonsai');
-  host.hidden = true;
 
   const ui = reactive({
     query: '',
@@ -335,7 +337,6 @@ export function wireBonsaiOpen(opts: {
       job.step('open', 'opening the level…');
       const note = walkNote(walked, 'on Bonsai');
       say(note, note !== '');
-      host.hidden = note === '';
       // ❗ **The address bar becomes the link to share**, by number: see
       // `link.ts`, and `lookUp` on why not by hash.
       const link = { from: 'bonsai', id: level.id, deep } as const;
@@ -347,7 +348,7 @@ export function wireBonsaiOpen(opts: {
         link,
       });
     } catch (error) {
-      host.hidden = false;
+      show();
       say(error instanceof Error ? error.message : String(error), true);
     } finally {
       busy = false;
@@ -366,18 +367,14 @@ export function wireBonsaiOpen(opts: {
     else focusField();
   }
 
-  button.addEventListener('click', () => {
-    host.hidden = !host.hidden;
-    if (!host.hidden) focusField();
-  });
-
   return {
     open: (id, o) => {
-      // Opened from a link rather than from the box: show the box anyway, or a
-      // level that will not come reports itself into a panel nobody can see.
-      host.hidden = false;
+      // Opened from a link rather than from the box: a level that will not
+      // come brings the tab forward (`show` in `open_`), or it would report
+      // itself into a tab nobody is looking at.
       ui.query = String(id);
       return open_(id, o?.deep ?? ui.deep);
     },
+    shown: () => focusField(),
   };
 }

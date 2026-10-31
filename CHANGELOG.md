@@ -4,6 +4,25 @@ What changed for the person using LBP Tracker, newest first. The site shows this
 version number in its status bar, so it is written for them: what they can do now that they could
 not before, never how it was done. No `--` or em dash in here; the site's text does without them.
 
+## 0.2.56 (2026-10-31)
+
+- New: the song index. It searches every music sequencer in the LBP2 and LBP3 levels with more
+  than a thousand plays on the official servers, more than 32,000 songs. Copies of a song that
+  play the same notes, or nearly, are grouped as variants of it, whatever they were called.
+- Search by the song's name, any other name its copies carry, who made it, or the level it first
+  appeared in, and click a column to sort by name, year, levels or plays. Up and down walk the
+  list from the search box, and Enter opens the song.
+- Pick a song and it shows beside the list: who made it, how many levels and plays it reached,
+  the year it first appeared and the level it was first published in, then three lists: its
+  variants, everyone whose name is on a copy, and the levels that use it. Open plays the main
+  variant, any other variant, or the song as it is in any of those levels, straight from the
+  online archive, and the address bar is then its link.
+- Songs that come from the game itself, like Dew Shimmers and the chiptune remixes of LBP2's
+  story, are shown as made by LittleBigPlanet, not by the player who used them most.
+- The open dialog is now tabs, one per way in: the song index, the online archive, Bonsai and your
+  computer, plus "this level" with the songs of the level that is open. A file dropped anywhere
+  on the dialog opens, whichever tab is showing.
+
 ## 0.2.55 (2026-10-30)
 
 - The piano roll no longer slides from one instrument into the next. Every instrument has its

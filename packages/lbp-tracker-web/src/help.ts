@@ -108,15 +108,27 @@ export const HELP: Readonly<Record<HelpTopic, Topic>> = {
   open: {
     title: 'Opening something',
     body:
-      p('Drop a file on the box or use its buttons. It can be a level of your own, a save backup, a zip holding ' +
-        'either, or a song file saved here. <strong>From the online archive</strong> opens a level published before ' +
-        'the official servers closed, by the hash on its page at zaprit.fish. <strong>From Bonsai</strong> searches ' +
-        'the levels published on Bonsai, a community server, by title or by a creator’s whole name, best match ' +
-        'first, or opens one by its link or number. Either way the level comes straight to your browser, and the ' +
-        'address bar becomes a link to the song you pick. <strong>Play a demo song</strong> opens one of the ' +
-        'community songs picked for this site; each plays once before any plays again.') +
-      p('A level holding several songs lists them below the box: pick one and it becomes the song. ' +
-        'Whatever is open is replaced, so save first if it matters.'),
+      p('Each tab is a way in. The <strong>song index</strong> searches every music sequencer in the LBP2 and LBP3 ' +
+        'levels with more than a thousand plays on the official servers, grouped into songs: copies that play the ' +
+        'same notes, or nearly, are variants of one song, whatever they were called. Search by a name, a maker or ' +
+        'the level a song came from; click a column to sort by it; pick a song to see its variants, everyone whose ' +
+        'name is on a copy, and the levels that use it. Up and down walk the list from the search field, and Enter ' +
+        'opens the main variant.') +
+      p('The <strong>online archive</strong> opens a level published before the official servers closed, by the ' +
+        'root level hash on its page at zaprit.fish. <strong>Bonsai</strong> searches the levels published on Bonsai, ' +
+        'a community server, by title or by a creator’s whole name in any capitals, reuploads included, or opens one ' +
+        'by its link or number; it shows LBP2 and LBP3 levels, since LBP1 and PSP have no music sequencer and Vita ' +
+        'levels do not open here yet. Either way the level comes straight to your browser, and the address bar ' +
+        'becomes a link to the song you pick.') +
+      p('<strong>Whole backup</strong>, on either, also fetches the plans, chunks and levels the level depends on: ' +
+        'slower, and usually the same songs, but it is where a song that was never placed in the level would be. ' +
+        'An adventure has no world of its own and always takes this route. Bonsai lets a browser download about ' +
+        'seventy files a minute, so there it stops at sixty.') +
+      p('<strong>Your computer</strong> takes a level of your own, a save backup, a zip holding either, a .mod or a ' +
+        'song file saved here; a file dropped anywhere on the dialog opens too. <strong>Play a demo song</strong> ' +
+        'opens one of the community songs picked for this site; each plays once before any plays again.') +
+      p('A level holding several songs lists them under <strong>this level</strong>: pick one and it becomes the ' +
+        'song. Whatever is open is replaced, so save first if it matters.'),
   },
   thermometer: {
     title: 'The thermometer',
@@ -516,11 +528,26 @@ export const HELP: Readonly<Record<HelpTopic, Topic>> = {
  * behind it. Done this way rather than by hiding the page's overflow, which
  * would drop the scrollbar, shift the page by its width and unstick the top
  * bar. For every dialog on the page, and for the ones made on demand.
+ *
+ * ❗ **Whatever scrolls, found by what it does, not by a class.** This used to
+ * let the wheel through only over `.help-body`, `.picker-list` and
+ * `.picker-scroll`, and the song index's table, detail and panes, which are
+ * none of those, did not scroll with the wheel at all. Now the wheel goes to
+ * the nearest box under the pointer that can still move that way; a list at
+ * its end stops it rather than handing it to the page behind.
  */
 export function confineWheel(dialog: HTMLDialogElement): void {
+  const canMove = (el: HTMLElement, down: boolean) => {
+    const overflow = getComputedStyle(el).overflowY;
+    if (overflow !== 'auto' && overflow !== 'scroll') return false;
+    return down ? el.scrollTop + el.clientHeight < el.scrollHeight - 1 : el.scrollTop > 0;
+  };
   dialog.addEventListener('wheel', (event) => {
-    const scroller = (event.target as Element).closest?.('.help-body, .picker-list, .picker-scroll');
-    if (!(scroller instanceof HTMLElement) || scroller.scrollHeight <= scroller.clientHeight) event.preventDefault();
+    if (event.deltaY === 0) return;
+    for (let el = event.target as Element | null; el && el !== dialog; el = el.parentElement) {
+      if (el instanceof HTMLElement && canMove(el, event.deltaY > 0)) return;
+    }
+    event.preventDefault();
   }, { passive: false });
 }
 

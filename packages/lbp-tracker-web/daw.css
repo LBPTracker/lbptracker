@@ -154,9 +154,17 @@ main { flex: 1 0 auto; width: 100%; box-sizing: border-box; margin: 0; max-width
 .picker-dialog.confirm-dialog { width: min(30rem, 92vw); }
 .confirm-question { margin: 0 0 .4rem; font-size: 1rem; line-height: 1.5; }
 
-/* The file dialog: the drop zone and the song picker, opened on demand. */
-.picker-dialog.file-dialog { width: min(44rem, 94vw); }
-.file-dialog .drop { padding: 1.2rem 1rem; }
+/* The file dialog: a tab per way in, and the level's songs. It fills the page
+   whatever is in it, by the owner's choice: the song index puts its table and a
+   song's detail side by side, and every tab keeps the same frame rather than
+   the dialog changing height from one tab to the next. The panes scroll inside
+   it; the rules that make them fill it are after `.picker-list` below, which
+   they have to override. */
+.picker-dialog.file-dialog {
+  width: calc(100vw - 2rem); height: calc(100vh - 2rem); height: calc(100dvh - 2rem);
+  max-width: none; max-height: none; overflow: hidden;
+}
+.file-title { margin: 0; color: var(--ink); font-size: 1.05rem; font-weight: 600; }
 
 /* ---------------------------------------------------------------- arrange */
 /* The board takes the whole page between the bar and the footer; the chip
@@ -258,8 +266,33 @@ main { flex: 1 0 auto; width: 100%; box-sizing: border-box; margin: 0; max-width
 .picker-box { padding: 1rem 1.1rem 1rem; }
 .picker-title { margin: 0 0 .6rem; font-size: .95rem; color: var(--dim); }
 .picker-list.picker-tall { max-height: 20rem; }
-.file-dialog .picker-list { max-height: min(40vh, 18rem); }
 .file-dialog .picker-search { flex: 1 1 12rem; width: auto; }
+/* The whole height, down to the song index's two columns: title, tabs and
+   foot keep theirs, the pane takes the rest and scrolls on its own. */
+.file-dialog > .picker-box { height: 100%; box-sizing: border-box; display: flex; flex-direction: column; }
+.file-dialog #open { flex: 1 1 auto; min-height: 0; }
+.file-dialog .openlv { height: 100%; display: flex; flex-direction: column; }
+.file-dialog .openlv-tabs { flex: 0 0 auto; }
+.file-dialog .openlv-pane { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.file-dialog .openlv-pane .picker-list { max-height: none; }
+.file-dialog .songindex-host { display: flex; flex-direction: column; overflow: hidden; }
+.file-dialog .songindex { flex: 1 1 auto; min-height: 0; align-items: stretch; }
+.file-dialog .songindex-side, .file-dialog .songindex-detail { display: flex; flex-direction: column; min-height: 0; }
+.file-dialog .songindex-table { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.file-dialog .songindex-rows { flex: 1 1 auto; max-height: none; }
+.file-dialog .songindex-detail { overflow-y: auto; }
+.file-dialog .songindex-list { flex: 1 0 12rem; max-height: none; }
+.file-dialog .songindex-back { align-self: flex-start; }
+.file-dialog .songindex-empty { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; }
+/* ⚠️ Restated: the `display: flex` above is as specific as `ui.css`'s rule that
+   shows one column at a time on a narrow screen, and comes later, so it won. */
+@media (max-width: 46rem) {
+  .file-dialog .songindex.chosen .songindex-side,
+  .file-dialog .songindex:not(.chosen) .songindex-detail { display: none; }
+}
+@media (max-width: 34rem) {
+  .picker-dialog.file-dialog { width: calc(100vw - 1rem); height: calc(100vh - 1rem); height: calc(100dvh - 1rem); }
+}
 .picker-family {
   font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--dimmer);
   padding: .45rem .5rem .2rem;

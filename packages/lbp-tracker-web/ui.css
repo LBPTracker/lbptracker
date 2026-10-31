@@ -267,6 +267,85 @@ input.archive-q { flex: 1 1 24rem; min-width: 0; text-align: left; }
 .bonsai-row .picker-detail { flex: 0 4 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .bonsai-more { display: block; margin: .3rem auto .1rem; }
 
+/* The song index's tab: the table of songs and the chosen one's detail, side
+   by side, and one at a time on a narrow screen (`.chosen` says which).
+   `packages/lbp-tracker-web/src/widgets/SongIndexPanel.vue` supplies this markup. */
+.songindex { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 1rem; align-items: start; }
+.songindex-side, .songindex-detail { min-width: 0; }
+/* Words, not forty hex digits: the page's own face, not the archive field's monospace. */
+/* ⚠️ `flex: none`: `input.archive-q` grows along a row, and in the full-page
+   dialog this field sits in a column, where the same rule grew its height
+   whenever a search left the table short. */
+input.songindex-q { flex: none; width: 100%; font-family: inherit; }
+.songindex-count { margin: .4rem 0; text-align: right; color: var(--dimmer); font-size: .8rem; }
+.songindex-table { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+/* One grid for the head and every row, so the numbers line up under their
+   column: the name gives way, the numbers never do. */
+.songindex-tr {
+  display: grid; grid-template-columns: minmax(0, 1fr) 2.8rem 3.6rem 3.4rem; gap: .75rem;
+  align-items: center; width: 100%; padding: .35rem .6rem; text-align: left;
+  background: none; border: 0; border-radius: 0; border-bottom: 1px solid var(--line-soft); color: var(--ink);
+}
+.songindex-tr .num { text-align: right; font-variant-numeric: tabular-nums; color: var(--dim); font-size: .85rem; }
+.songindex-rows .songindex-tr:hover { background: var(--panel); }
+.songindex-tr.on { background: var(--panel); box-shadow: inset 2px 0 0 var(--accent); }
+.songindex-tr.on .songindex-name { color: var(--accent); }
+.songindex-th { position: sticky; top: 0; z-index: 1; background: var(--panel); }
+/* ↑ walking the list scrolls the chosen row into view, and not under the head. */
+.songindex-rows .songindex-tr { scroll-margin-top: 2rem; }
+.songindex-th button {
+  background: none; border: 0; padding: 0; color: var(--dimmer); font-size: .75rem; text-align: left; white-space: nowrap;
+}
+.songindex-th button.num { text-align: right; }
+.songindex-th button:hover, .songindex-th button.on { color: var(--accent); }
+.songindex-rows { max-height: min(50vh, 26rem); overflow-y: auto; }
+.songindex-main { min-width: 0; display: flex; flex-direction: column; }
+.songindex-main > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.songindex-name { color: var(--ink); }
+.songindex-tag {
+  margin-left: .4rem; padding: 0 .4rem; border-radius: 999px; font-size: .7rem; vertical-align: 1px;
+  color: var(--accent); border: 1px solid var(--accent);
+}
+.songindex-back { display: none; margin-bottom: .5rem; }
+.songindex-title { margin: 0; font-size: 1.1rem; overflow-wrap: anywhere; }
+.songindex-by { margin: .2rem 0 0; color: var(--dim); font-size: .85rem; overflow-wrap: anywhere; }
+.songindex-by i { color: var(--ink); }
+.songindex-open { width: 100%; margin-top: .7rem; }
+.songindex-facts { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .35rem; margin: .7rem 0 0; }
+.songindex-facts > div { background: var(--panel-2); border-radius: 6px; padding: .3rem .45rem; min-width: 0; }
+.songindex-facts dt { color: var(--dimmer); font-size: .7rem; }
+.songindex-facts dd { margin: 0; font-size: .9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.songindex-alt { margin: .5rem 0 0; color: var(--dimmer); font-size: .8rem; overflow-wrap: anywhere; }
+.songindex-tabs { display: flex; gap: .2rem; margin-top: .8rem; border-bottom: 1px solid var(--line); }
+.songindex-tabs button {
+  border: 0; border-radius: 0; background: none; color: var(--dim); font-size: .85rem;
+  border-bottom: 2px solid transparent; padding: .35rem .6rem; margin-bottom: -1px;
+}
+.songindex-tabs button.on { color: var(--ink); border-bottom-color: var(--accent); }
+.songindex-list { max-height: min(34vh, 18rem); overflow-y: auto; }
+.songindex-item {
+  display: flex; align-items: center; gap: .6rem; padding: .4rem .1rem; border-bottom: 1px solid var(--line-soft);
+}
+.songindex-item > .songindex-main { flex: 1 1 auto; }
+.songindex-item > button { flex: 0 0 auto; padding: .2rem .65rem; }
+.songindex-item > .picker-detail { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.songindex-sim { flex: 0 0 auto; color: var(--dimmer); font-size: .8rem; white-space: nowrap; }
+.songindex-bar {
+  display: inline-block; width: 2.2rem; height: .3rem; margin-right: .35rem; vertical-align: middle;
+  background: var(--line); border-radius: 2px; overflow: hidden;
+}
+.songindex-bar > span { display: block; height: 100%; background: var(--accent); }
+.songindex-empty {
+  margin: 0; padding: 2rem 1rem; text-align: center; color: var(--dimmer); font-size: .85rem;
+  border: 1px dashed var(--line); border-radius: 8px;
+}
+@media (max-width: 46rem) {
+  .songindex { grid-template-columns: minmax(0, 1fr); }
+  .songindex.chosen .songindex-side, .songindex:not(.chosen) .songindex-detail { display: none; }
+  .songindex-back { display: inline-block; }
+  .songindex-facts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
 /* ---------------------------------------------------------------- the foot */
 /* `packages/lbp-tracker-web/src/footer.ts` supplies the markup, so every page gets the same one and the
    licensing line cannot go stale on three of four pages. */
@@ -285,9 +364,8 @@ input.archive-q { flex: 1 1 24rem; min-width: 0; text-align: left; }
 .site-foot-small { margin-top: .7rem; font-size: .78rem; }
 
 /* ------------------------------------------------------------- the drop zone */
-/* One copy. `widgets/OpenLevel.vue` supplies the markup for all three pages;
-   these rules were written out three times, twice as `#drop` and once as
-   `.drop`, which is how the two spellings came to exist at all. */
+/* The MIDI file's box under Import/Export (`index.html`, `#cv-midiDrop`). The
+   open dialog had one too until it became tabs, below. */
 .drop {
   border: 1.5px dashed var(--line); border-radius: var(--radius); padding: 1.8rem 1rem;
   text-align: center; cursor: pointer; background: var(--panel-2);
@@ -296,10 +374,41 @@ input.archive-q { flex: 1 1 24rem; min-width: 0; text-align: left; }
 .drop:hover, .drop.over { border-color: var(--accent); background: #1f262e; }
 .drop strong { display: block; margin-bottom: .25rem; font-size: 1.02rem; }
 .drop span { color: var(--dim); font-size: .9rem; }
-.drop.busy { opacity: .5; pointer-events: none; }
-.drop.loaded { padding: .95rem 1rem; border-style: solid; }
-.drop.loaded strong { display: inline; margin: 0; }
 .drop input[type="file"] { display: none; }
+
+/* ----------------------------------------------------------- the open dialog */
+/* One tab per way in, and the songs of the level that is open.
+   `widgets/OpenLevel.vue` supplies the markup; the panels fill its panes. */
+.openlv { position: relative; }
+/* ⚠️ The rule under the tabs is a shadow, not a border: a tab's underline
+   pulled over a border by a negative margin overflows a row that scrolls
+   sideways, and the row grew a vertical scrollbar of its own. */
+.openlv-tabs { display: flex; gap: .1rem; box-shadow: inset 0 -1px 0 var(--line); overflow-x: auto; scrollbar-width: none; }
+.openlv-tabs button {
+  flex: 0 0 auto; border: 0; border-radius: 0; background: none; color: var(--dim);
+  border-bottom: 2px solid transparent; padding: .45rem .85rem; white-space: nowrap;
+}
+.openlv-tabs button:hover { color: var(--ink); }
+.openlv-tabs button.on { color: var(--ink); border-bottom-color: var(--accent); }
+.openlv-pane { padding-top: .85rem; min-width: 0; }
+/* The panels mark their host `.archive`, which outside a tab was a card. */
+.openlv-pane.archive { margin: 0; padding: .85rem 0 0; background: none; border: 0; border-radius: 0; }
+.openlv.busy .openlv-pane { opacity: .5; pointer-events: none; }
+.openlv-level { margin: 0 0 .5rem; font-weight: 600; overflow-wrap: anywhere; }
+.openlv-local {
+  display: flex; flex-direction: column; align-items: center; gap: .3rem; padding: 2rem 1rem;
+  border: 1.5px dashed var(--line); border-radius: var(--radius); background: var(--panel-2); text-align: center;
+}
+.openlv-local > span { color: var(--dim); font-size: .9rem; }
+.openlv-local input[type="file"] { display: none; }
+.openlv-local-buttons { justify-content: center; gap: .5rem; margin: .5rem 0 .2rem; }
+.openlv-local > .openlv-local-note { color: var(--dimmer); font-size: .8rem; }
+/* Over whatever tab is showing while a file is dragged across the dialog. */
+.openlv-over {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  border: 2px dashed var(--accent); border-radius: var(--radius); background: rgb(16 19 23 / .88);
+  color: var(--accent); font-weight: 600; pointer-events: none;
+}
 
 /* ------------------------------------------------------------- the loader */
 /* Shown while a level is being opened, from any route. It is a modal dialog

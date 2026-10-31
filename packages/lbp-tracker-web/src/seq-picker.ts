@@ -40,7 +40,7 @@ export interface SeqPickerHandle {
  * chosen sequencer leaves as one of this tracker's song files, from whichever
  * page it was found on. The page resolves the key and calls `saveSongFile`.
  *
- * `onLink` puts a "copy the link" button there, and it appears only while
+ * `onLink` puts a "Copy the link" button there, and it appears only while
  * `setLinkable(true)` -- a level from the online archive or from Bonsai is the
  * only one whose songs have a link (`link.ts`). It answers with the link and
  * whether it reached the clipboard; ⚠️ a refused copy is **not** an error, and

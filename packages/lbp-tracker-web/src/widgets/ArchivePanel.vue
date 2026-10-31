@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The third way to open a level: a root level hash, fetched straight from the
+ * The "online archive" tab: a root level hash, fetched straight from the
  * Internet Archive.
  *
  * ❗ **It needs no server** — not even the dev one — which is why it is a hash
@@ -42,24 +42,22 @@ defineExpose({ focus: () => field.value?.focus() });
       @keydown.enter.prevent="emit('submit')"
     >
     <button type="button" class="archive-go primary" :disabled="busy"
-            @click="emit('submit')">open</button>
+            @click="emit('submit')">Open</button>
     <!--
       ⚠️ `autocomplete="off"`, like every other control on these pages: Chrome
       restores a checkbox across a reload, and a switch that comes back ticked
       when the markup says otherwise is a bug that looks like the code.
     -->
     <label class="check archive-deep">
-      <input v-model="deep" type="checkbox" autocomplete="off"> whole backup
+      <input v-model="deep" type="checkbox" autocomplete="off"> Whole backup
     </label>
   </div>
   <p class="archive-note" :class="{ bad }">{{ note || DEFAULT_NOTE }}</p>
+  <!-- The rest of what used to be here, whole backup included, is the "open" help topic. -->
   <p class="archive-hint">
     Find a level at
     <a :href="searchHost" target="_blank" rel="noreferrer noopener">zaprit.fish</a>; its page
-    shows the <b>root level</b> hash in a box of its own, under the title. Nothing here needs a
-    server: the level comes straight from the Internet Archive. <b>Whole backup</b> also fetches
-    the plans, chunks and levels it depends on: slower, and usually the same songs, but it is
-    where a song that was never placed in the level would be. An adventure has no world of its own
-    and always takes this route.
+    shows the <b>root level</b> hash in a box under the title. It comes straight from the
+    Internet Archive.
   </p>
 </template>

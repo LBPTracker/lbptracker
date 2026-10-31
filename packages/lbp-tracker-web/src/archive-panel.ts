@@ -1,5 +1,5 @@
 /**
- * The third way to open a song: a level out of the Internet Archive.
+ * The open dialog's "online archive" tab: a level out of the Internet Archive.
  *
  * "Open a file" and "open a folder" both assume a listener already has a PS3
  * backup. Most do not. The official servers are gone, but every level published
@@ -42,25 +42,37 @@ const AT_A_TIME = 6;
 
 /** What a wired panel lets the page do without the reader touching it. */
 export interface ArchiveOpen {
-  /** Open a root level by its SHA-1, as if it had been pasted into the box. */
-  open(sha1: string, opts?: { deep?: boolean }): Promise<void>;
+  /**
+   * Open a root level by its SHA-1, as if it had been pasted into the box.
+   *
+   * `report`, when given, hears every line the box would say, and a failure
+   * then stays where it was asked for: the song index shows it in its own
+   * pane. Without it, a failure brings the archive's tab forward, or a hash
+   * from a link that 404s reports itself into a tab nobody is looking at.
+   */
+  open(sha1: string, opts?: { deep?: boolean; report?: Report }): Promise<void>;
+  /** The tab has come into view: put the cursor in the field. */
+  shown(): void;
 }
 
+/** A line about an open in progress, and whether it is a complaint. */
+export type Report = (text: string, bad: boolean) => void;
+
 /**
- * Wire a button to a panel it builds itself.
+ * Build the panel into `host`, a tab of the open dialog.
  *
  * `onOpen` gets the same shape a dropped file produces, so a page needs no new
  * code path: the level arrives as one `BackupFile` named after its SHA-1, which
  * is what it is called in a real backup too.
  */
 export function wireArchiveOpen(opts: {
-  button: HTMLElement;
   host: HTMLElement;
+  /** Select this panel's tab. */
+  show: () => void;
   onOpen: (opened: Opened) => void | Promise<void>;
 }): ArchiveOpen {
-  const { button, host, onOpen } = opts;
+  const { host, show, onOpen } = opts;
   host.classList.add('archive');
-  host.hidden = true;
 
   // The markup is `widgets/ArchivePanel.vue`; this keeps the state it binds to
   // and the logic that reads it. ❗ The panel used to be a 20-line `innerHTML`
@@ -86,10 +98,13 @@ export function wireArchiveOpen(opts: {
   }).mount(host);
 
   let busy = false;
+  /** Who else hears this open's lines, for as long as it runs. */
+  let report: Report | undefined;
 
   const say = (text: string, bad = false) => {
     ui.note = text;
     ui.bad = bad;
+    report?.(text, bad);
   };
 
   // ❗ **Progress goes to two places.** The panel's note is where a reader
@@ -186,7 +201,6 @@ export function wireArchiveOpen(opts: {
       job.step('open', 'opening the level…');
       const note = walkNote(walked, 'in the archive');
       say(note, note !== '');
-      host.hidden = note === '';
       // ❗ **The address bar becomes the link to share.** A level opened
       // from the archive is fully named by its hash, so writing it into the URL
       // costs one `replaceState` and gives the reader something to copy; the
@@ -205,9 +219,11 @@ export function wireArchiveOpen(opts: {
       });
     } catch (error) {
       say(error instanceof Error ? error.message : String(error), true);
+      if (!report) show();
     } finally {
       busy = false;
       ui.busy = false;
+      report = undefined;
       job?.done();
       job = undefined;
     }
@@ -229,17 +245,12 @@ export function wireArchiveOpen(opts: {
     }
   }
 
-  button.addEventListener('click', () => {
-    host.hidden = !host.hidden;
-    if (!host.hidden) focusField();
-  });
-
   return {
     open: (sha1, o) => {
-      // Opened from a link rather than from the box: show the box anyway, or a
-      // hash that 404s reports itself into a panel nobody can see.
-      host.hidden = false;
+      if (busy) return Promise.resolve();
+      report = o?.report;
       return open_(sha1.toLowerCase(), o?.deep ?? ui.deep);
     },
+    shown: () => focusField(),
   };
 }

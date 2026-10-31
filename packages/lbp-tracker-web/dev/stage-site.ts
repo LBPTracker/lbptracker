@@ -12,7 +12,8 @@
  * it copied.
  *
  * What goes in: `fixtures/rinst` and `fixtures/smp` with their manifests — the
- * two directories `src/assets.ts` fetches, and nothing else. `fixtures/archive`
+ * two directories `src/assets.ts` fetches — and the song index's current
+ * export when there is one (`stageSongIndex`), and nothing else. `fixtures/archive`
  * stays out: the pages read levels from archive.org directly
  * (`src/lbparchive.ts`); the local copy exists for the tests.
  *
@@ -31,7 +32,7 @@
  * change, and the manifests get a day.
  */
 
-import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { copyFile, cp, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -94,6 +95,40 @@ async function stageDir(name: (typeof SHIPPED)[number]): Promise<{ files: number
   return { files: rows.length + 1, bytes };
 }
 
+/**
+ * The song index, when this machine has one: `index.json` and the one export it
+ * names, never the older ones beside it.
+ *
+ * ❗ **Optional, unlike the samples.** It is built outside this repository from
+ * the archive's whole download (steering/level-sources.md, *The song index*),
+ * so a checkout without it still stages a working site, whose index panel says
+ * the index is not available. It is not game data: names, numbers and the
+ * hashes of levels that are already public.
+ */
+async function stageSongIndex(): Promise<{ files: number; bytes: number } | undefined> {
+  const from = path.join(FIXTURES, 'songindex');
+  let head: { version?: unknown };
+  try {
+    head = JSON.parse(await readFile(path.join(from, 'index.json'), 'utf8'));
+  } catch {
+    return undefined;
+  }
+  if (typeof head.version !== 'string' || !/^[\w-]+$/.test(head.version)) {
+    throw new Error(`${path.relative(REPO, from)}/index.json names no export`);
+  }
+  const to = path.join(DIST, 'fixtures', 'songindex');
+  await cp(path.join(from, head.version), path.join(to, head.version), { recursive: true });
+  await copyFile(path.join(from, 'index.json'), path.join(to, 'index.json'));
+  let files = 1;
+  let bytes = (await stat(path.join(from, 'index.json'))).size;
+  for (const entry of await readdir(path.join(to, head.version), { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    files++;
+    bytes += (await stat(path.join(entry.parentPath, entry.name))).size;
+  }
+  return { files, bytes };
+}
+
 export async function stage(): Promise<void> {
   try {
     await stat(path.join(DIST, 'index.html'));
@@ -107,6 +142,14 @@ export async function stage(): Promise<void> {
     files += done.files;
     bytes += done.bytes;
     console.log(`fixtures/${name}: ${done.files} files, ${(done.bytes / 1e6).toFixed(1)} MB`);
+  }
+  const songs = await stageSongIndex();
+  if (songs) {
+    files += songs.files;
+    bytes += songs.bytes;
+    console.log(`fixtures/songindex: ${songs.files} files, ${(songs.bytes / 1e6).toFixed(1)} MB`);
+  } else {
+    console.log('fixtures/songindex: none here, so the song index panel will say it is not available');
   }
   await writeFile(path.join(DIST, '_headers'), HEADERS);
   console.log(

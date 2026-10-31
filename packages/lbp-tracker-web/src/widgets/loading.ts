@@ -3,8 +3,8 @@
  *
  * ❗ **Opening a level is seconds long and none of it used to be visible.** The
  * archive panel says "fetching 8febe1f9…" and "12 of 30 resources…" into its
- * own note, and the drop zone says "reading …" into its title -- but both live
- * inside `#fileDialog`, and the two routes that need the message most, a
+ * own note, and the song index says how its copy is coming in its detail --
+ * but both live inside `#fileDialog`, and the two routes that need the message most, a
  * `?level=` link and a drop straight onto the home screen, never open that
  * dialog. A level would arrive after ten silent seconds.
  *

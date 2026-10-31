@@ -1,5 +1,6 @@
 /**
- * The drop zone, mounted.
+ * The open dialog's body, mounted: its tabs, the panels in them, and the
+ * query routes that open a level without it.
  *
  * ⚠️ **Split from `open-level.ts` because a worker imports that file.**
  * `render-worker.ts` wants `openedTitle` and nothing else; when the mounting
@@ -10,10 +11,11 @@
 import { createApp, h } from 'vue';
 import { wireArchiveOpen } from '../archive-panel.ts';
 import { wireBonsaiOpen } from '../bonsai-panel.ts';
+import { wireSongIndex } from '../song-index-panel.ts';
 import { levelFromQuery } from '../link.ts';
 import { asset } from '../assets.ts';
 import { fromDrop, fromFiles, type Opened } from '../open-level.ts';
-import OpenLevel from './OpenLevel.vue';
+import OpenLevel, { type OpenTab } from './OpenLevel.vue';
 
 /**
  * `?open=fixtures/levels/x.lvl` opens a file the site itself serves.
@@ -39,28 +41,41 @@ async function openFromQuery(give: (from: Promise<Opened | undefined>) => Promis
 }
 
 export interface OpenPanel {
-  /** The zone's two lines. The hint keeps its last value when omitted. */
-  say(title: string, hint?: string): void;
+  /** The open level's name, over its songs in the "this level" tab. */
+  say(title: string): void;
   /** Greyed out and inert while a level is being read. */
   busy(on: boolean): void;
-  /** The compact form the zone takes once something is open. */
+  /** Whether something is open, which is what shows the "this level" tab. */
   loaded(on: boolean): void;
+  /** Bring the "this level" tab forward: a level with several songs to pick from. */
+  showLevel(): void;
+  /** Where the song picker goes: inside the "this level" tab. */
+  seqHost: HTMLElement;
   /** Fetch a root level from the public archive, as a `?level=` link does. */
   openArchive(sha1: string): Promise<void>;
 }
 
 /**
- * Mount the drop zone and wire it to one handler.
+ * Call `shown` whenever `host` comes into view: its tab selected, or the dialog
+ * it is in opened on that tab.
  *
- * ❗ **The markup is the component's, not the page's.** All three pages used to
- * carry their own copy of it — and of its CSS — and the copies had already
- * drifted apart; see `widgets/OpenLevel.vue`. A page now supplies an empty
- * element and this returns the three things it actually drives.
+ * ❗ **One observer rather than a hook on every way a pane can appear.** A tab
+ * click, the dialog's `showModal()` from four places in `daw.ts` and a failed
+ * open bringing its tab forward all end with the pane visible, and this is the
+ * one thing all of them have in common.
+ */
+function whenShown(host: HTMLElement, shown: () => void): void {
+  new IntersectionObserver((entries) => {
+    if (entries.some((e) => e.isIntersecting)) shown();
+  }).observe(host);
+}
+
+/**
+ * Mount the open dialog's body and wire it to one handler.
  *
- * ❗ **The archive is the third button and Bonsai the fourth, and they live
- * here** rather than beside each page's own wiring. Three pages open levels;
- * the last time two of them grew their own copy of something this small it cost
- * a day.
+ * ❗ **The markup is the component's, not the page's**; see
+ * `widgets/OpenLevel.vue`. A page supplies an empty element and this returns
+ * the few things it actually drives.
  */
 export function mountOpen(
   at: string | Element,
@@ -75,13 +90,14 @@ export function mountOpen(
   // inside the ref callback resolves to `null`, and every property read off it
   // then fails with "does not exist on type 'never'".
   interface Mounted {
-    say(title: string, hint?: string): void;
+    say(title: string): void;
     setBusy(on: boolean): void;
     setLoaded(on: boolean): void;
-    archiveButton: HTMLElement | null;
+    select(tab: OpenTab): void;
+    seqHost: HTMLElement | null;
     archiveHost: HTMLElement | null;
-    bonsaiButton: HTMLElement | null;
     bonsaiHost: HTMLElement | null;
+    songsHost: HTMLElement | null;
   }
   const held: { ui: Mounted | null } = { ui: null };
 
@@ -97,45 +113,48 @@ export function mountOpen(
   }).mount(at as Element);
 
   const ui = held.ui!;
-  let openArchive = async (_sha1: string): Promise<void> => {};
-  if (ui.archiveButton && ui.archiveHost && ui.bonsaiButton && ui.bonsaiHost) {
-    const archive = wireArchiveOpen({
-      button: ui.archiveButton,
-      host: ui.archiveHost,
-      onOpen: opts.onOpen,
-    });
-    const bonsai = wireBonsaiOpen({
-      button: ui.bonsaiButton,
-      host: ui.bonsaiHost,
-      onOpen: opts.onOpen,
-    });
-    // One panel at a time: each button shows its own and puts the other away.
-    // The panels' own listeners run first, having been added first.
-    const { archiveHost, bonsaiHost } = ui;
-    ui.archiveButton.addEventListener('click', () => (bonsaiHost.hidden = true));
-    ui.bonsaiButton.addEventListener('click', () => (archiveHost.hidden = true));
-    // ❗ **`?level=<sha1>` and `?bonsai=<number>` are the shareable links to a
-    // song**, and they are handled here rather than in the panels so that every
-    // query route is in one place. Neither is the same thing as `?open=`: that
-    // one fetches a file this site serves, these fetch a published level from
-    // archive.org or from Bonsai. See `link.ts` for the whole of what a URL may
-    // say.
-    const wanted = levelFromQuery(window.location.search);
-    if (wanted?.from === 'archive') void archive.open(wanted.sha1, { deep: wanted.deep });
-    if (wanted?.from === 'bonsai') void bonsai.open(wanted.id, { deep: wanted.deep });
-    openArchive = (sha1) => {
-      bonsaiHost.hidden = true;
-      return archive.open(sha1, { deep: false });
-    };
-  }
+  const { seqHost, archiveHost, bonsaiHost, songsHost } = ui;
+  if (!seqHost || !archiveHost || !bonsaiHost || !songsHost) throw new Error('the open dialog did not mount');
+
+  const archive = wireArchiveOpen({
+    host: archiveHost,
+    show: () => ui.select('archive'),
+    onOpen: opts.onOpen,
+  });
+  const bonsai = wireBonsaiOpen({
+    host: bonsaiHost,
+    show: () => ui.select('bonsai'),
+    onOpen: opts.onOpen,
+  });
+  // ❗ The index opens through the archive's route, and says how it went in its
+  // own pane: `report` keeps the archive's tab where it is, so the reader can
+  // pick another copy when one will not download.
+  const songs = wireSongIndex({
+    host: songsHost,
+    openArchive: (sha1, report) => archive.open(sha1, { deep: false, report }),
+  });
+  whenShown(archiveHost, archive.shown);
+  whenShown(bonsaiHost, bonsai.shown);
+  whenShown(songsHost, songs.shown);
+
+  // ❗ **`?level=<sha1>` and `?bonsai=<number>` are the shareable links to a
+  // song**, and they are handled here rather than in the panels so that every
+  // query route is in one place. Neither is the same thing as `?open=`: that
+  // one fetches a file this site serves, these fetch a published level from
+  // archive.org or from Bonsai. See `link.ts` for the whole of what a URL may
+  // say.
+  const wanted = levelFromQuery(window.location.search);
+  if (wanted?.from === 'archive') void archive.open(wanted.sha1, { deep: wanted.deep });
+  if (wanted?.from === 'bonsai') void bonsai.open(wanted.id, { deep: wanted.deep });
 
   void openFromQuery(give);
 
   return {
-    say: (title, hint) => ui.say(title, hint),
+    say: (title) => ui.say(title),
     busy: (on) => ui.setBusy(on),
     loaded: (on) => ui.setLoaded(on),
-    openArchive: (sha1) => openArchive(sha1),
+    showLevel: () => ui.select('level'),
+    seqHost,
+    openArchive: (sha1) => archive.open(sha1, { deep: false }),
   };
 }
-

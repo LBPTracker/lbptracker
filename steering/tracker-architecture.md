@@ -54,13 +54,14 @@ The voice's own grid is the tracker's clock's, kept as an A/B, and the keyboard 
 `packages/lbp-tracker-lib/test/audio.test.ts` pins "the mixer renders the same audio whatever the
 block size", and it catches a grid mistake within a minute of it being made.
 
-## The monorepo — three packages, one seam, one of them next door
+## The monorepo — three packages, one seam, one of them next door, and the tools
 
 | directory | package | what it is |
 |---|---|---|
 | `../cwlib-ts` | `@lbptracker/cwlib` | reading LBP's serialised resources: the container, the Thing graph and its **53** part readers, plans, chunks, saves, archives, the instruments — **its own repository**, `github.com/LBPTracker/cwlib-ts` |
 | `packages/lbp-tracker-lib` | `@lbptracker/lib` | turning that into sound: the sampler, the DSP chain, the render pipeline, MIDI |
 | `packages/lbp-tracker-web` | `@lbptracker/web` | the app: one page, one song, five views ([editor.md](editor.md)) |
+| `packages/lbp-tracker-tools` | `@lbptracker/tools` | command-line tools that make what the app serves, on a developer's machine: the song index ([tools.md](tools.md), *The song index*). Nothing imports it; it imports `cwlib` and `lib` |
 
 ❗ **The split is by dependency direction, not by taxonomy**, and the import graph decided it:
 `cwlib` is closed under its own imports and names nothing above it. That is why `scale.ts` and

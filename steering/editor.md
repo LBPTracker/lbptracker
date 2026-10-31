@@ -17,8 +17,12 @@ instead of disjoint menus. `index.html` is now the one page (its own styles in `
 while bundling the link after it, so the shared sheet won on the deployed site and not on the dev
 server -- measured 2026-09-07, 0.2.1): a sticky top bar with the views'
 tabs, the song's name, the transport (play, stop, loop, clock, tempo, volume and a VU meter)
-and the file actions (new, open, save); "open" is a modal dialog holding the shared drop zone
-and the picker for a level holding several sequencers; a fixed footer carries the status line,
+and the file actions (new, open, save); "open" is a modal dialog of tabs, one per way in (the
+song index first, the online archive, Bonsai, your computer) plus "this level", the picker for a
+level holding several sequencers, which the page brings forward when a level brings more than one
+(`widgets/OpenLevel.vue`; a file dropped anywhere on the dialog opens from any tab, and each
+panel hears that its tab came into view through one `IntersectionObserver`, `whenShown` in
+`widgets/open-panel.ts`); a fixed footer carries the status line,
 the credit and the audio thread's readout (`17 notes · CPU 6%`, coloured when the margin is thin
 or a dropout happened, the details on hover; what the figure is and how it is kept honest with a
 millisecond clock is *The "audio %" figure* in [tracker-architecture.md](tracker-architecture.md));
@@ -472,7 +476,7 @@ unconditionally and a link can never reach the song it names; and `seq` is writt
 level is in the URL, since a level opened off this machine has no shareable name. Every value is
 validated before use — the hash and the number reach a fetch URL, the uid a map key.
 
-The picker carries **copy the link**, beside the search box and only for songs that have one:
+The picker carries **Copy the link**, beside the search box and only for songs that have one:
 `state.linkable` follows each open, and only a level fetched from the archive or Bonsai can be
 linked to, so a level off this machine shows no button rather than a dead one. ⚠️ Two traps: the copy goes
 through `navigator.clipboard` and falls back to `execCommand('copy')` — the first is denied

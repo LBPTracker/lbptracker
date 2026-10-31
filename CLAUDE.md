@@ -38,8 +38,9 @@ Steering files (read on demand, per the hints):
   the synthesiser: FMOD Ex 4.44.10 and how little of it the game drives, the sequencer's DSP chain
   (`SMS Reverb`, `SMS WaveHammer`), the 7.1 output stage and the stereo fold.
 - [steering/level-sources.md](steering/level-sources.md) — **read before touching how a level is
-  fetched** (`lbparchive.ts`, `bonsai.ts`, the two panels, `resource-walk.ts`): the public
-  archive and its index, why the route is a hash, and Bonsai and its API.
+  fetched** (`lbparchive.ts`, `bonsai.ts`, `song-index.ts`, the three panels, `resource-walk.ts`):
+  the public archive and its index, why the route is a hash, the song index and its files, and
+  Bonsai and its API.
 - [steering/game-assets.md](steering/game-assets.md) — read before touching audio data: where the
   sequencer's samples really are (`.smp` files in the FARCs, by GUID — not the FSB banks), their
   loop points, the FSB4 format and codecs for the SFX side, and the asset-licensing stance.
@@ -52,7 +53,7 @@ Steering files (read on demand, per the hints):
   11.3's schema member for member, the units read off Live's own files and Live itself, the optional
   Samplers built from the game's instruments, the corpus numbers, and how Live was made to check it.
 - [steering/tracker-architecture.md](steering/tracker-architecture.md) — read before starting
-  implementation: the three packages and where the seam runs, why the mixer is ours and lives in
+  implementation: the three packages and the tools package, where the seam runs, why the mixer is ours and lives in
   an AudioWorklet, why the web layer has a bundler and Vue and the libraries have neither, the
   live player's invariants, the build order and what exists.
 - [steering/editor.md](steering/editor.md) — **read before touching `index.html`, `src/daw.ts`,
@@ -63,9 +64,9 @@ Steering files (read on demand, per the hints):
 - [steering/eboot-re.md](steering/eboot-re.md) — **read before opening the eboot or a PRX**: the
   address conventions (the delta trap that costs hours), the techniques that worked, and every
   anchor already mapped.
-- [steering/tools.md](steering/tools.md) — read before reaching for anything in `tools/` or
-  `packages/*/dev/`: what each script is for, the trap each exists because of, and the
-  environment variables.
+- [steering/tools.md](steering/tools.md) — read before reaching for anything in `tools/`,
+  `packages/*/dev/` or `packages/lbp-tracker-tools` (the song index's builder): what each script
+  is for, the trap each exists because of, and the environment variables.
 - [steering/open-questions.md](steering/open-questions.md) — **read before planning a work
   session**: the deliberate deviations and what would settle each, the measured residues nothing
   models yet, and the two questions that are not about fidelity at all.

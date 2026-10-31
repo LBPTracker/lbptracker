@@ -1,0 +1,17 @@
+{
+  "name": "@lbptracker/tools",
+  "version": "0.2.56",
+  "private": true,
+  "type": "module",
+  "description": "Command-line tools around the tracker: the song index, built from the public archive.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test",
+    "typecheck": "node ../../node_modules/typescript/bin/tsc -p .",
+    "song-index": "node src/song-index/cli.ts"
+  },
+  "dependencies": {
+    "@lbptracker/cwlib": "git+https://github.com/LBPTracker/cwlib-ts.git",
+    "@lbptracker/lib": "*"
+  }
+}
