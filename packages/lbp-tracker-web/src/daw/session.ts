@@ -26,7 +26,7 @@ import { VOICES_UNLIMITED } from '@lbptracker/lib/polyphony.ts';
 import {
   newSong, sequencerFromSong, songEndSteps, trackFromClip, type Clip, type Song, type SongNote,
 } from '@lbptracker/lib/song.ts';
-import { engine } from '../controls/engine.ts';
+import { POOL_UNLIMITED_AT, engine } from '../controls/engine.ts';
 import { instrumentsFrom, type InstrumentInfo } from '../editor/instruments.ts';
 import { EditorState } from '../editor/state.ts';
 import { Player, type Health } from '../player.ts';
@@ -142,8 +142,11 @@ export const player = new Player({
   },
 });
 
-/** The pool size the engine switches ask for. */
-export const poolSize = (): number => (engine.on('optNoCap') ? VOICES_UNLIMITED : engine.raw('voices'));
+/** The pool size the engine switches ask for: the slider's last step is no cap at all. */
+export const poolSize = (): number => {
+  const size = engine.raw('voices');
+  return size >= POOL_UNLIMITED_AT ? VOICES_UNLIMITED : size;
+};
 
 /**
  * The master bus the engine card asks for: the game's, with the AGC or
@@ -429,7 +432,7 @@ async function syncNow(): Promise<void> {
 
 // The engine switches: the output stage is one message, the pool is replayed.
 watch(engine.effectsSignature, () => pushEffects());
-watch(() => [engine.raw('voices'), engine.on('optNoCap')], () => {
+watch(() => engine.raw('voices'), () => {
   if (player.hasPlan) player.setPool(poolSize());
 });
 

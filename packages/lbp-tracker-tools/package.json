@@ -1,6 +1,6 @@
 {
   "name": "@lbptracker/tools",
-  "version": "0.2.56",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Command-line tools around the tracker: the song index, built from the public archive.",

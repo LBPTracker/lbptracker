@@ -16,29 +16,37 @@ import {
   type Spec,
 } from './kit.ts';
 
+/** The largest capped pool the slider offers. */
+export const POOL_MAX = 128;
+/**
+ * The slider's last step, one past `POOL_MAX`, is "unlimited": the pool has no
+ * cap there. One control instead of a size and a box that switched it off.
+ */
+export const POOL_UNLIMITED_AT = POOL_MAX + 1;
+
 const GROUP_SPECS = [
   // What each does is in the help (src/help.ts, 'engine'), not beside the faders.
-  { key: 'pool', title: 'voice pool' },
-  { key: 'stage', title: 'output stage' },
+  // The pool and the output stage's switches in one card: two rows, where two
+  // cards held one slider and one line of checkboxes.
+  { key: 'pool', title: 'voices & processing', checksLabel: 'effects' },
   // Ours, the glue and the limiter, by default; the game's, with an AGC or at
   // its own level, and the fold's gain alone beside it.
   { key: 'master', title: 'master bus' },
 ] as const satisfies readonly Group[];
 
 const FADER_SPECS = [
-  { id: 'voices', group: 'pool', label: 'size', min: 1, max: 128, step: 1, start: 32,
-    per: 1, disabledBy: 'optNoCap',
-    format: (v, on) => (on('optNoCap') ? 'off' : String(v)) },
+  { id: 'voices', group: 'pool', label: 'size', min: 1, max: POOL_UNLIMITED_AT, step: 1, start: 32,
+    per: 1,
+    format: (v) => (v >= POOL_UNLIMITED_AT ? 'unlimited' : String(v)) },
   { id: 'masterAmount', group: 'master', label: 'glue', min: 0, max: 10, step: 1, start: 4,
     per: 1, effects: true, onlyWhen: { choice: 'master', is: 'ours' },
     format: (v, _on, picked) => (picked('master') === 'ours' ? String(v) : 'off') },
 ] as const satisfies readonly Fader[];
 
 const CHECK_SPECS = [
-  { id: 'optNoCap', group: 'pool', label: 'unlimited', start: false },
-  { id: 'optEcho', group: 'stage', label: 'echo', start: true, effects: true },
-  { id: 'optReverb', group: 'stage', label: 'reverb', start: true, effects: true },
-  { id: 'optClip', group: 'stage', label: 'output clip', start: true, effects: true },
+  { id: 'optEcho', group: 'pool', label: 'echo', start: true, effects: true },
+  { id: 'optReverb', group: 'pool', label: 'reverb', start: true, effects: true },
+  { id: 'optClip', group: 'pool', label: 'output clip', start: true, effects: true },
 ] as const satisfies readonly Check[];
 
 /**

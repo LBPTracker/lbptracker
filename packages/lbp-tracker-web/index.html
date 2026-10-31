@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LBP Tracker &middot; LittleBigPlanet 3's music sequencer in the browser</title>
-<meta name="description" content="LittleBigPlanet 3's music sequencer, in the browser. Open one of your levels or a level from the public archive, compose on the game's own grid, and hear it played by the game's own instruments. Export a WAV or a MIDI file. Everything runs on your own machine.">
+<title>LBP Tracker &middot; LittleBigPlanet's music sequencer in the browser</title>
+<meta name="description" content="LittleBigPlanet's music sequencer, in the browser. Open one of your levels or a level from the public archive, compose on the game's own grid, and hear it played by the game's own instruments. Export a WAV or a MIDI file. Everything runs on your own machine.">
 <link rel="canonical" href="https://lbptracker.sgdc3.it/">
 <meta name="theme-color" content="#101317">
 <meta name="color-scheme" content="dark">
@@ -13,12 +13,12 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="LBP Tracker">
 <meta property="og:title" content="LBP Tracker">
-<meta property="og:description" content="LittleBigPlanet 3's music sequencer, in the browser. Open one of your levels or a level from the public archive, compose on the game's own grid, and hear it played by the game's own instruments. Export a WAV or a MIDI file. Everything runs on your own machine.">
+<meta property="og:description" content="LittleBigPlanet's music sequencer, in the browser. Open one of your levels or a level from the public archive, compose on the game's own grid, and hear it played by the game's own instruments. Export a WAV or a MIDI file. Everything runs on your own machine.">
 <meta property="og:url" content="https://lbptracker.sgdc3.it/">
 <meta property="og:image" content="https://lbptracker.sgdc3.it/icon-192.png">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="LBP Tracker">
-<meta name="twitter:description" content="LittleBigPlanet 3's music sequencer, in the browser. Open one of your levels or a level from the public archive, compose on the game's own grid, and hear it played by the game's own instruments. Export a WAV or a MIDI file. Everything runs on your own machine.">
+<meta name="twitter:description" content="LittleBigPlanet's music sequencer, in the browser. Open one of your levels or a level from the public archive, compose on the game's own grid, and hear it played by the game's own instruments. Export a WAV or a MIDI file. Everything runs on your own machine.">
 <meta name="twitter:image" content="https://lbptracker.sgdc3.it/icon-192.png">
 
 <link rel="icon" type="image/svg+xml" href="./favicon.svg">
@@ -35,7 +35,7 @@
   "@type": "WebApplication",
   "name": "LBP Tracker",
   "url": "https://lbptracker.sgdc3.it/",
-  "description": "LittleBigPlanet 3's music sequencer, in the browser. Open one of your levels or a level from the public archive, compose on the game's own grid, and hear it played by the game's own instruments. Export a WAV or a MIDI file. Everything runs on your own machine.",
+  "description": "LittleBigPlanet's music sequencer, in the browser. Open one of your levels or a level from the public archive, compose on the game's own grid, and hear it played by the game's own instruments. Export a WAV or a MIDI file. Everything runs on your own machine.",
   "applicationCategory": "MultimediaApplication",
   "operatingSystem": "Any, in a web browser",
   "browserRequirements": "Requires a browser with WebAudio and AudioWorklet",
@@ -48,41 +48,100 @@
 </head>
 <body>
 <header class="daw-top">
-  <a class="brand" id="brand" href="./" title="About LBP Tracker">LBP Tracker</a>
-  <div class="tabs" role="tablist" aria-label="Views">
-    <button type="button" role="tab" data-view="arrange" aria-selected="true">Arrange</button>
-    <button type="button" role="tab" data-view="mixer">Song/Mixer</button>
-    <button type="button" role="tab" data-view="render">Render</button>
-    <button type="button" role="tab" data-view="convert">Import/Export</button>
-    <button type="button" role="tab" data-view="keyboard">Keyboard</button>
+  <!-- Three zones on one row that never wraps: the menus, the transport
+       (always centred, as a DAW's is), and the song. Narrower, the zones
+       shrink instead -- see "the top bar" in daw.css. -->
+  <div class="bar-left">
+    <a class="brand" id="brand" href="./" title="About LBP Tracker"><span class="brand-name">LBP Tracker</span></a>
+    <nav class="menubar" aria-label="Menus">
+      <div class="menu-wrap">
+        <button type="button" class="menu-button" id="menu-file" aria-haspopup="menu" aria-expanded="false" aria-controls="menu-file-list" title="New, open, save, import, export, the song's settings and the render">File</button>
+        <div id="menu-file-list" class="bar-pop menu" role="menu" aria-label="File" hidden>
+          <button type="button" role="menuitem" data-action="new">New song</button>
+          <button type="button" role="menuitem" data-action="open">Open song</button>
+          <hr>
+          <button type="button" role="menuitem" data-action="save">Save <kbd>Ctrl+S</kbd></button>
+          <hr>
+          <button type="button" role="menuitem" data-action="view:import">Import MIDI</button>
+          <button type="button" role="menuitem" data-action="view:export">Export</button>
+          <hr>
+          <button type="button" role="menuitem" data-action="view:render">Render to audio</button>
+        </div>
+      </div>
+      <div class="menu-wrap">
+        <button type="button" class="menu-button" id="menu-edit" aria-haspopup="menu" aria-expanded="false" aria-controls="menu-edit-list" title="Undo, the clipboard, selection">Edit</button>
+        <div id="menu-edit-list" class="bar-pop menu" role="menu" aria-label="Edit" hidden>
+          <button type="button" role="menuitem" data-edit="undo">Undo <kbd>Ctrl+Z</kbd></button>
+          <button type="button" role="menuitem" data-edit="redo">Redo <kbd>Ctrl+Y</kbd></button>
+          <hr>
+          <button type="button" role="menuitem" data-edit="cut">Cut <kbd>Ctrl+X</kbd></button>
+          <button type="button" role="menuitem" data-edit="copy">Copy <kbd>Ctrl+C</kbd></button>
+          <button type="button" role="menuitem" data-edit="paste">Paste <kbd>Ctrl+V</kbd></button>
+          <button type="button" role="menuitem" data-edit="duplicate">Duplicate <kbd>Ctrl+D</kbd></button>
+          <button type="button" role="menuitem" data-edit="delete">Delete <kbd>Del</kbd></button>
+          <hr>
+          <button type="button" role="menuitem" data-edit="selectAll">Select all <kbd>Ctrl+A</kbd></button>
+        </div>
+      </div>
+      <div class="menu-wrap">
+        <button type="button" class="menu-button" id="menu-tools" aria-haspopup="menu" aria-expanded="false" aria-controls="menu-tools-list" title="The instrument bench">Tools</button>
+        <div id="menu-tools-list" class="bar-pop menu" role="menu" aria-label="Tools" hidden>
+          <button type="button" role="menuitem" data-action="view:keyboard">Keyboard</button>
+          <button type="button" role="menuitem" data-action="view:bench">Bench</button>
+        </div>
+      </div>
+      <div class="menu-wrap">
+        <button type="button" class="menu-button" id="menu-help" aria-haspopup="menu" aria-expanded="false" aria-controls="menu-help-list" title="Help, what changed, about">Help</button>
+        <div id="menu-help-list" class="bar-pop menu" role="menu" aria-label="Help" hidden>
+          <button type="button" role="menuitem" data-help="app">Help</button>
+          <button type="button" role="menuitem" data-help="changelog">What changed</button>
+          <hr>
+          <button type="button" role="menuitem" data-action="home">About LBP Tracker</button>
+        </div>
+      </div>
+    </nav>
   </div>
-  <span class="spacer"></span>
-  <div class="transport">
-    <button id="play" type="button" aria-label="Play" disabled>&#9654;</button>
-    <button id="stop" type="button" aria-label="Stop, and back to the start" title="Stop, and back to the start" disabled>&#9632;</button>
+  <div class="transport" role="group" aria-label="Transport">
+    <div class="seg" role="group" aria-label="Play and stop">
+      <button id="play" type="button" aria-label="Play" disabled>&#9654;</button>
+      <button id="stop" type="button" aria-label="Stop, and back to the start" title="Stop, and back to the start" disabled>&#9632;</button>
+    </div>
     <button id="loop" type="button" aria-label="Loop the song" title="Loop the song" aria-pressed="false">&#8635;</button>
     <button id="metronome" type="button" aria-label="Metronome" title="Click on every beat while the song plays" aria-pressed="false"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path d="M5.2 1.5h5.6l2.7 13H2.5z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 11.5 11 3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><rect x="9.3" y="5.2" width="2.6" height="1.9" rx=".4" transform="rotate(20 10.6 6.1)" fill="currentColor"/></svg></button>
-    <span id="clock">0:00 / 0:00</span>
-    <label for="tempoBox" class="hintline" style="margin:0">BPM</label>
-    <input id="tempoBox" type="number" min="20" max="400" step="1" value="240" aria-label="Tempo" autocomplete="off">
-    <div class="vol">
-      <canvas id="vu" width="120" height="10" aria-label="Output level, left and right"></canvas>
-      <input id="vol" type="range" min="0" max="1" step="0.01" value="1" aria-label="Volume" autocomplete="off">
+    <span class="bar-sep" aria-hidden="true"></span>
+    <div class="lcd" title="Where the playhead is: bar.beat, then the time and the song's length">
+      <span id="where">1.1</span>
+      <span id="clock">0:00 / 0:00</span>
     </div>
-    <div class="seg" role="group" aria-label="History">
-      <button id="undo" type="button" aria-label="Undo" title="Undo (Ctrl+Z)" disabled><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 3L2.5 6l3 3"/><path d="M2.5 6h6a4 4 0 010 8H6"/></svg></button>
-      <button id="redo" type="button" aria-label="Redo" title="Redo (Ctrl+Y)" disabled><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 3l3 3-3 3"/><path d="M13.5 6h-6a4 4 0 000 8H10"/></svg></button>
+    <span class="bar-sep" aria-hidden="true"></span>
+    <label class="lcd tempo" title="Tempo, changed as it plays">
+      <input id="tempoBox" type="number" min="20" max="400" step="1" value="240" aria-label="Tempo" autocomplete="off">
+      <span>bpm</span>
+    </label>
+    <span class="bar-sep" aria-hidden="true"></span>
+    <button id="mixerButton" type="button" aria-label="Mixer" title="Mixer &amp; engine settings" aria-pressed="false"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M4 2v12M8 2v12M12 2v12"/><rect x="2.5" y="8.5" width="3" height="2" rx=".5" fill="currentColor"/><rect x="6.5" y="4.5" width="3" height="2" rx=".5" fill="currentColor"/><rect x="10.5" y="10" width="3" height="2" rx=".5" fill="currentColor"/></svg></button>
+    <!-- The level meter is the volume's fader too: the handle runs over the bars. -->
+    <div class="vol">
+      <canvas id="vu" width="240" height="32" aria-hidden="true"></canvas>
+      <input id="vol" type="range" min="0" max="1" step="0.01" value="1" aria-label="Volume" title="Volume 100%" autocomplete="off">
     </div>
   </div>
-  <span class="spacer"></span>
-  <span id="dirty" title="unsaved changes"></span>
-  <span id="songTitle" title="The song's name and author; change them under Song/Mixer">
-    <span id="songName">untitled</span>
-    <span id="songAuthor" hidden></span>
-  </span>
-  <button id="openToggle" type="button">open</button>
-  <button id="save" type="button" class="primary">save</button>
-  <button type="button" class="bar-help" data-help="app" title="Help" aria-label="Help">?</button>
+  <div class="bar-right">
+    <!-- The name is its own editor: a click opens the name and the author under it. -->
+    <div class="title-wrap">
+      <button id="songTitle" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="songEdit" title="The song's name and author: click to change them">
+        <span id="songName"><span id="dirty" title="unsaved changes" hidden></span><span id="songNameText">untitled</span></span>
+        <span id="songAuthor" hidden></span>
+      </button>
+      <div id="songEdit" class="bar-pop song-edit" role="dialog" aria-label="The song's name and author" hidden>
+        <label for="songEditName">name</label>
+        <input id="songEditName" type="text" placeholder="untitled" autocomplete="off">
+        <label for="songEditAuthor">author</label>
+        <input id="songEditAuthor" type="text" placeholder="nobody" autocomplete="off" spellcheck="false"
+               title="Who made it, as the game keeps it: a PSN name, up to 16 letters, digits, - and _">
+      </div>
+    </div>
+  </div>
 </header>
 
 <dialog id="helpDialog" class="picker-dialog help-dialog">
@@ -116,34 +175,41 @@
 
 <main>
   <!-- =================================================================== Home -->
-  <div id="view-home" class="view home" hidden>
-    <h1>LittleBigPlanet&nbsp;3&rsquo;s Music Sequencer, in the browser</h1>
-    <p class="sub">
-      LBP Tracker plays, edits and renders the music written in the game&rsquo;s own sequencer:
-      the same instruments, the same synthesis, the same echo and reverb, note for note. Open one of
-      your levels, a backup, or a level from the public archive; compose on the game&rsquo;s own
-      grid; hear every change at once; save it as a WAV, a MIDI file or a song file.
-      <strong>Everything happens on your own computer:</strong> nothing you open is uploaded anywhere.
-    </p>
-    <div class="actions">
-      <button id="homeNew" type="button" class="primary">start a new song</button>
-      <button id="homeOpen" type="button">open a level or a song&hellip;</button>
-      <button id="homeDemo" type="button" title="A song from the community, fetched from the public archive: every one plays once before any plays again">play a demo song</button>
-      <button id="homeArrange" type="button">back to the song</button>
+  <!-- No title bar: the presentation's own heading names it, and the close
+       button floats in the corner. -->
+  <dialog id="panel-home" class="view-panel" aria-labelledby="panel-home-title">
+    <div class="view-panel-head bare">
+      <button type="button" class="view-panel-close" data-close aria-label="Close" title="Close (Esc)">&times;</button>
     </div>
-    <div class="home-grid">
-      <div class="card"><h3>Arrange</h3><p>The board as the game lays it out, one instrument per chip and four bars to a tile, and inside each chip the note grid: points, glides, volume and timbre, whole steps or triplets.</p></div>
-      <div class="card"><h3>Song/Mixer</h3><p>Tempo, swing, the mixer channels and their faders, the echo and the reverb, exactly the fields the game stores; and the engine&rsquo;s own voice pool and output stage.</p></div>
-      <div class="card"><h3>Render</h3><p>The song to a 48&nbsp;kHz WAV through the same arithmetic the live player uses, with the numbers that say what the render did.</p></div>
-      <div class="card"><h3>Import/Export</h3><p>Out as MIDI, MPE so a bend stays with its note, with a tally of what could not be carried; in from any MIDI file, played by the game&rsquo;s instruments.</p></div>
-      <div class="card"><h3>Keyboard</h3><p>The game&rsquo;s instruments under your fingers, by mouse, computer keys or a MIDI controller, with every voice parameter to turn while it sounds.</p></div>
-      <div class="card"><h3>Faithful</h3><p>Every number here was read out of the game&rsquo;s own binaries and checked against real levels; where the project knowingly departs from the engine, it says so.</p></div>
+    <div id="view-home" class="view home panel-body-scroll">
+      <div class="home-body">
+        <header class="home-head">
+          <h1 id="panel-home-title" class="home-title">LBP Tracker</h1>
+          <p class="home-tagline">LittleBigPlanet&rsquo;s Music Sequencer, in the browser</p>
+        </header>
+        <p class="sub">
+          LBP Tracker plays, edits and renders the music written in the game&rsquo;s own sequencer:
+          the same instruments, the same synthesis, the same echo and reverb, note for note. Open one of
+          your levels, a backup, or a level from the public archive; compose on the game&rsquo;s own
+          grid; hear every change at once; save it as a WAV, a MIDI file or a song file.
+          <strong>Everything happens on your own computer:</strong> nothing you open is uploaded anywhere.
+        </p>
+        <div class="actions">
+          <button id="homeNew" type="button" class="primary">Start a new song</button>
+          <button id="homeOpen" type="button">Open a level or a song</button>
+          <button id="homeDemo" type="button" title="A song from the community, fetched from the public archive: every one plays once before any plays again">Play a demo song</button>
+        </div>
+        <div class="home-grid">
+          <div class="card"><h3>Arrange</h3><p>The board as the game lays it out, one instrument per chip and four bars to a tile, and inside each chip the note grid: points, glides, volume and timbre, whole steps or triplets.</p></div>
+          <div class="card"><h3>Mixer &amp; engine settings</h3><p>Tempo, swing, the mixer channels and their faders, the echo and the reverb, exactly the fields the game stores; and the engine&rsquo;s own voice pool and output stage.</p></div>
+          <div class="card"><h3>Render</h3><p>The song to a 48&nbsp;kHz WAV through the same arithmetic the live player uses, with the numbers that say what the render did.</p></div>
+          <div class="card"><h3>Import and export</h3><p>Out as MIDI, MPE so a bend stays with its note, with a tally of what could not be carried; in from any MIDI file, played by the game&rsquo;s instruments.</p></div>
+          <div class="card"><h3>Keyboard</h3><p>The game&rsquo;s instruments under your fingers, by mouse, computer keys or a MIDI controller, with every voice parameter to turn while it sounds.</p></div>
+          <div class="card"><h3>Faithful</h3><p>Every number here was read out of the game&rsquo;s own binaries and checked against real levels; where the project knowingly departs from the engine, it says so.</p></div>
+        </div>
+      </div>
     </div>
-    <p class="hintline">
-      Whatever is open stays open while you read this: the transport keeps playing, and any view
-      brings you back to it.
-    </p>
-  </div>
+  </dialog>
 
   <!-- ================================================================ Arrange -->
   <div id="view-arrange" class="view arrange">
@@ -215,247 +281,378 @@
   </div>
 
 
-  <div id="view-mixer" class="view" hidden>
-    <section>
-      <p class="step">The song <button type="button" class="help-btn" data-help="song" title="Help" aria-label="Help">?</button></p>
-      <div id="mixer"></div>
-    </section>
-    <section>
-      <p class="step">Engine <button type="button" class="help-btn" data-help="engine" title="Help" aria-label="Help">?</button></p>
-      <div id="engine"></div>
-    </section>
-  </div>
+  <dialog id="panel-mixer" class="view-panel form-panel" aria-labelledby="panel-mixer-title">
+    <div class="view-panel-head">
+      <h2 id="panel-mixer-title">Mixer &amp; engine settings</h2>
+      <button type="button" class="view-panel-close" data-close aria-label="Close" title="Close (Esc)">&times;</button>
+    </div>
+    <div id="view-mixer" class="view panel-body-scroll">
+      <section class="mx-section">
+        <header class="mx-head">
+          <div>
+            <h3 class="mx-title">Mixer</h3>
+            <p class="mx-sub">Saved with the song, and what the game plays it with.</p>
+          </div>
+          <button type="button" class="help-btn" data-help="song" title="Help" aria-label="Help">?</button>
+        </header>
+        <div id="mixer"></div>
+      </section>
+      <!-- The engine is ours, not the song's: closed until it is wanted. -->
+      <details class="mx-engine">
+        <summary>
+          <span class="mx-title">Engine</span>
+          <span class="mx-sub">How this page plays it. Not saved with the song.</span>
+          <button type="button" class="help-btn" data-help="engine" title="Help" aria-label="Help">?</button>
+        </summary>
+        <div id="engine"></div>
+      </details>
+    </div>
+  </dialog>
 
   <!-- ================================================================= Render -->
-  <div id="view-render" class="view" hidden>
-    <section>
-      <p class="step"><b>1</b> Render the song to a WAV <button type="button" class="help-btn" data-help="render" title="Help" aria-label="Help">?</button></p>
-      <div class="row">
-        <button id="rd-go" class="primary" disabled>Render</button>
-        <button id="rd-save" disabled>Download WAV</button>
-        <span class="spacer"></span>
-        <span id="rd-opt-range" style="display:contents"></span>
-        <span id="rd-rangeFields" class="off">
-          <label for="rd-from">from</label>
-          <input id="rd-from" type="text" inputmode="numeric" placeholder="0:00" size="5" disabled>
-          <label for="rd-to">to</label>
-          <input id="rd-to" type="text" inputmode="numeric" placeholder="end" size="5" disabled>
-        </span>
-      </div>
-      <div class="row rd-switches">
-        <label for="rd-voices">voice pool</label>
-        <input id="rd-voices" type="text" inputmode="numeric" size="4">
-        <span id="rd-opt-pool" style="display:contents"></span>
-        <span class="sep">&middot;</span>
-        <span id="rd-opt-stage" style="display:contents"></span>
-        <span id="rd-opt-clip" style="display:contents"></span>
-        <span class="sep">&middot;</span>
-        <span id="rd-opt-master" style="display:contents"></span>
-      </div>
-      <div id="rd-status">nothing rendered yet</div>
-      <div id="rd-bar"><div></div></div>
-    </section>
-
-    <section>
-      <p class="step"><b>2</b> Listen</p>
-      <div id="rd-playerUi">
-        <canvas id="rd-wave" class="empty" width="1200" height="128" tabindex="0" role="slider"
-                aria-label="Seek through the render" aria-valuemin="0" aria-valuemax="0"
-                aria-valuenow="0" aria-valuetext="nothing rendered yet"></canvas>
-        <div id="rd-transport">
-          <button id="rd-playPause" type="button" aria-label="Play" disabled>&#9654;</button>
-          <span id="rd-times" class="mono">0:00 / 0:00</span>
-          <span class="spacer"></span>
-          <input id="rd-vol" type="range" min="0" max="1" step="0.01" value="1" aria-label="Volume" disabled>
-        </div>
-      </div>
-      <audio id="rd-player" hidden></audio>
-    </section>
-
-    <section>
-      <p class="step"><b>3</b> What the render did</p>
-      <div id="rd-stats"></div>
-      <p class="note-empty">Nothing rendered yet; the numbers appear here.</p>
-    </section>
-  </div>
-
-  <!-- ========================================================== Import/Export -->
-  <div id="view-convert" class="view" hidden>
-    <section>
-      <p class="step"><b>1</b> The song out, as MIDI <button type="button" class="help-btn" data-help="export" title="Help" aria-label="Help">?</button></p>
-      <div class="row">
-        <button id="cv-save" class="primary" disabled>Download .mid</button>
-        <span id="cv-status" style="margin:0"></span>
-      </div>
-      <div id="cv-options" style="margin-top:.9rem"></div>
-      <div id="cv-report">
-        <div class="tally" id="cv-tally"></div>
-        <ul class="lost" id="cv-lost"></ul>
-      </div>
-    </section>
-
-    <section>
-      <p class="step"><b>2</b> The song out, as an Ableton Live set <button type="button" class="help-btn" data-help="als" title="Help" aria-label="Help">?</button></p>
-      <div class="row">
-        <button id="cv-alsSave" class="primary" disabled>Download .als</button>
-      </div>
-      <div id="cv-alsOptions" style="margin-top:.9rem"></div>
-      <div id="cv-alsReport">
-        <div class="tally" id="cv-alsTally"></div>
-        <ul class="lost" id="cv-alsLost"></ul>
-      </div>
-    </section>
-
-    <section>
-      <p class="step"><b>3</b> The song back into the game, as a .plan <button type="button" class="help-btn" data-help="plan" title="Help" aria-label="Help">?</button></p>
-      <div class="row">
-        <button id="cv-planSave" class="primary" disabled>Download .plan</button>
-        <button id="cv-modSave" disabled title="The same plan, packed as a Craftworld Toolkit mod">Download .mod</button>
-        <label for="cv-planBuild">for</label>
-        <select id="cv-planBuild"></select>
-      </div>
-      <div id="cv-planSummary" style="margin-top:.7rem"></div>
-    </section>
-
-    <section>
-      <p class="step"><b>4</b> A MIDI file in, to become the song <button type="button" class="help-btn" data-help="import" title="Help" aria-label="Help">?</button></p>
-      <div class="drop" id="cv-midiDrop">
-        <strong id="cv-midiTitle">Open a .mid</strong>
-        <span id="cv-midiHint">Click here, or drop a MIDI file onto this box. Anything a DAW writes will do.</span>
-        <input id="cv-midiFile" type="file" accept=".mid,.midi,audio/midi">
-      </div>
-      <div id="cv-midiStatus"></div>
-      <div id="cv-inReport">
-        <div class="tally" id="cv-inTally"></div>
-        <div id="cv-assign"></div>
-        <div class="row" style="margin-top:.7rem">
-          <button id="cv-take" class="primary" disabled>Make it the song &rarr;</button>
-          <span class="hintline" style="margin:0">Replaces what is open; unsaved changes are lost.</span>
-        </div>
-      </div>
-    </section>
-
-    <section>
-      <p class="step">Log</p>
-      <div id="cv-log" class="logbox"></div>
-    </section>
-  </div>
-
-  <!-- =============================================================== Keyboard -->
-  <div id="view-keyboard" class="view" hidden>
-    <section>
-      <p class="step"><b>1</b> An instrument: the selected chip&rsquo;s, or any <button type="button" class="help-btn" data-help="keyboard" title="Help" aria-label="Help">?</button></p>
-      <div class="live kb-setup">
-        <div class="group">
-          <h3>instrument</h3>
-          <div class="knob">
-            <label for="kb-instrument">sound</label>
-            <button id="kb-instrument" type="button" class="sound-field wide"><span class="sound-name">pick one&hellip;</span></button>
+  <dialog id="panel-render" class="view-panel form-panel" aria-labelledby="panel-render-title">
+    <div class="view-panel-head">
+      <h2 id="panel-render-title">Render to audio</h2>
+      <button type="button" class="view-panel-close" data-close aria-label="Close" title="Close (Esc)">&times;</button>
+    </div>
+    <div id="view-render" class="view panel-body-scroll">
+      <section class="mx-section">
+        <header class="mx-head">
+          <div>
+            <h3 class="mx-title">Settings</h3>
+            <p class="mx-sub">The song as it plays now, mutes and solos included.</p>
           </div>
-          <div id="kb-status"></div>
-        </div>
-        <div class="group">
-          <h3>MIDI controller</h3>
-          <div class="knob">
-            <label for="kb-midiIn">input</label>
-            <select id="kb-midiIn"><option value="">none</option></select>
-            <output id="kb-midiState">not requested</output>
+          <button type="button" class="help-btn" data-help="render" title="Help" aria-label="Help">?</button>
+        </header>
+        <div class="rd-grid">
+          <div class="group">
+            <h3>output</h3>
+            <div class="knob">
+              <label for="rd-format">format</label>
+              <select id="rd-format" autocomplete="off">
+                <option value="wav">WAV, 16-bit (lossless)</option>
+                <option value="ogg">OGG Vorbis</option>
+                <option value="mp3">MP3</option>
+              </select>
+            </div>
+            <div class="knob" id="rd-qualityRow" hidden>
+              <label for="rd-quality">quality</label>
+              <select id="rd-quality" autocomplete="off"></select>
+            </div>
+            <div class="row"><span class="row-label">range</span><span id="rd-opt-range" style="display:contents"></span></div>
+            <div class="knob off" id="rd-rangeFields">
+              <label for="rd-from">from</label>
+              <span class="rd-span">
+                <input id="rd-from" type="text" inputmode="numeric" placeholder="0:00" size="5" disabled>
+                <label for="rd-to">to</label>
+                <input id="rd-to" type="text" inputmode="numeric" placeholder="end" size="5" disabled>
+              </span>
+            </div>
           </div>
-          <div class="knob">
-            <label for="kb-mpeMode">MPE</label>
-            <select id="kb-mpeMode">
-              <option value="auto" selected>auto</option>
-              <option value="lower">lower zone</option>
-              <option value="upper">upper zone</option>
-              <option value="off">off</option>
-            </select>
-            <output></output>
+          <div class="group">
+            <h3>engine</h3>
+            <div class="knob">
+              <label for="rd-voices">voice pool</label>
+              <input id="rd-voices" type="text" inputmode="numeric" size="4">
+              <span id="rd-opt-pool" style="display:contents"></span>
+            </div>
+            <div class="row">
+              <span class="row-label">effects</span>
+              <span id="rd-opt-stage" style="display:contents"></span>
+              <span id="rd-opt-clip" style="display:contents"></span>
+            </div>
+            <span id="rd-opt-master" style="display:contents"></span>
           </div>
-          <div class="knob">
-            <label for="kb-bendRange">bend range</label>
-            <select id="kb-bendRange">
-              <option value="1">&plusmn;1</option>
-              <option value="2" selected>&plusmn;2</option>
-              <option value="7">&plusmn;7</option>
-              <option value="12">&plusmn;12</option>
-              <option value="24">&plusmn;24</option>
-              <option value="48">&plusmn;48</option>
-              <option value="96">&plusmn;96</option>
-            </select>
-            <output></output>
+        </div>
+        <!-- The one action, its progress, and the file it makes. -->
+        <div class="panel-action">
+          <button id="rd-go" class="primary" disabled>Render</button>
+          <div class="rd-progress">
+            <div id="rd-bar"><div></div></div>
+            <div id="rd-status">nothing rendered yet</div>
           </div>
-          <div class="row" style="margin-top:.5rem">
-            <span id="kb-mpe-toggles" style="display:contents"></span>
-          </div>
-          <p class="hintline" id="kb-mpeState"></p>
-          <div id="kb-mpeLive"></div>
-        </div>
-      </div>
-    </section>
-
-    <div id="kb-controls" hidden>
-      <section>
-        <p class="step"><b>2</b> Play</p>
-        <div id="kb-piano" tabindex="0" role="group" aria-label="Keyboard"></div>
-        <p class="hintline">
-          <kbd>Z S X D C V G B H N J M</kbd> is one octave with its sharps,
-          <kbd>Q 2 W 3 E R 5 T 6 Y 7 U</kbd> the octave above,
-          <kbd>&larr;</kbd> <kbd>&rarr;</kbd> shift octave, <kbd>Esc</kbd> silences everything.
-        </p>
-        <div class="row" style="margin-top:.7rem">
-          <div id="kb-octave"></div>
-          <span class="spacer"></span>
-          <div id="kb-meter"></div>
-        </div>
-        <div id="kb-detail"></div>
-      </section>
-
-      <section>
-        <p class="step"><b>3</b> Turn things while it sounds</p>
-        <div id="kb-control-panel"></div>
-      </section>
-
-      <section>
-        <p class="step"><b>4</b> Bench</p>
-        <div class="row">
-          <button id="kb-octaves" type="button">Every slot at its base note</button>
-          <button id="kb-scale" type="button">C major, five octaves</button>
-          <button id="kb-chromatic" type="button">Chromatic C1&rarr;C7</button>
-          <button id="kb-stop" type="button">Stop</button>
-        </div>
-        <div class="row">
-          <div id="kb-note-length" style="flex:1 1 19rem; max-width:24rem"></div>
-        </div>
-        <div class="row">
-          <label for="kb-engine">engine</label>
-          <select id="kb-engine">
-            <option value="ours" selected>our mixer</option>
-            <option value="browser">browser resampler (control)</option>
-          </select>
-          <label for="kb-interp">sampler</label>
-          <select id="kb-interp">
-            <option value="engine" selected>the game's (linear + mipmaps)</option>
-            <option value="sinc8">windowed sinc</option>
-            <option value="cubic">cubic</option>
-            <option value="linear">linear</option>
-            <option value="nearest">nearest</option>
-          </select>
-          <span id="kb-stage-toggles" style="display:contents"></span>
+          <button id="rd-save" disabled>Download .wav</button>
         </div>
       </section>
 
-      <section>
-        <p class="step">Log</p>
-        <div id="kb-log" class="logbox"></div>
+      <section class="mx-section">
+        <header class="mx-head"><div><h3 class="mx-title">Listen</h3></div></header>
+        <div id="rd-playerUi">
+          <canvas id="rd-wave" class="empty" width="1200" height="128" tabindex="0" role="slider"
+                  aria-label="Seek through the render" aria-valuemin="0" aria-valuemax="0"
+                  aria-valuenow="0" aria-valuetext="nothing rendered yet"></canvas>
+          <div id="rd-transport">
+            <button id="rd-playPause" type="button" aria-label="Play" disabled>&#9654;</button>
+            <span id="rd-times" class="mono">0:00 / 0:00</span>
+            <span class="spacer"></span>
+            <input id="rd-vol" type="range" min="0" max="1" step="0.01" value="1" aria-label="Volume" disabled>
+          </div>
+        </div>
+        <audio id="rd-player" hidden></audio>
+      </section>
+
+      <section class="mx-section">
+        <header class="mx-head"><div><h3 class="mx-title">What the render did</h3></div></header>
+        <div id="rd-stats"></div>
+        <p class="note-empty">Nothing rendered yet; the numbers appear here.</p>
       </section>
     </div>
-  </div>
+  </dialog>
+
+  <!-- ================================================================= Export -->
+  <dialog id="panel-export" class="view-panel form-panel" aria-labelledby="panel-export-title">
+    <div class="view-panel-head">
+      <h2 id="panel-export-title">Export</h2>
+      <button type="button" class="view-panel-close" data-close aria-label="Close" title="Close (Esc)">&times;</button>
+    </div>
+    <!-- One tab per format. -->
+    <div class="panel-tabs" role="tablist" aria-label="Export as">
+      <button type="button" role="tab" id="ex-tab-midi" aria-controls="ex-midi" aria-selected="true">MIDI</button>
+      <button type="button" role="tab" id="ex-tab-als" aria-controls="ex-als" aria-selected="false" tabindex="-1">Ableton Live</button>
+      <button type="button" role="tab" id="ex-tab-plan" aria-controls="ex-plan" aria-selected="false" tabindex="-1">LittleBigPlanet</button>
+    </div>
+    <div id="view-export" class="view panel-body-scroll">
+      <section class="mx-section" id="ex-midi" role="tabpanel" aria-labelledby="ex-tab-midi">
+        <header class="mx-head">
+          <div><h3 class="mx-title">The song out, as MIDI</h3></div>
+          <button type="button" class="help-btn" data-help="export" title="Help" aria-label="Help">?</button>
+        </header>
+        <div id="cv-options"></div>
+        <div class="panel-action">
+          <button id="cv-save" class="primary" disabled>Download .mid</button>
+          <span id="cv-status" style="margin:0"></span>
+        </div>
+        <div id="cv-report">
+          <div class="tally" id="cv-tally"></div>
+          <ul class="lost" id="cv-lost"></ul>
+        </div>
+      </section>
+
+      <section class="mx-section" id="ex-als" role="tabpanel" aria-labelledby="ex-tab-als" hidden>
+        <header class="mx-head">
+          <div><h3 class="mx-title">The song out, as an Ableton Live set</h3></div>
+          <button type="button" class="help-btn" data-help="als" title="Help" aria-label="Help">?</button>
+        </header>
+        <div id="cv-alsOptions"></div>
+        <div class="panel-action">
+          <button id="cv-alsSave" class="primary" disabled>Download .als</button>
+        </div>
+        <div id="cv-alsReport">
+          <div class="tally" id="cv-alsTally"></div>
+          <ul class="lost" id="cv-alsLost"></ul>
+        </div>
+      </section>
+
+      <section class="mx-section" id="ex-plan" role="tabpanel" aria-labelledby="ex-tab-plan" hidden>
+        <header class="mx-head">
+          <div><h3 class="mx-title">The song back into the game, as a .plan</h3></div>
+          <button type="button" class="help-btn" data-help="plan" title="Help" aria-label="Help">?</button>
+        </header>
+        <div class="panel-action">
+          <button id="cv-planSave" class="primary" disabled>Download .plan</button>
+          <button id="cv-modSave" disabled title="The same plan, packed as a Craftworld Toolkit mod">Download .mod</button>
+          <label for="cv-planBuild">for</label>
+          <select id="cv-planBuild"></select>
+        </div>
+        <div id="cv-planSummary" style="margin-top:.7rem"></div>
+      </section>
+    </div>
+  </dialog>
+
+  <!-- ================================================================= Import -->
+  <dialog id="panel-import" class="view-panel form-panel" aria-labelledby="panel-import-title">
+    <div class="view-panel-head">
+      <h2 id="panel-import-title">Import MIDI</h2>
+      <button type="button" class="view-panel-close" data-close aria-label="Close" title="Close (Esc)">&times;</button>
+    </div>
+    <div id="view-import" class="view panel-body-scroll">
+      <section class="mx-section">
+        <header class="mx-head">
+          <div><h3 class="mx-title">A MIDI file in, to become the song</h3></div>
+          <button type="button" class="help-btn" data-help="import" title="Help" aria-label="Help">?</button>
+        </header>
+        <div class="drop" id="cv-midiDrop">
+          <strong id="cv-midiTitle">Open a .mid</strong>
+          <span id="cv-midiHint">Click here, or drop a MIDI file onto this box. Anything a DAW writes will do.</span>
+          <input id="cv-midiFile" type="file" accept=".mid,.midi,audio/midi">
+        </div>
+        <div id="cv-midiStatus"></div>
+        <div id="cv-inReport">
+          <div class="tally" id="cv-inTally"></div>
+          <div id="cv-assign"></div>
+          <div class="panel-action">
+            <button id="cv-take" class="primary" disabled>Make it the song &rarr;</button>
+            <span class="hintline" style="margin:0">Replaces what is open; unsaved changes are lost.</span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </dialog>
+
+  <!-- =============================================================== Keyboard -->
+  <dialog id="panel-keyboard" class="view-panel form-panel" aria-labelledby="panel-keyboard-title">
+    <div class="view-panel-head">
+      <h2 id="panel-keyboard-title">Keyboard</h2>
+      <button type="button" class="view-panel-close" data-close aria-label="Close" title="Close (Esc)">&times;</button>
+    </div>
+    <!-- What it used to log goes to the browser's console now (`log` in keyboard-view.ts). -->
+    <div id="view-keyboard" class="view panel-body-scroll">
+      <section class="mx-section">
+        <header class="mx-head">
+          <div>
+            <h3 class="mx-title">Instrument and input</h3>
+            <p class="mx-sub">The selected chip&rsquo;s instrument, or any other; and a MIDI controller if you have one.</p>
+          </div>
+          <button type="button" class="help-btn" data-help="keyboard" title="Help" aria-label="Help">?</button>
+        </header>
+        <div class="kb-setup">
+          <div class="group">
+            <h3>instrument</h3>
+            <div class="knob">
+              <label for="kb-instrument">sound</label>
+              <button id="kb-instrument" type="button" class="sound-field wide"><span class="sound-name">pick one&hellip;</span></button>
+            </div>
+            <div class="knob">
+              <span class="kb-label">loaded</span>
+              <div id="kb-status" class="kb-wide"></div>
+            </div>
+            <p class="hintline kb-note">Follows the chip you select on the board; pick another here to try it.</p>
+          </div>
+          <div class="group">
+            <h3>MIDI controller</h3>
+            <div class="knob">
+              <label for="kb-midiIn">input</label>
+              <select id="kb-midiIn" class="wide"><option value="">none</option></select>
+            </div>
+            <div class="knob">
+              <span class="kb-label">status</span>
+              <output id="kb-midiState" class="kb-wide">not requested</output>
+            </div>
+            <!-- What only an MPE controller needs: folded until it is wanted. -->
+            <details class="kb-mpe">
+              <summary>MPE and expression</summary>
+              <div class="knob">
+                <label for="kb-mpeMode">MPE</label>
+                <select id="kb-mpeMode" class="wide">
+                  <option value="auto" selected>auto</option>
+                  <option value="lower">lower zone</option>
+                  <option value="upper">upper zone</option>
+                  <option value="off">off</option>
+                </select>
+              </div>
+              <div class="knob">
+                <label for="kb-bendRange">bend range</label>
+                <select id="kb-bendRange" class="wide">
+                  <option value="1">&plusmn;1</option>
+                  <option value="2" selected>&plusmn;2</option>
+                  <option value="7">&plusmn;7</option>
+                  <option value="12">&plusmn;12</option>
+                  <option value="24">&plusmn;24</option>
+                  <option value="48">&plusmn;48</option>
+                  <option value="96">&plusmn;96</option>
+                </select>
+              </div>
+              <div class="row">
+                <span class="row-label">expression</span>
+                <span id="kb-mpe-toggles" style="display:contents"></span>
+              </div>
+              <p class="hintline" id="kb-mpeState"></p>
+              <div id="kb-mpeLive"></div>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <div id="kb-controls" hidden>
+        <section class="mx-section">
+          <header class="mx-head"><div><h3 class="mx-title">Play</h3></div></header>
+          <div id="kb-piano" tabindex="0" role="group" aria-label="Keyboard"></div>
+          <p class="hintline">
+            <kbd>Z S X D C V G B H N J M</kbd> is one octave with its sharps,
+            <kbd>Q 2 W 3 E R 5 T 6 Y 7 U</kbd> the octave above,
+            <kbd>&larr;</kbd> <kbd>&rarr;</kbd> shift octave, <kbd>Esc</kbd> closes this and silences everything.
+          </p>
+          <div class="row" style="margin-top:.7rem">
+            <div id="kb-octave"></div>
+            <span class="spacer"></span>
+            <div id="kb-meter"></div>
+          </div>
+          <div id="kb-detail"></div>
+        </section>
+
+        <!-- Every voice parameter, live: for the curious, so folded away. -->
+        <details class="mx-engine">
+          <summary>
+            <span class="mx-title">Advanced</span>
+            <span class="mx-sub">Every parameter of the voice, turned while it sounds.</span>
+          </summary>
+          <div id="kb-control-panel"></div>
+        </details>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- ================================================================== Bench -->
+  <dialog id="panel-bench" class="view-panel form-panel" aria-labelledby="panel-bench-title">
+    <div class="view-panel-head">
+      <h2 id="panel-bench-title">Bench</h2>
+      <button type="button" class="view-panel-close" data-close aria-label="Close" title="Close (Esc)">&times;</button>
+    </div>
+    <div id="view-bench" class="view panel-body-scroll">
+      <section class="mx-section">
+        <header class="mx-head">
+          <div>
+            <h3 class="mx-title">Test sequences</h3>
+            <p class="mx-sub">Played on the instrument chosen on the keyboard, to hear its samples and the engine side by side.</p>
+          </div>
+          <button type="button" class="help-btn" data-help="keyboard" title="Help" aria-label="Help">?</button>
+        </header>
+        <div class="kb-setup">
+          <div class="group">
+            <h3>play</h3>
+            <div class="kb-bench-buttons">
+              <button id="kb-octaves" type="button">Every slot at its base note</button>
+              <button id="kb-scale" type="button">C major, five octaves</button>
+              <button id="kb-chromatic" type="button">Chromatic C1&rarr;C7</button>
+              <button id="kb-stop" type="button">Stop</button>
+            </div>
+            <div id="kb-note-length"></div>
+          </div>
+          <div class="group">
+            <h3>engine</h3>
+            <div class="knob">
+              <label for="kb-engine">engine</label>
+              <select id="kb-engine">
+                <option value="ours" selected>our mixer</option>
+                <option value="browser">browser resampler (control)</option>
+              </select>
+            </div>
+            <div class="knob">
+              <label for="kb-interp">sampler</label>
+              <select id="kb-interp">
+                <option value="engine" selected>the game's (linear + mipmaps)</option>
+                <option value="sinc8">windowed sinc</option>
+                <option value="cubic">cubic</option>
+                <option value="linear">linear</option>
+                <option value="nearest">nearest</option>
+              </select>
+            </div>
+            <div class="row">
+              <span class="row-label">stages</span>
+              <span id="kb-stage-toggles" style="display:contents"></span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </dialog>
 
   <section id="errorCard">
     <p class="step">Error</p>
     <pre id="error"></pre>
   </section>
 </main>
+<div class="view-scrim" id="viewScrim" hidden></div>
 <footer class="daw-foot">
   <div id="status">start a new song, or open a level</div>
   <span class="credit"><b>LBP Tracker</b> <span class="v" id="version" role="button" tabindex="0" data-help="changelog" title="What changed"></span> · by <a href="https://sgdc3.it" target="_blank" rel="noreferrer noopener"><b>sgdc3</b></a> · <a role="button" tabindex="0" data-help="terms">terms</a> · <a role="button" tabindex="0" data-help="privacy">privacy</a> · <a role="button" tabindex="0" data-help="cookies">cookies</a></span>

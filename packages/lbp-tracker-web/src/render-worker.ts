@@ -39,6 +39,67 @@ import { writeWav } from '@lbptracker/lib/wav.ts';
 let rinstIndex: Manifest | null = null;
 let smpIndex: Manifest | null = null;
 
+/** The last render's samples, interleaved 16-bit: what the WAV holds, kept to encode on request. */
+let lastPcm: Int16Array | null = null;
+
+/** The compressed formats the page offers beside WAV, and the setting each is asked for at. */
+export type EncodeFormat = 'mp3' | 'ogg';
+
+/**
+ * The last render as MP3 or Ogg Vorbis: the same 16-bit samples the WAV holds,
+ * through LAME or libvorbis compiled to WebAssembly (`wasm-media-encoders`).
+ *
+ * ❗ **Imported when first asked for, not with the worker.** The module carries
+ * its WebAssembly inline -- 783 kB before compression -- and nobody who only
+ * wants the WAV should fetch it. `quality` is the MP3's constant bit rate in
+ * kbit/s, or Vorbis's VBR quality, -1 to 10.
+ */
+async function encode(format: EncodeFormat, quality: number): Promise<Uint8Array> {
+  if (!lastPcm) throw new Error('nothing rendered yet');
+  const { createMp3Encoder, createOggEncoder } = await import('wasm-media-encoders');
+  const pcm = lastPcm;
+  const frames = pcm.length / 2;
+  const chunks: Uint8Array[] = [];
+  const keep = (bytes: Uint8Array) => {
+    // The encoder owns the bytes it returns and reuses them on the next call.
+    if (bytes.length > 0) chunks.push(bytes.slice());
+  };
+  const feed = (encodeChunk: (channels: Float32Array[]) => Uint8Array) => {
+    const CHUNK = 48000;
+    for (let start = 0; start < frames; start += CHUNK) {
+      const n = Math.min(CHUNK, frames - start);
+      const left = new Float32Array(n);
+      const right = new Float32Array(n);
+      for (let i = 0; i < n; i += 1) {
+        left[i] = pcm[(start + i) * 2] / 32768;
+        right[i] = pcm[(start + i) * 2 + 1] / 32768;
+      }
+      keep(encodeChunk([left, right]));
+    }
+  };
+  if (format === 'mp3') {
+    const encoder = await createMp3Encoder();
+    encoder.configure({
+      sampleRate: RATE, channels: 2, outputSampleRate: RATE,
+      bitrate: quality as 128 | 160 | 192 | 256 | 320,
+    });
+    feed((c) => encoder.encode(c));
+    keep(encoder.finalize());
+  } else {
+    const encoder = await createOggEncoder();
+    encoder.configure({ sampleRate: RATE, channels: 2, vbrQuality: quality });
+    feed((c) => encoder.encode(c));
+    keep(encoder.finalize());
+  }
+  const out = new Uint8Array(chunks.reduce((sum, c) => sum + c.length, 0));
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.length;
+  }
+  return out;
+}
+
 const post = (message: unknown, transfer: Transferable[] = []) =>
   (self as unknown as Worker).postMessage(message, transfer);
 
@@ -74,8 +135,16 @@ self.onmessage = async (event: MessageEvent) => {
     noKeyTrack?: boolean;
     unpitchedPercussion?: boolean;
     file?: File;
+    /** For `encode`: the format and its setting (see `encode`). */
+    format?: EncodeFormat;
+    quality?: number;
   };
   try {
+    if (message.type === 'encode') {
+      const bytes = await encode(message.format!, message.quality!);
+      post({ type: 'encoded', format: message.format, quality: message.quality, bytes }, [bytes.buffer]);
+      return;
+    }
     if (message.type === 'render') {
       // ❗ The song comes with the request: there is one song open and the
       // page holds it, so the worker keeps no pile of its own any more.
@@ -110,6 +179,7 @@ self.onmessage = async (event: MessageEvent) => {
       });
       const elapsed = (performance.now() - started) / 1000;
       const { pcm, norm } = toPcm16(result.left, result.right);
+      lastPcm = pcm;
       const wav = writeWav(pcm, 2, RATE);
       post(
         {
@@ -145,6 +215,7 @@ self.onmessage = async (event: MessageEvent) => {
       );
     }
   } catch (error) {
-    post({ type: 'error', text: String((error as Error)?.stack ?? error) });
+    // A failed encode leaves the render standing; only its download failed.
+    post({ type: message.type === 'encode' ? 'encode-error' : 'error', text: String((error as Error)?.stack ?? error) });
   }
 };

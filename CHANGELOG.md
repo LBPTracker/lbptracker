@@ -4,6 +4,44 @@ What changed for the person using LBP Tracker, newest first. The site shows this
 version number in its status bar, so it is written for them: what they can do now that they could
 not before, never how it was done. No `--` or em dash in here; the site's text does without them.
 
+## 0.3.0 (2026-10-31)
+
+- New: a menu bar. File, Edit, Tools and Help sit at the top left, like a desktop application's,
+  in place of the row of tabs. File has a new song, opening, saving, importing a MIDI
+  file, exporting, and rendering a WAV. Edit has undo, redo, cut,
+  copy, paste, duplicate, delete and select all, each with its keys beside it, acting on the
+  board or on the note grid, whichever you were last working in. Tools has the keyboard.
+- The board is always there. The home page, Mixer & engine settings, Render, Export, Import and the
+  keyboard open as panels over it, and the music keeps playing.
+- Render saves as OGG Vorbis or MP3 as well as WAV, at a quality you pick, and its panel is laid
+  out like the mixer's: the file, the range and the engine as three cards, then Render and the
+  download in one row.
+- Every panel sits in the middle of the screen, Export and Import look like Render, and the open
+  dialog no longer fills the whole screen.
+- The keyboard is tidier: the instrument and the MIDI controller side by side, the voice's
+  parameters folded under Advanced, and the bench (the test sequences and the engine and sampler
+  comparisons) is its own entry under Tools. The logs of the keyboard, Export and Import moved to
+  the browser's console.
+- The home page fits on a desktop screen without scrolling, and it says LittleBigPlanet rather
+  than LittleBigPlanet 3: the songs of LBP2 open here too. The transport stays in reach while one is open,
+  so Space still plays and pauses. Esc, the × or a click outside the panel closes it.
+- Importing a MIDI file and exporting are now two separate panels, and Export has a tab for each
+  format: MIDI, Ableton Live and LittleBigPlanet.
+- The transport sits in the middle of the top bar, and the bar no longer wraps onto a second
+  line as the window narrows: it leaves things out instead, and on a phone the menus get a row
+  of their own.
+- Play and stop are one group of buttons. The display beside them shows where you are as bar and
+  beat, then the time and the song's length.
+- The level meter is wider, its bars thicker, and it is the volume too: the line across its two
+  bars is the fader, always in view.
+- A mixer button beside the volume opens the mixer & engine settings, now laid out like a mixing
+  desk: an upright fader for each channel with how many instruments play on it, + and − to add
+  or remove a channel, and beside them the tempo, the swing and the effects. The engine's settings are
+  folded away under them until you open them. There, the voice pool's slider reads unlimited at
+  its far end, in place of a separate box.
+- The song's name has more room, and a dot before it says there are unsaved changes. Click it to
+  change the name and the author.
+
 ## 0.2.56 (2026-10-31)
 
 - New: the song index. It searches every music sequencer in the LBP2 and LBP3 levels with more

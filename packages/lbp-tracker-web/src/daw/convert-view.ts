@@ -1,6 +1,7 @@
 /**
- * The Import/Export view: the song out as a `.mid`, and any `.mid` in as the song.
- * The `.als` and the `.plan` beside them are their own modules, mounted from here.
+ * The Export and Import panels: the song out as a `.mid`, and any `.mid` in as
+ * the song. The `.als` and the `.plan` beside the first are their own modules,
+ * mounted from here. What they log goes to the browser's console.
  *
  * The conversion itself is `packages/lbp-tracker-lib/src/midi.ts`, which is
  * where the interesting decisions and the corrected mistakes live. This is
@@ -11,7 +12,7 @@
  * and the one this replaces lost its glides silently. Whatever this drops is
  * counted and shown, so nobody discovers it by ear a week later.
  *
- * The export is of the song that is open, re-run when the view is shown and
+ * The export is of the song that is open, re-run when its panel is shown and
  * whenever an option or the song changes while it is; an import replaces the
  * song, through the same `openSong` a level goes through.
  */
@@ -44,20 +45,19 @@ export function mountConvert(opts: { isActive: () => boolean; onShow: (l: () => 
   const midiInput = $<HTMLInputElement>('cv-midiFile');
   const saveButton = $<HTMLButtonElement>('cv-save');
   const takeButton = $<HTMLButtonElement>('cv-take');
-  const logBox = $<HTMLDivElement>('cv-log');
   const optionsApp = createApp(ControlPanel);
   optionsApp.provide(CONTROLS, midi);
   optionsApp.mount('#cv-options');
 
   let imported: MidiImportResult | undefined;
 
-  function log(text: string, bad = false): void {
-    const line = document.createElement('div');
-    if (bad) line.className = 'bad';
-    line.textContent = text;
-    logBox.append(line);
-    logBox.scrollTop = logBox.scrollHeight;
-  }
+  // What the two panels used to log on the page goes to the browser's console.
+  const logTo = (tag: string) => (text: string, bad = false): void => {
+    if (bad) console.warn(`[${tag}]`, text);
+    else console.info(`[${tag}]`, text);
+  };
+  const log = logTo('export');
+  const logIn = logTo('import');
   const setStatus = (id: string, text: string, bad = false) => {
     const el = $(id);
     el.textContent = text;
@@ -193,7 +193,7 @@ export function mountConvert(opts: { isActive: () => boolean; onShow: (l: () => 
   });
   opts.onShow(() => void ensureAssets().then(convert, () => convert()));
 
-  // The other exports on this view: the song as an Ableton Live set, and as a
+  // The other exports on this panel: the song as an Ableton Live set, and as a
   // `.plan` the game can load.
   mountAlsExport({ isActive: opts.isActive, onShow: opts.onShow, log });
   mountPlanExport({ isActive: opts.isActive, onShow: opts.onShow, log });
@@ -275,13 +275,13 @@ export function mountConvert(opts: { isActive: () => boolean; onShow: (l: () => 
       $('cv-inReport').classList.add('on');
       takeButton.disabled = false;
       setStatus('cv-midiStatus', `${file.name}: ${plural(imported.notes, 'note')} in ${plural(imported.clips, 'clip')}`);
-      for (const line of lost) log(line);
+      for (const line of lost) logIn(line);
       midiDrop.classList.add('loaded');
       $('cv-midiTitle').textContent = `${file.name}: ${plural(imported.notes, 'note')}`;
       $('cv-midiHint').textContent = 'Click or drop to open a different file.';
     } catch (error) {
       setStatus('cv-midiStatus', String((error as Error).message ?? error), true);
-      log(String(error), true);
+      logIn(String(error), true);
     } finally {
       midiDrop.classList.remove('busy');
     }
@@ -292,7 +292,7 @@ export function mountConvert(opts: { isActive: () => boolean; onShow: (l: () => 
     if (!seq) return;
     if (state.dirty && !(await confirmDialog('Throw away the unsaved changes?', 'throw them away'))) return;
     openSong(songFromSequencer(seq), `took "${seq.name}" from the MIDI file`);
-    log(`the song is now ${seq.name || 'the imported file'}`);
+    logIn(`the song is now ${seq.name || 'the imported file'}`);
   });
 
   function wireDrop(zone: HTMLElement, input: HTMLInputElement, open: (file: File) => void): void {

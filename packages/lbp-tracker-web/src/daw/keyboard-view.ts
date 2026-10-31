@@ -86,11 +86,13 @@ async function fetchAsset(url: string): Promise<ArrayBuffer> {
   }
   return response.arrayBuffer();
 }
+/**
+ * What the bench used to write on the page goes to the browser's console:
+ * the loads, the switches, the failures. The page keeps the status line.
+ */
 const log = (message: string, kind: 'info' | 'bad' = 'info') => {
-  const line = document.createElement('div');
-  line.className = kind;
-  line.textContent = message;
-  $('kb-log').prepend(line);
+  if (kind === 'bad') console.warn('[keyboard]', message);
+  else console.info('[keyboard]', message);
 };
 
 let context: AudioContext | undefined;

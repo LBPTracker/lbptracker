@@ -1,5 +1,6 @@
 /**
- * The Render view: the song to a WAV, in the render worker.
+ * The Render view: the song to a WAV, in the render worker, and on request the
+ * same samples as OGG Vorbis or MP3 (`encode` in `render-worker.ts`).
  *
  * All it does is hand the song to `render-worker.ts` and show what comes
  * back: the finished samples for the waveform, and the same 48 kHz WAV bytes
@@ -18,6 +19,7 @@ import Choice from '../controls/Choice.vue';
 import { render } from '../controls/render.ts';
 import { CONTROLS } from '../controls/kit.ts';
 import { VOICES_UNLIMITED, VOICE_POOL_SIZE } from '@lbptracker/lib/polyphony.ts';
+import { reverbSummary } from '@lbptracker/lib/audio/effects.ts';
 import { audibleSequencer, clock, setError, state } from './session.ts';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -50,6 +52,9 @@ export function mountRender(opts: { isActive: () => boolean }): void {
   const playPause = $<HTMLButtonElement>('rd-playPause');
   const timesLabel = $<HTMLSpanElement>('rd-times');
   const volSlider = $<HTMLInputElement>('rd-vol');
+  const formatSelect = $<HTMLSelectElement>('rd-format');
+  const qualitySelect = $<HTMLSelectElement>('rd-quality');
+  const qualityRow = $<HTMLDivElement>('rd-qualityRow');
 
   voicesInput.value = String(VOICE_POOL_SIZE);
 
@@ -71,6 +76,67 @@ export function mountRender(opts: { isActive: () => boolean }): void {
 
   let wavUrl: string | null = null;
   let wavName = 'render.wav';
+
+  // ------------------------------------------------------------ the format
+  // WAV is what the render makes; OGG and MP3 are encoded from its samples when
+  // asked for, once per format and setting, until the next render.
+  type Format = 'wav' | 'ogg' | 'mp3';
+  const QUALITIES: Record<Exclude<Format, 'wav'>, { value: number; label: string }[]> = {
+    mp3: [
+      { value: 320, label: '320 kbit/s' },
+      { value: 256, label: '256 kbit/s' },
+      { value: 192, label: '192 kbit/s' },
+      { value: 128, label: '128 kbit/s' },
+    ],
+    // Vorbis's own quality scale; the rates are its nominal ones at 48 kHz stereo.
+    ogg: [
+      { value: 8, label: 'q8, about 256 kbit/s' },
+      { value: 6, label: 'q6, about 192 kbit/s' },
+      { value: 4, label: 'q4, about 128 kbit/s' },
+    ],
+  };
+  const LABEL: Record<Format, string> = { wav: 'WAV', ogg: 'OGG', mp3: 'MP3' };
+  const MIME: Record<Format, string> = { wav: 'audio/wav', ogg: 'audio/ogg', mp3: 'audio/mpeg' };
+  /** A per-viewer convenience, so wrapped: storage can be blocked, and the page works without it. */
+  const remember = (key: string, value?: string): string | null => {
+    try {
+      if (value === undefined) return localStorage.getItem(key);
+      localStorage.setItem(key, value);
+    } catch { /* not kept, that is all */ }
+    return null;
+  };
+  const format = (): Format => formatSelect.value as Format;
+  const quality = (): number => Number(qualitySelect.value);
+  const paintFormat = () => {
+    const f = format();
+    qualityRow.hidden = f === 'wav';
+    if (f !== 'wav') {
+      const keep = remember(`lbp-render-quality-${f}`);
+      qualitySelect.innerHTML = '';
+      for (const q of QUALITIES[f]) qualitySelect.add(new Option(q.label, String(q.value)));
+      if (keep && QUALITIES[f].some((q) => String(q.value) === keep)) qualitySelect.value = keep;
+    }
+    saveButton.textContent = `Download .${f}`;
+  };
+  const saved = remember('lbp-render-format');
+  if (saved === 'wav' || saved === 'ogg' || saved === 'mp3') formatSelect.value = saved;
+  paintFormat();
+  formatSelect.addEventListener('change', () => {
+    remember('lbp-render-format', format());
+    paintFormat();
+  });
+  qualitySelect.addEventListener('change', () => remember(`lbp-render-quality-${format()}`, qualitySelect.value));
+
+  /** Encoded files of the current render, by format and setting. */
+  const encoded = new Map<string, string>();
+  let encoding = false;
+  const fileName = (f: Format) => `${(state.song.name || 'song').replace(/[^\w.-]+/g, '_')}.${f}`;
+  const download = (url: string, name: string) => {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = name;
+    link.click();
+  };
 
   const setStatus = (text: string, bad = false) => {
     statusLine.textContent = text;
@@ -103,6 +169,8 @@ export function mountRender(opts: { isActive: () => boolean }): void {
   function resetResults() {
     if (wavUrl) URL.revokeObjectURL(wavUrl);
     wavUrl = null;
+    for (const url of encoded.values()) URL.revokeObjectURL(url);
+    encoded.clear();
     player.removeAttribute('src');
     player.load();
     saveButton.disabled = true;
@@ -283,13 +351,15 @@ export function mountRender(opts: { isActive: () => boolean }): void {
       const secs = (ms: unknown) => `${(Number(ms) / 1000).toFixed(2)} s`;
       const esc = (x: unknown) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       type Card = { title: string; big: string; unit?: string; rows: [string, string][]; span?: boolean };
+      // Five cards of a size, the song first; its name is in the bar already.
+      const reverb = reverbSummary(state.song.reverb);
       const cards: Card[] = [
         {
-          title: 'Song', big: esc(message.name || 'untitled'), span: true,
+          title: 'Song', big: clock(seconds), unit: 'rendered',
           rows: [
-            ['tracks', String(message.tracks)],
             ['tempo', `${message.tempo} BPM`],
-            ['rendered', `${seconds.toFixed(1)} s, ${frames.toLocaleString()} frames`],
+            ['tracks', String(message.tracks)],
+            ['frames', frames.toLocaleString()],
           ],
         },
         {
@@ -301,7 +371,7 @@ export function mountRender(opts: { isActive: () => boolean }): void {
           rows: [
             ['echo delay', `${Number(stats.echoSeconds).toFixed(3)} s`],
             ['reverb', pct(stats.reverbRel)],
-            ['reverb preset', `[${(stats.reverbPreset as number[]).join(', ')}]`],
+            ['preset', esc(reverb.name ?? `setting ${state.song.reverb}`)],
           ],
         },
         {
@@ -325,6 +395,24 @@ export function mountRender(opts: { isActive: () => boolean }): void {
         .join('');
       setBar(1);
       setStatus(`done: ${seconds.toFixed(1)} s rendered in ${elapsed.toFixed(2)} s`);
+      return;
+    }
+    if (message.type === 'encoded') {
+      const f = message.format as Exclude<Format, 'wav'>;
+      const bytes = message.bytes as Uint8Array;
+      const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: MIME[f] }));
+      encoded.set(`${f}:${message.quality}`, url);
+      encoding = false;
+      saveButton.disabled = false;
+      setStatus(`${LABEL[f]} ready, ${(bytes.length / 1048576).toFixed(1)} MB`);
+      download(url, fileName(f));
+      return;
+    }
+    if (message.type === 'encode-error') {
+      encoding = false;
+      saveButton.disabled = false;
+      setStatus('the file could not be encoded', true);
+      setError(String(message.text));
       return;
     }
     if (message.type === 'error') {
@@ -377,11 +465,21 @@ export function mountRender(opts: { isActive: () => boolean }): void {
   });
 
   saveButton.addEventListener('click', () => {
-    if (!wavUrl) return;
-    const link = document.createElement('a');
-    link.href = wavUrl;
-    link.download = wavName;
-    link.click();
+    if (!wavUrl || encoding) return;
+    const f = format();
+    if (f === 'wav') {
+      download(wavUrl, wavName);
+      return;
+    }
+    const ready = encoded.get(`${f}:${quality()}`);
+    if (ready) {
+      download(ready, fileName(f));
+      return;
+    }
+    encoding = true;
+    saveButton.disabled = true;
+    setStatus(`encoding ${LABEL[f]}…`);
+    worker.postMessage({ type: 'encode', format: f, quality: quality() });
   });
 
   watch(() => render.on('useRange'), () => {

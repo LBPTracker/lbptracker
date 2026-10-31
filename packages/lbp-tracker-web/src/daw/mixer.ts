@@ -1,6 +1,7 @@
 /**
- * The Song/Mixer view: one card with the song's settings (`MixerPanel.vue`),
- * and an "Engine" card with the switches that are not in the file
+ * The Mixer & engine settings panel: the song's own settings (`MixerPanel.vue`:
+ * a strip per channel, then the song and its effects), and, in a section closed
+ * until it is opened, the engine -- the switches that are not in the file
  * (`controls/engine.ts`, drawn by the shared control panel) and the live
  * meters -- notes sounding, dropouts, voices the pool has taken back, and the
  * gain the AGC after the game's master bus is applying.
@@ -20,8 +21,11 @@ export function mountMixer(): void {
   const engineHost = document.createElement('div');
   const meters = document.createElement('div');
   meters.id = 'meters';
-  meters.style.cssText = 'display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:.8rem; font:.82rem/1.5 ui-monospace, Consolas, monospace; color: var(--dim)';
   engineCard.append(engineHost, meters);
+  // The engine's "?" sits in the summary of its section: it opens the help,
+  // and must not also open or close the section.
+  engineCard.closest('details')?.querySelector('summary .help-btn')
+    ?.addEventListener('click', (event) => event.preventDefault());
 
   createApp({ render: () => h(MixerPanel, { state }) }).mount(song);
 
@@ -46,7 +50,7 @@ export function mountMixer(): void {
       ['stolen so far', String(stolen)],
       ['dropouts', String(dropouts)],
       ...agc(),
-    ].map(([k, v]) => `<span>${k} <b style="color:var(--ink);font-weight:500">${v}</b></span>`).join('');
+    ].map(([k, v]) => `<div class="mx-meter"><span>${k}</span><b>${v}</b></div>`).join('');
   };
   onPlayer({
     health: (h) => {

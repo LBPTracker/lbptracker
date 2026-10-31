@@ -1,18 +1,19 @@
 /**
- * The app: one page, one song, five views.
+ * The app: one page, one song, on a board with six panels to open over it.
  *
- * The top bar holds the views' tabs, the transport and the file actions; the
- * views mount into their sections and share the song through `daw/session.ts`.
- * This file is the shell: tabs, transport, file panel, status, the global
- * keys. Everything a view does is in `daw/*`.
+ * The top bar holds the menus, the transport and the song's name; the views
+ * mount into their sections and share the song through `daw/session.ts`.
+ * This file is the shell: menus, panels, transport, file panel,
+ * status, the global keys. Everything a view does is in `daw/*`.
  */
 
 // ❗ Both sheets from here, in this order: see the note at the top of daw.css.
 import '../ui.css';
 import '../daw.css';
 import { sequencersOf, type BackupResult } from '@lbptracker/cwlib/sequencer/backup.ts';
-import type { Sequencer } from '@lbptracker/cwlib/sequencer/project.ts';
+import { AUTHOR_MAX, authorHandle, type Sequencer } from '@lbptracker/cwlib/sequencer/project.ts';
 import { songEndSteps, songFromJson, songFromSequencer, newSong } from '@lbptracker/lib/song.ts';
+import { STEPS_PER_BEAT } from '@lbptracker/lib/swing.ts';
 import { mountFooter } from './footer.ts';
 import { mountHelp } from './help.ts';
 import { confirmDialog } from './confirm.ts';
@@ -33,7 +34,7 @@ import {
   RATE, clock, ensureAssets, onPlan, onPlayer, onStatus, openSong, player, setError,
   setErrorSink, setStatus, state, whenPlanned,
 } from './daw/session.ts';
-import { mountArrange } from './daw/arrange.ts';
+import { mountArrange, type EditAction } from './daw/arrange.ts';
 import { loadThermometer } from './daw/thermometer.ts';
 import { mountMixer } from './daw/mixer.ts';
 import { mountRender } from './daw/render-view.ts';
@@ -59,35 +60,146 @@ setErrorSink((text) => {
   errorCard.classList.toggle('show', text !== '');
 });
 
-// ---------------------------------------------------------------------- tabs
+// --------------------------------------------------------- pages and panels
 
-export type ViewName = 'home' | 'arrange' | 'mixer' | 'render' | 'convert' | 'keyboard';
-const tabs = [...document.querySelectorAll<HTMLButtonElement>('.tabs [data-view]')];
+/**
+ * The board, always there, and six panels opened over it: the home page from
+ * the brand and Help, the rest from the menus. A panel, while one is open, is
+ * the view that has the keys. `daw.css` says why a panel is a non-modal
+ * `<dialog>` with a scrim of ours.
+ */
+type PanelName = 'home' | 'mixer' | 'render' | 'export' | 'import' | 'keyboard' | 'bench';
+export type ViewName = 'arrange' | PanelName;
 const viewListeners = new Set<(view: ViewName) => void>();
-let current: ViewName = 'home';
+let openPanel: PanelName | null = null;
+const scrim = $<HTMLDivElement>('viewScrim');
+const panelOf = (name: PanelName) => $<HTMLDialogElement>(`panel-${name}`);
 
-export const activeView = (): ViewName => current;
+export const activeView = (): ViewName => openPanel ?? 'arrange';
 
-function showView(view: ViewName): void {
-  current = view;
-  document.body.dataset.view = view;
-  for (const tab of tabs) tab.setAttribute('aria-selected', String(tab.dataset.view === view));
-  for (const section of document.querySelectorAll<HTMLElement>('.view')) {
-    section.hidden = section.id !== `view-${view}`;
-  }
-  for (const l of viewListeners) l(view);
+function viewChanged(): void {
+  document.body.dataset.view = activeView();
+  for (const l of viewListeners) l(activeView());
 }
-for (const tab of tabs) tab.addEventListener('click', () => showView(tab.dataset.view as ViewName));
-/** A song just opened from the home view: show it. Any other view keeps its place. */
-const leaveHome = () => { if (current === 'home') showView('arrange'); };
-// The brand is the way to the home view: a presentation, over the song that
+
+/** Open a panel, or -- for `arrange` -- close whichever is open. */
+function showView(view: ViewName): void {
+  if (view === 'arrange') {
+    closePanel();     // its `close` event tells the listeners
+    return;
+  }
+  if (openPanel === view) return;
+  // One panel at a time: the one that was open goes first, quietly.
+  if (openPanel) {
+    const previous = panelOf(openPanel);
+    openPanel = null;
+    previous.close();
+  }
+  openPanel = view;
+  const dialog = panelOf(view);
+  dialog.show();
+  scrim.hidden = false;
+  dialog.querySelector<HTMLButtonElement>('[data-close]')?.focus({ preventScroll: true });
+  viewChanged();
+}
+
+function closePanel(): void {
+  if (openPanel) panelOf(openPanel).close();
+}
+for (const name of ['home', 'mixer', 'render', 'export', 'import', 'keyboard', 'bench'] as const) {
+  const dialog = panelOf(name);
+  dialog.querySelector('[data-close]')!.addEventListener('click', () => dialog.close());
+  dialog.addEventListener('close', () => {
+    if (openPanel !== name) return;              // replaced by another, which is open now
+    openPanel = null;
+    scrim.hidden = true;
+    viewChanged();
+  });
+}
+scrim.addEventListener('click', closePanel);
+
+/**
+ * A panel's tabs (`.panel-tabs`): each tab shows the panel its `aria-controls`
+ * names and hides the others; left and right move along them, as a tab list's
+ * do. Only the Export panel has them so far.
+ */
+for (const list of document.querySelectorAll<HTMLElement>('.panel-tabs')) {
+  const tabs = [...list.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+  const select = (tab: HTMLButtonElement) => {
+    for (const t of tabs) {
+      const on = t === tab;
+      t.setAttribute('aria-selected', String(on));
+      t.tabIndex = on ? 0 : -1;
+      $(t.getAttribute('aria-controls')!).hidden = !on;
+    }
+  };
+  for (const tab of tabs) tab.addEventListener('click', () => select(tab));
+  list.addEventListener('keydown', (event) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    const at = tabs.indexOf(document.activeElement as HTMLButtonElement);
+    const next = tabs[(at + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
+    select(next);
+    next.focus();
+  });
+}
+// Esc closes the panel, when nothing else on top of it has taken the key: a
+// menu, the volume and the modal dialogs each stop their own Esc.
+window.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !openPanel || event.defaultPrevented) return;
+  if (document.querySelector('dialog[open]:not(.view-panel)')) return;
+  closePanel();
+});
+// The mixer has a button of its own beside the volume: it opens the panel,
+// closes it, and stays lit while it is open.
+const mixerButton = $<HTMLButtonElement>('mixerButton');
+mixerButton.addEventListener('click', () => (openPanel === 'mixer' ? closePanel() : showView('mixer')));
+viewListeners.add((view) => mixerButton.setAttribute('aria-pressed', String(view === 'mixer')));
+/** A song just opened from the home panel: show it. Under any other panel it stays where it is. */
+const leaveHome = () => { if (openPanel === 'home') closePanel(); };
+// The brand is the way to the home panel: a presentation, over the song that
 // stays open -- not a reload, which would lose it.
 $('brand').addEventListener('click', (event) => {
   event.preventDefault();
   showView('home');
 });
-$('homeArrange').addEventListener('click', () => showView('arrange'));
 $('homeOpen').addEventListener('click', () => $<HTMLDialogElement>('fileDialog').showModal());
+
+/**
+ * A button that opens a panel under it in the top bar: a menu. A click elsewhere or Esc closes it, and Esc gives the focus back to the
+ * button. ❗ Esc stops here: the arranger's own Esc closes the note panel, and
+ * one key must not do both. Returns the close, for a menu item that acts.
+ */
+function popover(button: HTMLButtonElement, panel: HTMLElement, onOpen: () => void): () => void {
+  const close = () => {
+    panel.hidden = true;
+    button.setAttribute('aria-expanded', 'false');
+  };
+  button.addEventListener('click', () => {
+    if (!panel.hidden) return close();
+    panel.hidden = false;
+    button.setAttribute('aria-expanded', 'true');
+    onOpen();
+  });
+  document.addEventListener('pointerdown', (event) => {
+    const target = event.target as Node;
+    if (!panel.hidden && !panel.contains(target) && !button.contains(target)) close();
+  });
+  // Enter and Space press the item under the focus, not the transport's keys
+  // (Enter seeks to the start, Space plays) -- which would cancel the press.
+  panel.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
+  });
+  for (const el of [button, panel]) {
+    el.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape' || panel.hidden) return;
+      event.stopPropagation();
+      close();
+      button.focus();
+    });
+  }
+  return close;
+}
 
 // ----------------------------------------------------------------- transport
 
@@ -97,6 +209,7 @@ const loopButton = $<HTMLButtonElement>('loop');
 const metronomeButton = $<HTMLButtonElement>('metronome');
 const metronome = new Metronome(player);
 const clockLabel = $<HTMLSpanElement>('clock');
+const whereLabel = $<HTMLSpanElement>('where');
 const loadLabel = $<HTMLSpanElement>('load');
 const volSlider = $<HTMLInputElement>('vol');
 const tempoBox = $<HTMLInputElement>('tempoBox');
@@ -158,7 +271,13 @@ function showLoad(): void {
     `${notes} notes sounding.`,
   ].filter(Boolean).join('\n');
 }
+/**
+ * The display: bar.beat first, because the board is read in bars -- four beats
+ * to a bar as the metronome accents them -- and then the time and the length.
+ */
 function paintClock(): void {
+  const beat = Math.floor(player.stepAt(player.position()) / STEPS_PER_BEAT + 1e-6);
+  whereLabel.textContent = `${Math.floor(beat / 4) + 1}.${(beat % 4) + 1}`;
   clockLabel.textContent = `${clock(player.position() / RATE)} / ${clock(player.songSeconds)}`;
 }
 onPlayer({
@@ -203,9 +322,15 @@ stopButton.addEventListener('click', () => {
 loopButton.addEventListener('click', () => {
   state.edit('selection', (s) => { s.loop = !s.loop; });
 });
-volSlider.addEventListener('input', () => player.setVolume(Number(volSlider.value)));
-
-player.setVolume(Number(volSlider.value));
+// The fader lies over the level meter (`daw.css`), so its number is in the tooltip.
+const setVolume = () => {
+  player.setVolume(Number(volSlider.value));
+  const pct = `${Math.round(Number(volSlider.value) * 100)}%`;
+  volSlider.title = `Volume ${pct}`;
+  volSlider.setAttribute('aria-valuetext', pct);
+};
+volSlider.addEventListener('input', setVolume);
+setVolume();
 
 /**
  * The VU meter: two bars, left over right, the output's peak after the master
@@ -220,6 +345,14 @@ function drawVu(): void {
   const peaks = player.peaks();
   const { width, height } = vu;
   vuCtx.clearRect(0, 0, width, height);
+  // Two bars with a gap between them: 6 canvas pixels, 3 on screen, since the
+  // canvas is drawn at twice the 16 px it is shown at.
+  const gap = 6;
+  const h = (height - gap) / 2;
+  // The two empty tracks, so the meter -- which has no box of its own -- is
+  // there to aim the volume at while nothing plays.
+  vuCtx.fillStyle = '#272d37';
+  for (let i = 0; i < 2; i += 1) vuCtx.fillRect(0, i * (h + gap), width, h);
   if (peaks) {
     peaks.forEach((peak, i) => {
       // Amplitude to a bar: -60 dB is empty, 0 dB is full.
@@ -228,8 +361,7 @@ function drawVu(): void {
       // The bar falls a little slower than the signal; the hold mark slower still.
       shown[i] = Math.max(level, shown[i] - 0.06);
       held[i] = Math.max(shown[i], held[i] - 0.01);
-      const y = i * (height / 2);
-      const h = height / 2 - 1;
+      const y = i * (h + gap);
       const w = Math.round(shown[i] * width);
       const grad = vuCtx.createLinearGradient(0, 0, width, 0);
       grad.addColorStop(0, '#6fd3a0');
@@ -255,29 +387,62 @@ tempoBox.addEventListener('change', () => {
 
 // ---------------------------------------------------------------- the title
 
-const songName = $<HTMLSpanElement>('songName');
+const songName = $<HTMLSpanElement>('songNameText');
+const nameField = $<HTMLInputElement>('songEditName');
+const authorField = $<HTMLInputElement>('songEditAuthor');
 const songAuthor = $<HTMLSpanElement>('songAuthor');
 const dirty = $<HTMLSpanElement>('dirty');
 function refreshHeader(): void {
   loopButton.setAttribute('aria-pressed', String(state.song.loop));
   player.loop = state.song.loop;
-  // Read-only here: the name is edited under Song/Mixer with the description.
   songName.textContent = state.song.name || 'untitled';
   // `textContent`, never markup: an author is a string out of somebody's file.
   songAuthor.textContent = state.song.author ? `by ${state.song.author}` : '';
   songAuthor.hidden = !state.song.author;
   if (document.activeElement !== tempoBox) tempoBox.value = String(state.song.tempo);
-  dirty.textContent = state.dirty ? '•' : '';
+  dirty.hidden = !state.dirty;
   document.title = `LBP Tracker${state.dirty ? ' •' : ''} · ${state.song.name || 'untitled'}`;
 }
 state.onChange(refreshHeader);
+
+// A click on the name opens its editor: the name and the author, each an edit
+// of the song as it is typed, undone in one step per field.
+const closeSongEdit = popover($<HTMLButtonElement>('songTitle'), $('songEdit'), () => {
+  nameField.value = state.song.name;
+  authorField.value = state.song.author;
+  nameField.select();
+});
+authorField.maxLength = AUTHOR_MAX;
+nameField.addEventListener('input', () => {
+  state.edit('selection', (s) => { s.name = nameField.value; }, 'name');
+});
+/*
+ * The author, as a PSN handle can hold it.
+ *
+ * ⚠️ **The field is put back to what was kept**, not left showing what was
+ * typed: a character a handle cannot hold changes nothing in the song, and the
+ * field would go on showing it -- and the exported plan would then disagree
+ * with the screen.
+ */
+authorField.addEventListener('input', () => {
+  const clean = authorHandle(authorField.value);
+  if (authorField.value !== clean) authorField.value = clean;
+  state.edit('look', (s) => { s.author = clean; }, 'author');
+});
+// Enter is done.
+for (const field of [nameField, authorField]) {
+  field.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    closeSongEdit();
+    $('songTitle').focus();
+  });
+}
 
 // ----------------------------------------------------------------- the files
 
 /** What a level gave us, by the picker's key. Picking one makes it the song. */
 let songs = new Map<string, Sequencer>();
 const fileDialog = $<HTMLDialogElement>('fileDialog');
-$('openToggle').addEventListener('click', () => fileDialog.showModal());
 $('fileClose').addEventListener('click', () => fileDialog.close());
 fileDialog.addEventListener('click', (event) => {
   if (event.target === fileDialog) fileDialog.close();
@@ -539,7 +704,77 @@ function saveSong(): void {
   refreshHeader();
   setStatus(`saved ${name}`);
 }
-$('save').addEventListener('click', saveSong);
+
+// ----------------------------------------------------------------- the menus
+
+/**
+ * File, Edit, Tools, Help: a desktop application's menu bar. An item
+ * names what it does in `data-action`, `data-edit` (the arranger's own edit,
+ * the one its key takes) or `data-help` (which `help.ts` catches on the
+ * document).
+ */
+const menuActions: Record<string, () => void> = {
+  new: () => void startNew(),
+  open: () => fileDialog.showModal(),
+  save: saveSong,
+  home: () => showView('home'),
+  'view:render': () => showView('render'),
+  'view:export': () => showView('export'),
+  'view:import': () => showView('import'),
+  'view:keyboard': () => showView('keyboard'),
+  'view:bench': () => showView('bench'),
+};
+
+/** What the Edit menu can do now: undo and redo always, the rest on the board with no panel over it. */
+function paintEditMenu(list: HTMLElement): void {
+  const onBoard = openPanel === null;
+  for (const item of list.querySelectorAll<HTMLButtonElement>('[data-edit]')) {
+    const action = item.dataset.edit;
+    item.disabled = action === 'undo' ? !state.canUndo : action === 'redo' ? !state.canRedo : !onBoard;
+  }
+}
+
+const menus = [...document.querySelectorAll<HTMLElement>('.menu-wrap')].map((wrap) => {
+  const button = wrap.querySelector<HTMLButtonElement>('.menu-button')!;
+  const list = wrap.querySelector<HTMLElement>('[role="menu"]')!;
+  const items = () => [...list.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')];
+  const close = popover(button, list, () => {
+    paintEditMenu(list);
+    items()[0]?.focus();
+  });
+  list.addEventListener('click', (event) => {
+    const item = (event.target as Element).closest<HTMLButtonElement>('[role="menuitem"]');
+    if (!item || item.disabled) return;
+    close();
+    if (item.dataset.action) menuActions[item.dataset.action]?.();
+    else if (item.dataset.edit) arrange.edit(item.dataset.edit as EditAction);
+  });
+  return { button, list, close };
+});
+menus.forEach(({ button, list, close }, index) => {
+  // Up and down move along the items, left and right to the next menu, as a menu bar's do.
+  list.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      close();
+      menus[(index + (event.key === 'ArrowRight' ? 1 : -1) + menus.length) % menus.length].button.click();
+      return;
+    }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    event.preventDefault();
+    const items = [...list.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')];
+    const at = items.indexOf(document.activeElement as HTMLButtonElement);
+    const step = event.key === 'ArrowDown' ? 1 : -1;
+    items[(at + step + items.length) % items.length].focus();
+  });
+  // With one menu open, the pointer moving onto another opens that one instead.
+  button.addEventListener('pointerenter', () => {
+    const open = menus.find((m) => m.button !== button && !m.list.hidden);
+    if (!open) return;
+    open.close();
+    button.click();
+  });
+});
 
 /**
  * Unsaved work stands in the way of closing the tab: the browser asks first.
@@ -558,11 +793,15 @@ window.addEventListener('beforeunload', (event) => {
 
 // --------------------------------------------------------------- the views
 
-const isActive = (view: ViewName) => () => current === view;
-const arrange = mountArrange({ isActive: isActive('arrange') });
+const isActive = (view: ViewName) => () => activeView() === view;
+// The board's playheads run under a panel too; its keys only while nothing is open over it.
+const arrange = mountArrange({
+  isActive: () => true,
+  ownsKeys: () => openPanel === null,
+});
 mountMixer();
 mountRender({ isActive: isActive('render') });
-mountConvert({ isActive: isActive('convert'), onShow: (l) => viewListeners.add((v) => v === 'convert' && l()) });
+mountConvert({ isActive: isActive('export'), onShow: (l) => viewListeners.add((v) => v === 'export' && l()) });
 mountKeyboard({ isActive: isActive('keyboard'), onShow: (l) => viewListeners.add((v) => v === 'keyboard' && l()) });
 // The keyboard's media keys and the system's own transport, if the browser has them.
 mountMediaKeys();
@@ -649,7 +888,7 @@ void ensureAssets().catch((error: unknown) => {
 });
 // The sequencer's thermometer needs every instrument's sample list; without the assets it stays hidden.
 void loadThermometer().catch(() => undefined);
-mountFooter();
+mountFooter($('view-home'));
 mountHelp();
 
 // The service worker: the site installs as an app, and opens without a

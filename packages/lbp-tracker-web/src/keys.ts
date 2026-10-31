@@ -19,8 +19,10 @@
  * Whether the focused element owns this key press, so the page must keep out.
  *
  * True for a text field, for anything `contenteditable`, and for **any open
- * `<dialog>`** — every dialog in this app is `showModal()`, so one being open
- * means the page behind it is inert by definition.
+ * modal `<dialog>`** — the page behind one is inert by definition. ❗ Not for
+ * the view panels (`.view-panel`): they are opened with `show()` so the
+ * transport stays in reach, and Space must still play under the mixer. Which
+ * view's own keys answer is each view's `isActive`, settled in `daw.ts`.
  */
 export function focusOwnsKeys(event: KeyboardEvent): boolean {
   const target = event.target as HTMLElement | null;
@@ -28,7 +30,7 @@ export function focusOwnsKeys(event: KeyboardEvent): boolean {
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(target.tagName)) return true;
     if (target.isContentEditable) return true;
   }
-  return document.querySelector('dialog[open]') !== null;
+  return document.querySelector('dialog[open]:not(.view-panel)') !== null;
 }
 
 /**

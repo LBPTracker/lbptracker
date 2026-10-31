@@ -105,6 +105,11 @@ export default defineConfig({
   // of the file `node --test` runs, which is exactly the property this project
   // keeps: `lib`'s source, and cwlib's built `dist/`.
   optimizeDeps: { exclude: ['@lbptracker/cwlib', '@lbptracker/lib'] },
+  // ❗ ES workers, so a worker can split: the render worker imports the MP3
+  // and Ogg encoders (783 kB, their WebAssembly inline) only when one is asked
+  // for, and the default IIFE format would fold them into the worker itself.
+  // Both workers are created with `type: 'module'` already.
+  worker: { format: 'es' },
   build: {
     outDir: path.join(REPO, 'dist'),
     emptyOutDir: true,

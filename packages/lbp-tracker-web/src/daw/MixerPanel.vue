@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
- * The song's own settings: every field of `PSequencer` a composer sets in the
- * game -- tempo, swing, the channel count and faders, the echo, the reverb,
- * the loop flag -- plus the board's height, which bands rows into channels.
+ * The song's own settings: the fields of `PSequencer` a composer sets in the
+ * game that have no other place in the app -- the channel count and faders,
+ * tempo, swing, the echo and the reverb.
  *
  * Reads go through `state.version` so the panel follows the canvases; writes
  * go through `state.edit` with a key per control, so a slider drag is one
@@ -12,7 +12,6 @@
  */
 import { computed } from 'vue';
 import { MIXER_CHANNELS, type Song } from '@lbptracker/lib/song.ts';
-import { AUTHOR_MAX, authorHandle } from '@lbptracker/cwlib/sequencer/project.ts';
 import { REVERB_SETTINGS, reverbSummary } from '@lbptracker/lib/audio/effects.ts';
 import { bandOf } from '../editor/geometry.ts';
 import type { EditorState } from '../editor/state.ts';
@@ -41,7 +40,6 @@ const perChannel = computed(() => {
 });
 
 const num = (event: Event) => Number((event.target as HTMLInputElement).value);
-const text = (event: Event) => (event.target as HTMLInputElement).value;
 const set = (kind: ChangeKind, key: string, fn: (value: number, s: Song) => void) => (event: Event) => {
   const value = num(event);
   if (!Number.isFinite(value)) return;
@@ -50,18 +48,13 @@ const set = (kind: ChangeKind, key: string, fn: (value: number, s: Song) => void
 const fmt = (v: number) => v.toFixed(2);
 
 /**
- * The author, as a PSN handle can hold it.
- *
- * ⚠️ **The field is put back to what was kept**, not left showing what was
- * typed: a character a handle cannot hold changes nothing in the song, so Vue
- * has no new value to render and the field would go on showing it -- and the
- * exported plan would then disagree with the screen.
+ * One channel more or fewer, between one and the game's limit. ❗ No undo key:
+ * each press is its own step, where a key would fold quick presses into one.
  */
-const setAuthor = (event: Event) => {
-  const field = event.target as HTMLInputElement;
-  const clean = authorHandle(field.value);
-  if (field.value !== clean) field.value = clean;
-  props.state.edit('look', (s) => { s.author = clean; }, 'author');
+const addChannels = (delta: number) => {
+  props.state.edit('settings', (s) => {
+    s.numChannels = Math.max(1, Math.min(MIXER_CHANNELS, s.numChannels + delta));
+  });
 };
 
 /**
@@ -91,101 +84,75 @@ const reverbOptions = computed(() => {
 </script>
 
 <template>
-  <div>
-    <!-- Outside the grid: an item spanning every column would keep the
-         auto-fit grid's empty tracks from collapsing, and the three groups
-         below would each get one narrow track of eight. -->
-    <div class="group song-group">
-      <h3>song</h3>
-      <div class="knob">
-        <label for="mx-name">name</label>
-        <input id="mx-name" type="text" class="wide" :value="song.name" placeholder="untitled" autocomplete="off"
-               @input="state.edit('selection', (s) => { s.name = text($event); }, 'name')">
-        <output></output>
-      </div>
-      <div class="knob">
-        <label for="mx-author">author</label>
-        <input id="mx-author" type="text" class="wide" :value="song.author" placeholder="nobody" autocomplete="off"
-               :maxlength="AUTHOR_MAX" spellcheck="false"
-               title="Who made it, as the game keeps it: a PSN name, up to 16 letters, digits, - and _"
-               @input="setAuthor">
-        <output></output>
-      </div>
-    </div>
-
-  <div class="live">
-    <div class="group">
-      <h3>timing</h3>
-      <div class="knob">
-        <label for="mx-tempo">tempo</label>
-        <input id="mx-tempo" type="range" min="20" max="400" step="1" :value="song.tempo" autocomplete="off"
-               @input="set('settings', 'tempo', (v, s) => { s.tempo = v; })($event)">
-        <output>{{ song.tempo }} BPM</output>
-      </div>
-      <div class="knob">
-        <label for="mx-swing">swing</label>
-        <input id="mx-swing" type="range" min="0" max="99" step="1" :value="Math.round(song.swing * 100)" autocomplete="off"
-               @input="set('settings', 'swing', (v, s) => { s.swing = v / 100; })($event)">
-        <output>{{ fmt(song.swing) }}</output>
-      </div>
-      <div class="row" style="margin-top:.5rem">
-        <label class="check">
-          <input type="checkbox" :checked="song.loop" autocomplete="off"
-                 @change="state.edit('selection', (s) => { s.loop = ($event.target as HTMLInputElement).checked; })"> loop
-        </label>
-      </div>
-    </div>
-
-    <div class="group">
-      <h3>channels</h3>
-      <div class="knob">
-        <label for="mx-channels">how many</label>
-        <input id="mx-channels" type="range" min="1" :max="MIXER_CHANNELS" step="1" :value="song.numChannels" autocomplete="off"
-               @input="set('settings', 'channels', (v, s) => { s.numChannels = v; })($event)">
-        <output>{{ song.numChannels }}</output>
-      </div>
-      <div v-for="ch in channels" :key="ch" class="knob">
-        <label :for="`mx-vol${ch}`" :title="`${perChannel[ch]} chips on this channel`">ch {{ ch }} · {{ perChannel[ch] }}</label>
-        <input :id="`mx-vol${ch}`" type="range" min="0" max="150" step="1" :value="Math.round(song.volumes[ch] * 100)" autocomplete="off"
+  <div class="mx">
+    <!-- Not here, because they have a place of their own: the name and the author
+         (the name in the top bar), the loop (the transport's button, L on the
+         board) and the board's rows (its "+" strip and a row's "x"). -->
+    <!-- A strip per channel, as a mixing desk has: its fader upright, the level
+         under it, and how many chips the board bands into it. -->
+    <div class="mx-strips">
+      <div v-for="ch in channels" :key="ch" class="mx-strip" :title="`${perChannel[ch]} chips on this channel`">
+        <label class="mx-ch" :for="`mx-vol${ch}`">ch {{ ch }}</label>
+        <input :id="`mx-vol${ch}`" class="mx-fader" type="range" min="0" max="150" step="1"
+               :value="Math.round(song.volumes[ch] * 100)" autocomplete="off"
                @input="set('settings', `vol${ch}`, (v, s) => { s.volumes[ch] = v / 100; })($event)">
         <output>{{ fmt(song.volumes[ch]) }}</output>
+        <span class="mx-count">{{ perChannel[ch] }} {{ perChannel[ch] === 1 ? 'chip' : 'chips' }}</span>
       </div>
-      <div class="knob">
-        <label for="mx-rows">board rows</label>
-        <input id="mx-rows" type="range" min="1" max="33" step="1" :value="song.boardRows" autocomplete="off"
-               @input="set('settings', 'rows', (v, s) => { s.boardRows = v; })($event)">
-        <output>{{ song.boardRows }}</output>
+      <div class="mx-strip-add">
+        <button type="button" title="Add a channel" aria-label="Add a channel"
+                :disabled="song.numChannels >= MIXER_CHANNELS" @click="addChannels(1)">+</button>
+        <button type="button" title="Remove the last channel" aria-label="Remove the last channel"
+                :disabled="song.numChannels <= 1" @click="addChannels(-1)">&minus;</button>
+        <span class="mx-count">{{ song.numChannels }} of {{ MIXER_CHANNELS }}</span>
       </div>
     </div>
 
-    <div class="group">
-      <h3>echo &amp; reverb</h3>
-      <div class="knob">
-        <label for="mx-echoTime">echo time</label>
-        <input id="mx-echoTime" type="range" min="0" max="80" step="1" :value="Math.round(song.echoTime * 10)" autocomplete="off"
-               @input="set('effects', 'echoTime', (v, s) => { s.echoTime = v / 10; })($event)">
-        <output>{{ fmt(song.echoTime) }} beats</output>
+    <div class="mx-columns">
+      <div class="group">
+        <h3>song</h3>
+        <div class="knob">
+          <label for="mx-tempo">tempo</label>
+          <input id="mx-tempo" type="range" min="20" max="400" step="1" :value="song.tempo" autocomplete="off"
+                 @input="set('settings', 'tempo', (v, s) => { s.tempo = v; })($event)">
+          <output>{{ song.tempo }} BPM</output>
+        </div>
+        <div class="knob">
+          <label for="mx-swing">swing</label>
+          <input id="mx-swing" type="range" min="0" max="99" step="1" :value="Math.round(song.swing * 100)" autocomplete="off"
+                 @input="set('settings', 'swing', (v, s) => { s.swing = v / 100; })($event)">
+          <output>{{ fmt(song.swing) }}</output>
+        </div>
       </div>
-      <div class="knob">
-        <label for="mx-echoFb">feedback</label>
-        <input id="mx-echoFb" type="range" min="0" max="95" step="1" :value="Math.round(song.echoFeedback * 100)" autocomplete="off"
-               @input="set('effects', 'echoFb', (v, s) => { s.echoFeedback = v / 100; })($event)">
-        <output>{{ fmt(song.echoFeedback) }}</output>
-      </div>
-      <div class="knob">
-        <label for="mx-echoMix">mix</label>
-        <input id="mx-echoMix" type="range" min="0" max="100" step="1" :value="Math.round(song.echoMix * 100)" autocomplete="off"
-               @input="set('effects', 'echoMix', (v, s) => { s.echoMix = v / 100; })($event)">
-        <output>{{ fmt(song.echoMix) }}</output>
-      </div>
-      <div class="knob">
-        <label for="mx-reverb">reverb</label>
-        <select id="mx-reverb" class="wide" :value="song.reverb" autocomplete="off"
-                @change="set('effects', 'reverb', (v, s) => { s.reverb = v; })($event)">
-          <option v-for="o in reverbOptions" :key="o.setting" :value="o.setting" :title="o.title">{{ o.label }}</option>
-        </select>
+
+      <div class="group">
+        <h3>effects</h3>
+        <div class="knob">
+          <label for="mx-echoTime">echo time</label>
+          <input id="mx-echoTime" type="range" min="0" max="80" step="1" :value="Math.round(song.echoTime * 10)" autocomplete="off"
+                 @input="set('effects', 'echoTime', (v, s) => { s.echoTime = v / 10; })($event)">
+          <output>{{ fmt(song.echoTime) }} beats</output>
+        </div>
+        <div class="knob">
+          <label for="mx-echoFb">feedback</label>
+          <input id="mx-echoFb" type="range" min="0" max="95" step="1" :value="Math.round(song.echoFeedback * 100)" autocomplete="off"
+                 @input="set('effects', 'echoFb', (v, s) => { s.echoFeedback = v / 100; })($event)">
+          <output>{{ fmt(song.echoFeedback) }}</output>
+        </div>
+        <div class="knob">
+          <label for="mx-echoMix">echo mix</label>
+          <input id="mx-echoMix" type="range" min="0" max="100" step="1" :value="Math.round(song.echoMix * 100)" autocomplete="off"
+                 @input="set('effects', 'echoMix', (v, s) => { s.echoMix = v / 100; })($event)">
+          <output>{{ fmt(song.echoMix) }}</output>
+        </div>
+        <div class="knob">
+          <label for="mx-reverb">reverb</label>
+          <select id="mx-reverb" class="wide" :value="song.reverb" autocomplete="off"
+                  @change="set('effects', 'reverb', (v, s) => { s.reverb = v; })($event)">
+            <option v-for="o in reverbOptions" :key="o.setting" :value="o.setting" :title="o.title">{{ o.label }}</option>
+          </select>
+        </div>
       </div>
     </div>
-  </div>
   </div>
 </template>

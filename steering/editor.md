@@ -15,9 +15,36 @@ level and handing a song to another through `sessionStorage`, and the owner aske
 instead of disjoint menus. `index.html` is now the one page (its own styles in `daw.css`, imported by
 `src/daw.ts` after `ui.css`; ⚠️ never a `<style>` block under the `<link>`, which the build left inline
 while bundling the link after it, so the shared sheet won on the deployed site and not on the dev
-server -- measured 2026-09-07, 0.2.1): a sticky top bar with the views'
-tabs, the song's name, the transport (play, stop, loop, clock, tempo, volume and a VU meter)
-and the file actions (new, open, save); "open" is a modal dialog of tabs, one per way in (the
+server -- measured 2026-09-07, 0.2.1): a sticky top bar of three zones on one row that never
+wraps -- the brand and the menus on the left (File, Edit, Tools, Help: a desktop application's
+menu bar, `.menu-wrap` in `index.html`, wired in `daw.ts`), the transport in the middle (play
+and stop as one group of buttons, loop, metronome, a display of bar.beat and the time, tempo, the mixer's own button, and the VU meter drawn
+straight on the bar, with the volume's range input laid over it so its handle is a line across
+the two meters), and on the right the song's name with a dot when it
+is unsaved -- a button that opens the name and the author to edit under it (`#songEdit`, the
+author kept to a PSN handle by `authorHandle` as the game keeps it).
+There are no buttons for save, undo or redo: they are menu items with their keys beside them.
+Both sides grow alike, so the transport is centred while there is room; the left never shrinks
+under its menus, so the song's name is what gives way. Narrower, the bar sheds things at
+breakpoints taken from its own measured widths (the comment above them in `daw.css`): the brand's
+name, then the time and the author, and under 820 px the menus move to a row of their own.
+⚠️ The old bar was a wrapping flex row and changed height with the window, which moved the board
+under it; that is the thing not to bring back.
+
+**One board and six panels, since 0.3.0.** The board (Arrange) is always there; the home page,
+Mixer & engine settings, Render, Export, Import and Keyboard are panels opened over it -- the home page
+from the brand, Help, About and at start-up, the rest from the menus -- one at a time (`showView`
+in `daw.ts`; a song opened from the home panel closes it). ❗ **A panel is a `<dialog>` opened with `show()`,
+not `showModal()`**: a modal dialog makes the rest of the page inert, the top bar with it, and the
+transport is what a panel must leave in reach, since the mixer is for a song that is playing. So
+the panel sits between the two bars, the scrim under it (`#viewScrim`) is ours, and Esc, the ×
+and a click on the scrim close it. `focusOwnsKeys` (`keys.ts`) therefore ignores
+`dialog.view-panel`, so Space still plays under a panel; which view's own keys answer is
+`activeView()` -- the open panel, else `arrange`. The arranger takes two answers: `isActive`,
+always true now (its playheads keep moving under a panel), and `ownsKeys`, nothing is open over
+it. The Edit menu calls the arranger's `edit(action)`, the same function its keys call, and sends
+it to whichever of the board and the note grid last had the focus, because opening the menu takes
+the focus into the bar. "Open" is a modal dialog of tabs, one per way in (the
 song index first, the online archive, Bonsai, your computer) plus "this level", the picker for a
 level holding several sequencers, which the page brings forward when a level brings more than one
 (`widgets/OpenLevel.vue`; a file dropped anywhere on the dialog opens from any tab, and each
@@ -26,8 +53,8 @@ panel hears that its tab came into view through one `IntersectionObserver`, `whe
 the credit and the audio thread's readout (`17 notes · CPU 6%`, coloured when the margin is thin
 or a dropout happened, the details on hover; what the figure is and how it is kept honest with a
 millisecond clock is *The "audio %" figure* in [tracker-architecture.md](tracker-architecture.md));
-and six
-views, one shown at a time, all reaching the same song through `src/daw/session.ts`. Every card
+and the
+views, all reaching the same song through `src/daw/session.ts`. Every card
 has a "?" opening the one help dialog on its topic (`src/help.ts`): the views carry as little
 prose as they can, and what they do carry is for the person using the app, never a measurement;
 no em dash anywhere in it, by the owner's rule. The version in the status bar opens the same
@@ -36,16 +63,17 @@ The views are:
 
 | view | file | what it does with the song |
 |---|---|---|
-| Home | `index.html` only | a presentation of the app, reached by the brand in the top bar; a view like the others, so the song and the transport stay as they are |
-| Arrange | `daw/arrange.ts` | the board filling the page (its scroller ending at the panel's top edge when the panel is open, so the horizontal scrollbar stays reachable) (a chip shows its sound's own line icon from `editor/icons.ts`, one per `.rinst` file, ours and not the game's art; the family glyph is the fallback), with a "+" strip under its last row for another and the selected row's number turning into an "×" under the pointer to remove it (no wider gutter for it), chips and row numbers lit for 260 ms as their notes start (found by scanning the song between two playhead positions, drawn every frame while playing), between the bar and the footer; the roll and the chip and point inspector in a panel that rises over the board's lower part when a chip is clicked or drawn (not when the playhead merely moves the selection), resizable by its top edge, closed by its button or Esc |
-| Song/Mixer | `daw/mixer.ts`, `daw/MixerPanel.vue` | the song's name, tempo, swing, channels and faders, board rows, echo, reverb, loop — the song's own fields — in one card, and an "Engine" card with the switches that are not in the file (`controls/engine.ts`) and the meters, including the **master bus** — ours, a glue and a limiter, by default (question 42 in [open-questions.md](open-questions.md)), or the game's at its own level, the game's with an AGC (question 63, its gain in the meters' line as the worklet reports it), or the fold's gain alone; the name in the top bar is read-only |
-| Render | `daw/render-view.ts` | hands `sequencerFromSong(song)` to the render worker and plays the WAV back |
-| Import/Export | `daw/convert-view.ts` | exports it as MIDI, as an Ableton Live set (`daw/als-export.ts`) and as a `.plan`, each re-run while the view is shown; a MIDI file in *replaces* it, through `openSong` |
-| Keyboard | `daw/keyboard-view.ts` | the instrument bench, following the chip selected on the board |
+| Home (panel) | `index.html` only | a presentation of the app, shown at start-up and reached by the brand in the top bar or Help, About; a panel like the others, so the song and the transport stay as they are, with the text footer (`footer.ts`) at its end |
+| Arrange (the board) | `daw/arrange.ts` | the board filling the page (its scroller ending at the panel's top edge when the panel is open, so the horizontal scrollbar stays reachable) (a chip shows its sound's own line icon from `editor/icons.ts`, one per `.rinst` file, ours and not the game's art; the family glyph is the fallback), with a "+" strip under its last row for another and the selected row's number turning into an "×" under the pointer to remove it (no wider gutter for it), chips and row numbers lit for 260 ms as their notes start (found by scanning the song between two playhead positions, drawn every frame while playing), between the bar and the footer; the roll and the chip and point inspector in a panel that rises over the board's lower part when a chip is clicked or drawn (not when the playhead merely moves the selection), resizable by its top edge, closed by its button or Esc |
+| Mixer & engine settings (panel, the mixer button beside the volume) | `daw/mixer.ts`, `daw/MixerPanel.vue` | a strip per channel (an upright fader, its level and the chips banded into it, + and − for the count), and beside them the song's timing (tempo, swing) and its effects (echo, reverb); the loop and the board's rows are not here, having their own controls — the song's own fields — and, folded in a `<details>` closed by default, the engine with the switches that are not in the file (`controls/engine.ts`) and the meters, including the **master bus** — ours, a glue and a limiter, by default (question 42 in [open-questions.md](open-questions.md)), or the game's at its own level, the game's with an AGC (question 63, its gain in the meters' line as the worklet reports it), or the fold's gain alone; the name and the author are edited from the name in the top bar, not here |
+| Render to audio (panel, File) | `daw/render-view.ts` | hands `sequencerFromSong(song)` to the render worker and plays the WAV back; the download is WAV, or OGG Vorbis or MP3 encoded on request in the worker from the same 16-bit samples (`encode` in `render-worker.ts`, `wasm-media-encoders`: LAME and libvorbis as WebAssembly), one encode per format and setting until the next render. FLAC is not offered: a hand-written encoder was started and set aside on 2026-10-31 for want of a decoding test, and `libflacjs` (8 MB, Emscripten) is the library if it comes back |
+| Export, Import MIDI (two panels, File) | `daw/convert-view.ts` | Export: the song as MIDI, as an Ableton Live set (`daw/als-export.ts`) and as a `.plan`, one tab each (`.panel-tabs`, wired generically in `daw.ts`), all three re-run while the panel is shown, whichever tab is up; Import: a MIDI file in *replaces* it, through `openSong`. One module, a log each |
+| Keyboard (panel, Tools) | `daw/keyboard-view.ts` | the instrument and the MIDI controller, the keys, and the voice's parameters folded in a `<details>` ("Advanced"), following the chip selected on the board; its log goes to the browser's console, as Export's and Import's do |
+| Bench (panel, Tools) | `daw/keyboard-view.ts` too | the test sequences, the note length, and the engine, sampler and stage switches, on the keyboard's instrument and its `AudioContext`: the same module, its markup in a panel of its own |
 
 `session.ts` owns the `EditorState`, the one `Player`, the instruments and their loader, the
 plan (rebuilt through the renderer's voice pass on every note edit and swapped in under the
-running transport), the status line and the audition path; the shell in `daw.ts` owns the tabs,
+running transport), the status line and the audition path; the shell in `daw.ts` owns the menus, the pages and panels,
 the transport and the files. ⚠️ **The Keyboard view keeps its own `AudioContext` and worklet**:
 it A/Bs the engine against the browser's resampler and loads samples under its own ids, which
 the song's player must not see. Each view's keys answer only while it is the one shown (Space

@@ -28,14 +28,23 @@ import { instrumentCosts, mountThermometer, percentOfLimit } from './thermometer
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
+/** What the Edit menu and its keys do, to the board or to the grid. */
+export type EditAction = 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'duplicate' | 'delete' | 'selectAll';
+
 export interface ArrangeHandle {
   readonly board: BoardView;
   readonly roll: RollView;
   openPanel(): void;
   closePanel(): void;
+  /** The Edit menu: the same action its key takes, to whichever of the two last had the focus. */
+  edit(action: EditAction): void;
 }
 
-export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
+/**
+ * `isActive`: the board is the page on screen, so the playheads move.
+ * `ownsKeys`: and no panel is open over it, so its editing keys answer.
+ */
+export function mountArrange(opts: { isActive: () => boolean; ownsKeys: () => boolean }): ArrangeHandle {
   const boardScroller = $<HTMLDivElement>('boardScroller');
   const rollScroller = $<HTMLDivElement>('rollScroller');
   const rollTitle = $<HTMLSpanElement>('rollTitle');
@@ -514,18 +523,6 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
   state.onChange(paintEditButtons);
   paintEditButtons();
 
-  // Undo and redo: one history for the board and the grid alike.
-  const undoButton = $<HTMLButtonElement>('undo');
-  const redoButton = $<HTMLButtonElement>('redo');
-  undoButton.addEventListener('click', () => state.undo());
-  redoButton.addEventListener('click', () => state.redo());
-  const paintHistory = () => {
-    undoButton.disabled = !state.canUndo;
-    redoButton.disabled = !state.canRedo;
-  };
-  state.onChange(paintHistory);
-  paintHistory();
-
   // ------------------------------------------------------------ chip loop
   // The selected chip's bars round and round, its row at full volume and
   // every other row at a fifth: hearing one part in place while editing it.
@@ -605,14 +602,67 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
 
   // ------------------------------------------------------------- keyboard
 
+  /**
+   * Which of the two the Edit menu's actions go to: the one that last had the
+   * focus, as the keys go to the one that has it now. ❗ Remembered, because
+   * opening the menu moves the focus into the top bar.
+   */
+  let lastOnBoard = false;
+  document.addEventListener('focusin', (event) => {
+    const target = event.target as Node;
+    if (boardScroller.contains(target)) lastOnBoard = true;
+    else if (panel.contains(target)) lastOnBoard = false;
+  });
+
+  /**
+   * One edit, to the board (`toBoard`) or to the grid. The clipboard actions
+   * go to the roll only when it has something for them: no points selected to
+   * copy, cut or duplicate, nothing lifted to paste, and they go to the board.
+   */
+  function edit(action: EditAction, toBoard: boolean): void {
+    switch (action) {
+      case 'undo': state.undo(); return;
+      case 'redo': state.redo(); return;
+      case 'selectAll':
+        if (toBoard) selectAllChips();
+        else roll.selectAll();
+        return;
+      case 'copy':
+        if (toBoard || state.selectedCount === 0) copyChips();
+        else roll.copy();
+        return;
+      case 'cut':
+        if (toBoard || state.selectedCount === 0) cutChips();
+        else roll.cut();
+        return;
+      case 'paste':
+        if (toBoard || !roll.hasClipboard) {
+          pasteChips();
+          return;
+        }
+        // The pointer over the grid wins: the paste preview follows it, and
+        // the notes land where they are drawn.
+        if (!roll.pasteAtCursor()) pasteNear();
+        return;
+      case 'duplicate':
+        if (!toBoard && state.selectedCount > 0) roll.duplicateSelection();
+        else duplicateChips(chosenChips());
+        return;
+      case 'delete':
+        if (toBoard) removeChips(chosenChips());
+        else roll.deleteSelection();
+        return;
+    }
+  }
+
   window.addEventListener('keydown', (event) => {
-    if (!opts.isActive() || focusOwnsKeys(event)) return;
+    if (!opts.ownsKeys() || focusOwnsKeys(event)) return;
     const target = event.target as HTMLElement | null;
     const ctrl = event.ctrlKey || event.metaKey;
     const onBoard = target instanceof Node && boardScroller.contains(target);
     // The board takes the editing keys when it has the focus, and when the
     // note panel is closed there is no grid for them to reach but the board.
-    const toBoard = onBoard || panel.hidden;
+    const toBoard = onBoard || panel.hidden === true;
     switch (event.code) {
       case 'Escape': {
         // First of all the copied notes: the paste preview on the roll goes
@@ -636,8 +686,7 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
       case 'Delete':
       case 'Backspace':
         event.preventDefault();
-        if (toBoard) removeChips(chosenChips());
-        else roll.deleteSelection();
+        edit('delete', toBoard);
         return;
       case 'ArrowLeft':
         event.preventDefault();
@@ -709,12 +758,11 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
     switch (event.code) {
       case 'KeyZ':
         event.preventDefault();
-        if (event.shiftKey) state.redo();
-        else state.undo();
+        edit(event.shiftKey ? 'redo' : 'undo', toBoard);
         break;
       case 'KeyY':
         event.preventDefault();
-        state.redo();
+        edit('redo', toBoard);
         break;
       case 'Digit0':
         // The grid's normal size; the browser's own zoom reset stays for the board.
@@ -723,12 +771,10 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
         roll.resetZoom();
         break;
       // The clipboard keys go to the board when it has them (`toBoard`), and
-      // to the roll otherwise -- unless the roll has nothing for them: no
-      // points selected to copy, cut or duplicate, nothing lifted to paste.
+      // to the roll otherwise: `edit` says when the roll has nothing for them.
       case 'KeyA':
         event.preventDefault();
-        if (toBoard) selectAllChips();
-        else roll.selectAll();
+        edit('selectAll', toBoard);
         break;
       // ⚠️ Text that somebody has highlighted outranks the chips: copy and cut
       // go to the browser then, or selecting a name in a panel and pressing
@@ -736,36 +782,28 @@ export function mountArrange(opts: { isActive: () => boolean }): ArrangeHandle {
       case 'KeyC':
         if (hasTextSelection()) return;
         event.preventDefault();
-        if (toBoard || state.selectedCount === 0) copyChips();
-        else roll.copy();
+        edit('copy', toBoard);
         break;
       case 'KeyX':
         if (hasTextSelection()) return;
         event.preventDefault();
-        if (toBoard || state.selectedCount === 0) cutChips();
-        else roll.cut();
+        edit('cut', toBoard);
         break;
-      case 'KeyV': {
+      case 'KeyV':
         event.preventDefault();
-        if (toBoard || !roll.hasClipboard) {
-          pasteChips();
-          break;
-        }
-        // The pointer over the grid wins: the paste preview follows it, and
-        // the notes land where they are drawn.
-        if (roll.pasteAtCursor()) break;
-        pasteNear();
+        edit('paste', toBoard);
         break;
-      }
       case 'KeyD':
         event.preventDefault();
-        if (!toBoard && state.selectedCount > 0) roll.duplicateSelection();
-        else duplicateChips(chosenChips());
+        edit('duplicate', toBoard);
         break;
       default:
         break;
     }
   });
 
-  return { board, roll, openPanel, closePanel };
+  return {
+    board, roll, openPanel, closePanel,
+    edit: (action) => edit(action, lastOnBoard || panel.hidden === true),
+  };
 }

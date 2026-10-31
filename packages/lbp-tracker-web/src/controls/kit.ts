@@ -101,6 +101,8 @@ export interface Group {
   readonly slotId?: string;
   /** One `.row` per check instead of all of them on one line. */
   readonly stack?: boolean;
+  /** A label before the checks' row, as a fader has one: the engine's "effects". */
+  readonly checksLabel?: string;
   readonly note?: string;
 }
 

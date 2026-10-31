@@ -152,7 +152,7 @@ export function mountAlsExport(opts: {
     // order, and a grid's length is the one thing it cannot carry.
     const clipSteps = state.song.clips.map((clip) => clip.steps);
     const withInstruments = als.on('instruments');
-    // The master bus as the engine has it: one glue knob, in the Song/Mixer card.
+    // The master bus as the engine has it: one glue knob, in the Mixer & engine settings panel.
     const masterBus: MasterSettings | undefined = als.on('masterBus')
       ? { amount: engine.raw('masterAmount'), ceilingDb: MASTER_DEFAULTS.ceilingDb }
       : undefined;

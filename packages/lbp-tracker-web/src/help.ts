@@ -82,28 +82,36 @@ export const HELP: Readonly<Record<HelpTopic, Topic>> = {
   app: {
     title: 'Getting around',
     body:
-      p('One song is open at a time and every view works on it: <strong>Arrange</strong> to write it, ' +
-        '<strong>Song/Mixer</strong> for its tempo, channels and effects, <strong>Render</strong> to make a WAV, ' +
-        '<strong>Import/Export</strong> for MIDI files, <strong>Keyboard</strong> to play the instruments by hand. ' +
-        'Switching views never stops the music; the brand in the corner opens the home page over the song.') +
+      p('One song is open at a time, on the board, and everything else opens over it from the menus at the top: ' +
+        '<strong>File</strong> for a new song, opening, saving, importing a MIDI file, exporting, and rendering ' +
+        'a WAV; <strong>Edit</strong> for undo, redo and the clipboard; ' +
+        '<strong>Tools</strong> for the keyboard, to play the instruments by hand, and the bench; <strong>Help</strong> for this. ' +
+        'A panel opened from a menu never stops the music, and the transport stays in reach while it is open; ' +
+        '<kbd>Esc</kbd>, the &times; or a click outside it closes it. The brand in the corner opens the home page ' +
+        'over the song.') +
       h('Transport') +
-      p('Play and stop are in the top bar; stop also goes back to the start, and the loop button starts the song ' +
-        'over when it ends. <kbd>Space</kbd> plays and pauses from any view. The clock shows where you are and how ' +
-        'long the song is, the BPM box changes the tempo as it plays, the fader sets the volume, and the two bars ' +
-        'above it are the left and right output levels. The status bar at the bottom says how many notes are ' +
-        'sounding, how busy the audio is, and whether it has dropped out.') +
+      p('Play and stop are in the middle of the top bar; stop also goes back to the start, and the loop button ' +
+        'starts the song over when it ends. <kbd>Space</kbd> plays and pauses from any view. The display shows ' +
+        'where you are as bar and beat, then the time and how long the song is; the BPM box changes the tempo as ' +
+        'it plays. The two bars beside it are the left and right output levels, and the line across them is the ' +
+        'volume: drag it, or click anywhere on the bars. ' +
+        'The status bar at the bottom says how many notes are sounding, how busy the audio is, and whether it ' +
+        'has dropped out.') +
+      p('Beside the volume, the <strong>mixer</strong> button opens the mixer &amp; engine settings. On the ' +
+        'right is the song&rsquo;s name; a dot before it means it is not saved. Click the name to change it and ' +
+        'the author.') +
       p('The keys a transport usually answers to, from any view: <kbd>Space</kbd> plays and pauses where it is, ' +
         '<kbd>Home</kbd> or <kbd>Enter</kbd> go back to the start without stopping, <kbd>End</kbd> jumps to the ' +
-        'end of the song, and <kbd>Ctrl+S</kbd> saves it. On the Arrange view, <kbd>L</kbd> turns the loop on ' +
+        'end of the song, and <kbd>Ctrl+S</kbd> saves it. On the board, <kbd>L</kbd> turns the loop on ' +
         'and off and <kbd>M</kbd> and <kbd>S</kbd> mute and solo the row you have selected. Those three are ' +
-        'letters, so they wait for that view: on the Keyboard view the same letters play notes.') +
+        'letters, so they wait for the board with nothing open over it: on the keyboard the same letters play notes.') +
       p('The keyboard’s <strong>media keys</strong> work too, and so does whatever transport your computer puts ' +
         'on screen or on a headset: play, pause, stop, and the skip keys, which go to the start and the end of the ' +
         'song. The song’s name shows there while it plays.') +
       h('Files') +
-      p('<strong>open</strong> takes a level, a backup, a zip or a song file, and its <em>new song</em> starts an empty one; ' +
-        '<strong>save</strong> writes the song as a file this site can open again. A dot before the name means ' +
-        'there are unsaved changes; the name itself is set under Song/Mixer. Nothing you open leaves your computer.'),
+      p('<strong>Open</strong> takes a level, a backup, a zip or a song file, and <strong>New song</strong> starts an empty one; ' +
+        '<strong>Save</strong> writes the song as a file this site can open again. A dot before the name means ' +
+        'there are unsaved changes; click the name to change it. Nothing you open leaves your computer.'),
   },
   open: {
     title: 'Opening something',
@@ -251,17 +259,21 @@ export const HELP: Readonly<Record<HelpTopic, Topic>> = {
         'Drag the panel\'s top edge to resize it; <kbd>Esc</kbd> closes it.'),
   },
   song: {
-    title: 'The song',
+    title: 'The mixer',
     body:
-      p('The <strong>name</strong> is what the song is saved as, and what a level calls it. ' +
-        'The <strong>author</strong> is who made it, as the game keeps it: the PSN name of whoever first grouped it, ' +
-        'read out of the level, and written back into an exported plan so the popit says whose it is. ' +
-        '<strong>Tempo</strong> and <strong>swing</strong> take effect at once, while it plays, and keep your place in the music. ' +
-        '<strong>Loop</strong> starts the song over when it ends, here and in the game; the top bar has the same switch.') +
+      p('Everything here is saved with the song and is what the game plays it with.') +
       h('Channels') +
-      p('The board is cut into as many bands as there are channels, top to bottom, and each band has its own fader. ' +
-        'The number beside a fader is how many instruments sit on that channel. <strong>Board rows</strong> is how many ' +
-        'rows the board has.') +
+      p('The board is cut into as many bands as there are channels, top to bottom, and each band has its own fader: ' +
+        'one strip per channel, with how many instruments sit on it under the fader. <strong>+</strong> and ' +
+        '<strong>&minus;</strong> add a channel or take the last one away.') +
+      h('Tempo and swing') +
+      p('<strong>Tempo</strong> and <strong>swing</strong> take effect at once, while it plays, and keep your place in the music.') +
+      h('Elsewhere') +
+      p('The song&rsquo;s <strong>name</strong> and <strong>author</strong> are changed by clicking the name in the top bar. ' +
+        'The author is who made it, as the game keeps it: the PSN name of whoever first grouped it, read out of the level, ' +
+        'and written back into an exported plan so the popit says whose it is. <strong>Loop</strong>, which starts the ' +
+        'song over when it ends here and in the game, is the transport&rsquo;s button; the board grows and shrinks a row ' +
+        'at a time from its own edge.') +
       h('Echo and reverb') +
       p('The echo\'s <strong>time</strong> is in beats, so it follows the tempo; <strong>feedback</strong> is how long it ' +
         'repeats and <strong>mix</strong> how loud. Each instrument sends its own amount to both, in its note ' +
@@ -276,7 +288,7 @@ export const HELP: Readonly<Record<HelpTopic, Topic>> = {
     body:
       p('These switches are not part of the song; they change how it is played here.') +
       p('The game plays at most <strong>32 notes at once</strong> and cuts the oldest when more arrive, which is part ' +
-        'of how a busy song sounds. A smaller pool cuts more, and <strong>unlimited</strong> plays every note, which no ' +
+        'of how a busy song sounds. A smaller pool cuts more; the slider&rsquo;s last step, <strong>unlimited</strong>, plays every note, which no ' +
         'longer sounds like the game. Changing it while the song plays takes effect at once.') +
       p('<strong>echo</strong>, <strong>reverb</strong> and <strong>output clip</strong> switch those parts of the sound ' +
         'off to hear the song without them. Below them: how many notes are sounding, how many times the audio could ' +
@@ -302,13 +314,16 @@ export const HELP: Readonly<Record<HelpTopic, Topic>> = {
   render: {
     title: 'Rendering',
     body:
-      p('<strong>Render</strong> writes the whole song, or just a section, to a WAV file at studio quality, through ' +
-        'the same engine you hear live. Tick <strong>just a section</strong> and give it a start and an end as ' +
-        'minutes:seconds. The switches beside it are the same as the engine\'s: the size of the voice pool, ' +
-        'whether the echo, the reverb and the output clip are in, and which master bus ends it: ours at its ' +
-        'usual glue, the game’s with its automatic volume, the game’s at its own volume, or none.') +
+      p('<strong>Render</strong> plays the whole song, or just a section, through the same engine you hear live, ' +
+        'and the download saves it in the <strong>format</strong> you pick: WAV, 16-bit and lossless; OGG Vorbis; ' +
+        'or MP3, each at the <strong>quality</strong> beside it. OGG and MP3 are made from the same samples as the ' +
+        'WAV, the first time you download them, and smaller at the cost of some detail.') +
+      p('Tick <strong>just a section</strong> and give it a start and an end as minutes:seconds. The engine card ' +
+        'has the same switches as the live engine: the size of the voice pool, whether the echo, the reverb and the ' +
+        'output clip are in, and which master bus ends it: ours at its usual glue, the game’s with its automatic ' +
+        'volume, the game’s at its own volume, or none.') +
       p('When it is done the waveform appears: click it to seek, <kbd>Space</kbd> plays, the arrow keys scrub. ' +
-        '<strong>Download WAV</strong> saves it, and the cards below say what the render contained.'),
+        'The cards below say what the render contained.'),
   },
   export: {
     title: 'Exporting a MIDI file',
@@ -363,7 +378,7 @@ export const HELP: Readonly<Record<HelpTopic, Topic>> = {
         'So a note you add in Live stays silent until you draw it some pressure in the Note Expression tab, ' +
         'or turn the Pressure amount down in the Sampler’s MIDI tab.') +
       p('<strong>Our master bus on the master</strong> puts the tracker’s own master bus on Live’s master ' +
-        'track: Live’s Compressor set as the glue, then Live’s Limiter, at the glue the Song/Mixer card is set ' +
+        'track: Live’s Compressor set as the glue, then Live’s Limiter, at the glue the Mixer &amp; engine settings panel is set ' +
         'to. Like the tracker’s, it is ours and not the game’s, and off unless you ask for it. With it the set ' +
         'plays about as loud as the tracker does with our master bus; without it, Live’s master hears the song ' +
         'as it reaches the game’s master bus, before the game’s compressor and before the fold that raises it.') +
@@ -407,18 +422,18 @@ export const HELP: Readonly<Record<HelpTopic, Topic>> = {
       p('Play the game\'s instruments by hand. The instrument follows the one selected on the board, or pick any. ' +
         'Click the keys, or use the computer keyboard: <kbd>Z S X D C V G B H N J M</kbd> is one octave with its ' +
         'sharps, <kbd>Q 2 W 3 E R 5 T 6 Y 7 U</kbd> the octave above, <kbd>&larr;</kbd> <kbd>&rarr;</kbd> shift the ' +
-        'octave, <kbd>Esc</kbd> silences everything. A note lasts as long as the key is down, and the keys play only ' +
-        'while this view is open.') +
+        'octave, <kbd>Esc</kbd> closes the panel and silences everything. A note lasts as long as the key is down, ' +
+        'and the keys play only while this panel is open.') +
       h('A MIDI controller') +
       p('Pick it under <strong>MIDI in</strong>; the browser asks once for permission. An MPE controller is recognised ' +
         'on its own, and <strong>MPE</strong> can force a zone or switch it off; <strong>bend range</strong> is how far ' +
         'the wheel reaches. Pressure and slide can each be turned off.') +
-      h('Turning things') +
-      p('The faders change the sound while it plays. A group with an <strong>override</strong> box uses your values ' +
+      h('Advanced') +
+      p('Open <strong>Advanced</strong> under the keys for every parameter of the voice. The faders change the sound while it plays. A group with an <strong>override</strong> box uses your values ' +
         'only while it is ticked; unticked, the instrument plays as the game made it. Double-click any fader to put ' +
         'it back where it started.') +
       h('The bench') +
-      p('Three buttons play set sequences: every sample of the instrument at its own note, a scale, and a chromatic ' +
+      p('<strong>Tools, Bench</strong> plays set sequences on the instrument chosen here: every sample of the instrument at its own note, a scale, and a chromatic ' +
         'run. <strong>Note length</strong> is how long those hold each note. The engine and sampler choices play the ' +
         'same thing through different resamplers, to compare them by ear.'),
   },
@@ -429,7 +444,7 @@ export const HELP: Readonly<Record<HelpTopic, Topic>> = {
       p('These terms cover your use of LBP Tracker, the website at lbptracker.sgdc3.it, run by sgdc3 (&ldquo;I&rdquo;). ' +
         'By using the site you agree to them. If you do not, please do not use it.') +
       h('What this is') +
-      p('LBP Tracker is a free, open-source editor and player for the music sequencer of LittleBigPlanet&nbsp;3. ' +
+      p('LBP Tracker is a free, open-source editor and player for the music sequencer of LittleBigPlanet&nbsp;2 and 3. ' +
         'It runs in your browser. It is a fan project, with no connection to Sony Interactive Entertainment or ' +
         'Media Molecule, and not endorsed by either. LittleBigPlanet is a trademark of Sony Interactive Entertainment.') +
       h('Your files and your work') +

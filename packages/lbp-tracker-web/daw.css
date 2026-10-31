@@ -24,62 +24,275 @@ body {
 main { flex: 1 0 auto; width: 100%; box-sizing: border-box; margin: 0; max-width: none; padding: 0 1rem; }
 
 /* ------------------------------------------------------------- the top bar */
+/*
+ * Three zones on one row: the menus on the left, the transport in the middle,
+ * the song on the right, and it never wraps: the old bar did, wherever it ran
+ * out of room, so its height -- and the board under it -- changed with the
+ * window, and at 1440 px "open / save / ?" sat alone on a second row.
+ *
+ * Narrower, the zones give things up instead of wrapping: the brand's name
+ * first (its chip is left), then the song's author and the time beside
+ * bar.beat; narrower still the menus get a row of their own.
+ */
 .daw-top {
   position: sticky; top: 0; z-index: 30; background: var(--bg);
-  border-bottom: 1px solid var(--line); padding: .5rem 1rem;
-  display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+  border-bottom: 1px solid var(--line); padding: .45rem 1rem;
+  display: flex; align-items: center; gap: 1rem;
 }
+/* Both sides grow alike from nothing, so the transport sits in the middle
+   while there is room; the left never shrinks under its menus, so when there
+   is not, the transport moves right rather than over them, and the song's name
+   on the right is what gives way (it ends in an ellipsis). */
+.bar-left, .bar-right { flex: 1 1 0; display: flex; align-items: center; gap: .45rem; }
+.bar-left { min-width: max-content; }
+.bar-right { min-width: 0; justify-content: flex-end; }
+.transport { flex: 0 0 auto; }
+.bar-right > * { flex: 0 0 auto; }
+.bar-right > .title-wrap { flex: 0 1 auto; }
 .daw-top .brand {
-  display: inline-flex; align-items: center; gap: .5rem;
+  display: inline-flex; align-items: center; gap: .5rem; flex: 0 0 auto;
   font-size: .78rem; letter-spacing: .09em; text-transform: uppercase;
-  color: var(--dimmer); margin-right: .4rem; text-decoration: none; cursor: pointer;
+  color: var(--dimmer); margin-right: .3rem; text-decoration: none; cursor: pointer;
 }
 .daw-top .brand:hover { color: var(--ink); }
 
-/* ------------------------------------------------------------------- home */
-.home { max-width: 56rem; margin: 1.5rem auto 0; padding: 0 1rem; }
-.home h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .6rem; letter-spacing: -.01em; }
-.home .sub { color: var(--dim); margin: 0 0 1.2rem; }
-.home .sub strong { color: var(--ink); font-weight: 600; }
-.home-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: .8rem; margin: 1rem 0; }
-.home-grid .card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: .8rem .9rem; }
-.home-grid .card h3 { margin: 0 0 .35rem; font-size: .78rem; letter-spacing: .06em; text-transform: uppercase; color: var(--dimmer); }
-.home-grid .card p { margin: 0; color: var(--dim); font-size: .9rem; }
-.home .actions { display: flex; gap: .6rem; flex-wrap: wrap; margin: 1.2rem 0; }
-.tabs { display: flex; gap: .2rem; }
-.tabs button {
+/* The menus, a desktop application's: a word each, opened by a click. */
+.menubar { display: flex; gap: .1rem; }
+.menu-wrap { position: relative; }
+.menu-button {
   background: none; border: 1px solid transparent; color: var(--dim);
-  padding: .35rem .75rem; border-radius: 7px; font-size: .92rem;
+  padding: .35rem .65rem; border-radius: 7px; font-size: .92rem; white-space: nowrap;
 }
-.tabs button:hover { color: var(--ink); background: var(--panel); border-color: transparent; }
-.tabs button[aria-selected="true"] { color: var(--ink); background: var(--panel); border-color: var(--line); }
-.daw-top .spacer { flex: 1 1 0; min-width: 0; }
-/* The name, and under it whoever made the song -- nothing at all when the
-   file names nobody, so an authorless title sits where it always did. */
-#songTitle {
-  display: flex; flex-direction: column; align-items: flex-end; justify-content: center;
-  max-width: 18rem; min-width: 0; line-height: 1.15;
-}
-#songName, #songAuthor {
-  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-#songName { color: var(--ink); font-weight: 600; }
-#songAuthor { color: var(--dim); font-size: .74rem; }
-#dirty { color: var(--warn); font-size: 1.1rem; width: .8rem; text-align: center; }
-.transport { display: flex; align-items: center; gap: .5rem; }
-.transport button { padding: .3rem .7rem; line-height: 1.2; min-width: 2.4rem; }
-.transport button[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
-.transport button svg { display: block; margin: 0 auto; }
+.menu-button:hover, .menu-button[aria-expanded="true"] { color: var(--ink); background: var(--panel); border-color: transparent; }
+
+.transport { display: flex; align-items: center; gap: .3rem; }
+.daw-top button { line-height: 1.2; }
+.transport button { padding: .3rem .5rem; min-width: 2.1rem; }
+/* Play and stop as one group of buttons. */
 .transport .seg { display: inline-flex; }
 .transport .seg button { border-radius: 0; margin-left: -1px; }
 .transport .seg button:first-child { border-radius: 7px 0 0 7px; margin-left: 0; }
 .transport .seg button:last-child { border-radius: 0 7px 7px 0; }
 .transport .seg button:hover, .transport .seg button:focus-visible { position: relative; z-index: 1; }
-#clock { color: var(--dim); font: .9rem/1 ui-monospace, Consolas, monospace; min-width: 6.5rem; }
-#tempoBox { width: 4.2rem; padding: .3rem .4rem; }
-.vol { display: flex; flex-direction: column; gap: 3px; width: 7rem; }
-#vu { display: block; width: 100%; height: 10px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px; }
-#vol { width: 100%; margin: 0; }
+.transport button[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+.transport button svg { display: block; margin: 0 auto; }
+/* The display: the playhead as bar.beat, which is how the board is read, then
+   the time. Monospaced so the digits do not push the bar about as they run. */
+.lcd {
+  display: inline-flex; align-items: baseline; gap: .55rem; white-space: nowrap;
+  padding: .28rem .35rem; font: .9rem/1.2 ui-monospace, Consolas, monospace;
+}
+/* A thin upright line between the transport's groups: the buttons, the
+   timecode, the tempo, the meter. The readouts have no box of their own. */
+.bar-sep { flex: 0 0 auto; width: 1px; height: 1.3rem; margin: 0 .3rem; background: #3a414d; }
+/* Wide enough for bar 999, so the box keeps its width as the bars count up;
+   a shorter number sits centred in that room, between the separator and the
+   time. */
+#where { color: var(--ink); min-width: 5ch; text-align: center; }
+/* And that room in the middle of the separator and the time: the gap after it
+   matches what is before it -- the transport's gap, the separator's margin and
+   the box's own padding, .3 + .3 + .35 rem. */
+.lcd:has(> #where) { gap: .95rem; }
+#clock { color: var(--dim); font-size: .82rem; }
+.lcd.tempo { gap: .25rem; padding-right: .55rem; cursor: text; margin: 0; }
+.lcd.tempo span { color: var(--dimmer); font-size: .78rem; }
+#tempoBox {
+  /* As wide as the number in it: three digits where the field cannot size
+     itself, its own width where it can. */
+  width: 3ch; field-sizing: content; min-width: 2ch; padding: 0; border: 0; background: none; color: var(--ink);
+  font: inherit; -moz-appearance: textfield; appearance: textfield;
+}
+#tempoBox::-webkit-inner-spin-button, #tempoBox::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+#tempoBox:focus { outline: none; box-shadow: none; }
+/* No box to light up, so the number does when it is being typed into. */
+.lcd.tempo:focus-within #tempoBox { color: var(--accent); }
+/* The level meter and the volume in one: the two bars drawn straight on the
+   top bar, no box round them, and a range input laid over them whose track is
+   invisible and whose handle is a thin upright line -- a DAW's master fader
+   over its meter. Dragging anywhere on the bars sets the volume. */
+.vol { position: relative; width: 8rem; height: 1.6rem; display: flex; align-items: center; }
+#vu { display: block; width: 100%; height: 16px; }
+#vol {
+  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0;
+  background: none; border: 0; cursor: ew-resize; -webkit-appearance: none; appearance: none;
+}
+#vol::-webkit-slider-runnable-track { height: 100%; background: none; border: 0; }
+#vol::-moz-range-track { height: 100%; background: none; border: 0; }
+/* The handle stands just past the meter's 16 px, centred on it: the input is
+   taller than that only so the bars are easy to hit. */
+#vol::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 4px; height: 20px; margin-top: calc(.8rem - 10px); border: 0; border-radius: 2px;
+  background: var(--ink); box-shadow: 0 0 0 1px var(--bg);
+}
+#vol::-moz-range-thumb { width: 4px; height: 20px; border: 0; border-radius: 2px; background: var(--ink); box-shadow: 0 0 0 1px var(--bg); }
+#vol:focus { outline: none; box-shadow: none; }
+#vol:focus-visible::-webkit-slider-thumb { background: var(--accent); }
+#vol:focus-visible::-moz-range-thumb { background: var(--accent); }
+
+/* What the bar opens: the menus. */
+.bar-pop {
+  position: absolute; top: calc(100% + .35rem); z-index: 40;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / .45); padding: .35rem;
+}
+.bar-pop[hidden] { display: none; }
+.menu { left: 0; min-width: 12.5rem; display: flex; flex-direction: column; }
+.menu button {
+  display: flex; justify-content: space-between; align-items: center; gap: 1rem;
+  text-align: left; background: none; border: 0; border-radius: 6px; padding: .32rem .6rem; color: var(--ink);
+  font-size: .84rem;
+}
+.menu button:hover, .menu button:focus-visible { background: var(--panel-2); outline: none; }
+.menu button:disabled { color: var(--dimmer); background: none; }
+.menu kbd { color: var(--dimmer); font: .72rem ui-monospace, Consolas, monospace; }
+.menu hr { border: 0; border-top: 1px solid var(--line); margin: .3rem .2rem; }
+
+/* The name, and under it whoever made the song -- nothing at all when the
+   file names nobody. The dot before the name says it is not saved. */
+.title-wrap { position: relative; min-width: 0; display: flex; }
+#songTitle {
+  display: flex; flex-direction: column; align-items: flex-end; justify-content: center;
+  max-width: 24rem; min-width: 0;
+  background: none; border: 1px solid transparent; border-radius: 7px; padding: 0 .45rem; color: inherit;
+  /* ❗ The line height after `font`, which would otherwise put it back to the
+     page's 1.6 and make the two lines -- and with them the bar -- 17 px taller. */
+  font: inherit; line-height: 1.15;
+}
+#songTitle:hover, #songTitle[aria-expanded="true"] { background: var(--panel); }
+/* The name and author, under the name: two fields that edit the song as you type. */
+.song-edit {
+  right: 0; width: 18rem; padding: .7rem .8rem;
+  display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: .5rem .6rem;
+}
+.song-edit label { color: var(--dim); font-size: .85rem; }
+.song-edit input { width: 100%; margin: 0; text-align: left; }
+#songName, #songAuthor { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#songName { color: var(--ink); font-weight: 600; }
+#songAuthor { color: var(--dim); font-size: .74rem; }
+#dirty {
+  display: inline-block; width: .45rem; height: .45rem; border-radius: 50%;
+  background: var(--warn); margin-right: .4rem; vertical-align: .12em;
+}
+#dirty[hidden] { display: none; }
+
+/*
+ * The breakpoints are the bar's own widths, measured on 2026-10-31: the
+ * transport 488 px with a 4 rem meter (8 rem since, 64 px more), the time inside it about 80, the menus 300, the brand's
+ * name 90 beside its chip.
+ */
+@media (max-width: 1200px) {
+  .daw-top .brand-name { display: none; }
+}
+@media (max-width: 1000px) {
+  .daw-top { gap: .6rem; }
+  #clock, #songAuthor { display: none; }
+}
+/* Narrow: the menus leave the row for one of their own, under the rest. */
+@media (max-width: 820px) {
+  .daw-top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; padding: .4rem .6rem .3rem; gap: .3rem .5rem; }
+  .bar-left { display: contents; }
+  .daw-top .brand { grid-column: 1; grid-row: 1; margin: 0; }
+  .transport { grid-column: 2; grid-row: 1; justify-content: center; }
+  .bar-right { grid-column: 3; grid-row: 1; }
+  .menubar { grid-column: 1 / -1; grid-row: 2; }
+  #metronome, .title-wrap { display: none; }
+  .vol { width: 5rem; }
+}
+/* A phone: the brand is under Help ("About"), the volume is the phone's. */
+@media (max-width: 480px) {
+  .daw-top .brand, .vol { display: none; }
+}
+
+/* ------------------------------------------------------------------ panels */
+/*
+ * Every view but the board is a panel over it: the home page, Mixer & engine settings,
+ * Render, Export, Import, Keyboard. One at a time.
+ *
+ * ❗ **`show()`, not `showModal()`.** A modal dialog makes the rest of the page
+ * inert, the top bar with it, and the transport is the one thing a panel must
+ * leave in reach: the mixer is for a song that is playing. So the panel sits
+ * between the two bars, and the scrim under it is ours -- it dims the board,
+ * and a click on it closes the panel. Esc closes it too (`daw.ts`).
+ */
+.view-scrim {
+  position: fixed; left: 0; right: 0; top: var(--top-h, 3.2rem); bottom: var(--foot-h, 2.2rem);
+  z-index: 24; background: rgb(0 0 0 / .5);
+}
+.view-scrim[hidden] { display: none; }
+.view-panel {
+  /* As tall as what is in it, and never past the footer: the space between the
+     two bars is the most it takes, and only a panel with that much to show
+     scrolls inside it. Centred in that space both ways: both edges set, auto
+     margins, and its own height. */
+  --panel-gap: .8rem;
+  position: fixed; top: calc(var(--top-h, 3.2rem) + var(--panel-gap)); bottom: calc(var(--foot-h, 2.2rem) + var(--panel-gap));
+  left: 0; right: 0; margin: auto; z-index: 25;
+  width: min(72rem, calc(100vw - 2rem)); height: fit-content; max-width: none; padding: 0;
+  max-height: calc(100vh - var(--top-h, 3.2rem) - var(--foot-h, 2.2rem) - 2 * var(--panel-gap));
+  max-height: calc(100dvh - var(--top-h, 3.2rem) - var(--foot-h, 2.2rem) - 2 * var(--panel-gap));
+  background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: 0 18px 50px rgb(0 0 0 / .55); overflow: hidden;
+}
+.view-panel[open] { display: flex; flex-direction: column; }
+.view-panel-head {
+  display: flex; align-items: center; gap: .6rem; flex: 0 0 auto;
+  padding: .55rem .6rem .55rem 1rem; border-bottom: 1px solid var(--line); background: var(--panel);
+}
+.view-panel-head:has(+ .panel-tabs) { border-bottom: 0; }
+/* Narrower than the other panels, so it fills more of the height than the width. */
+#panel-home { width: min(64rem, calc(100vw - 2rem)); }
+/* A panel without a title bar: only the close button, in the corner over the content. */
+.view-panel-head.bare {
+  position: absolute; top: .5rem; right: .5rem; z-index: 1; padding: 0; border: 0; background: none;
+}
+.view-panel-head h2 { margin: 0; font-size: 1rem; font-weight: 600; flex: 1 1 auto; }
+/* Tabs under a panel's title, as the open dialog has them (`.openlv-tabs`). */
+.panel-tabs {
+  flex: 0 0 auto; display: flex; gap: .1rem; padding: 0 .6rem; background: var(--panel);
+  box-shadow: inset 0 -1px 0 var(--line); overflow-x: auto; scrollbar-width: none;
+}
+.panel-tabs button {
+  flex: 0 0 auto; border: 0; border-radius: 0; background: none; color: var(--dim);
+  border-bottom: 2px solid transparent; padding: .45rem .85rem; white-space: nowrap;
+}
+.panel-tabs button:hover { color: var(--ink); }
+.panel-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.view-panel section[role="tabpanel"][hidden] { display: none; }
+.view-panel-close { font-size: 1.2rem; line-height: 1; padding: .2rem .55rem; }
+.view.panel-body-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; margin: 0; padding: .8rem 1rem 0; }
+@media (max-width: 820px) {
+  .view-panel { --panel-gap: .4rem; width: calc(100vw - 1rem); }
+}
+
+/* ------------------------------------------------------------------- home */
+/* The home panel, sized to fit between the two bars of a desktop screen
+   (1280 x 720 and up) without scrolling: a smaller title, the six cards in
+   three columns, and the footer close under them. A phone scrolls it. */
+/* One gap between every block -- title, words, buttons, cards, the line under
+   them, the footer -- that grows with the screen's height, and a body wide
+   enough that the words and the cards wrap less, which pays for the room. */
+.home { --home-gap: clamp(.9rem, 3.2vh, 2.2rem); }
+.home .home-body { max-width: 68rem; margin: .6rem auto 0; display: flex; flex-direction: column; gap: var(--home-gap); }
+.home .home-body > * { margin: 0; }
+/* The words and the buttons centred; the cards keep their text to the left. */
+.home .home-head, .home .sub { text-align: center; }
+.home .actions { justify-content: center; }
+/* The name, as the top bar writes it -- the chip, then the word in capitals --
+   and under it what it is, one block so the gap above the words is not doubled. */
+.home-title {
+  display: inline-flex; align-items: center; gap: .7rem; margin: 0;
+  font-size: 1.9rem; line-height: 1.15; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+}
+.home-title::before { width: 3rem; height: 2.1rem; }
+.home-tagline { margin: .35rem 0 0; font-size: 1.15rem; line-height: 1.3; color: var(--ink); font-weight: 500; }
+.home .sub { color: var(--dim); margin: 0; font-size: .92rem; line-height: 1.55; }
+.home .sub strong { color: var(--ink); font-weight: 600; }
+.home-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: .6rem; margin: 0; }
+@media (min-width: 900px) { .home-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.home-grid .card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: .6rem .75rem; }
+.home-grid .card h3 { margin: 0 0 .25rem; font-size: .74rem; letter-spacing: .06em; text-transform: uppercase; color: var(--dimmer); }
+.home-grid .card p { margin: 0; color: var(--dim); font-size: .84rem; line-height: 1.45; }
+.home .actions { display: flex; gap: .6rem; flex-wrap: wrap; margin: 0; }
 
 /* The fixed footer: what the app last did, and what the audio thread is holding. */
 .daw-foot {
@@ -115,8 +328,6 @@ main { flex: 1 0 auto; width: 100%; box-sizing: border-box; margin: 0; max-width
   display: inline-grid; place-items: center;
 }
 .step .help-btn { margin-left: auto; }
-/* A "?" that sits in a row of buttons is one of them, not the round floating kind. */
-.bar-help { min-width: 2.4rem; }
 .board-help { position: absolute; right: 1.2rem; top: .55rem; z-index: 5; }
 /*
  * The sequencer's thermometer: a narrow column at the left of the arranger, as
@@ -154,14 +365,16 @@ main { flex: 1 0 auto; width: 100%; box-sizing: border-box; margin: 0; max-width
 .picker-dialog.confirm-dialog { width: min(30rem, 92vw); }
 .confirm-question { margin: 0 0 .4rem; font-size: 1rem; line-height: 1.5; }
 
-/* The file dialog: a tab per way in, and the level's songs. It fills the page
-   whatever is in it, by the owner's choice: the song index puts its table and a
-   song's detail side by side, and every tab keeps the same frame rather than
-   the dialog changing height from one tab to the next. The panes scroll inside
-   it; the rules that make them fill it are after `.picker-list` below, which
-   they have to override. */
+/* The file dialog: a tab per way in, and the level's songs. One fixed frame
+   whatever is in it, so every tab keeps the same size rather than the dialog
+   changing height from one tab to the next; since 0.3.0 that frame is not the
+   whole page (the owner's choice, 2026-10-31) but at most 84 x 40 rem, centred,
+   and smaller on a smaller screen. The panes scroll inside it; the rules that
+   make them fill it are after `.picker-list` below, which they have to
+   override. */
 .picker-dialog.file-dialog {
-  width: calc(100vw - 2rem); height: calc(100vh - 2rem); height: calc(100dvh - 2rem);
+  width: min(84rem, calc(100vw - 2rem));
+  height: min(40rem, calc(100vh - 4rem)); height: min(40rem, calc(100dvh - 4rem));
   max-width: none; max-height: none; overflow: hidden;
 }
 .file-title { margin: 0; color: var(--ink); font-size: 1.05rem; font-weight: 600; }
@@ -327,8 +540,109 @@ main { flex: 1 0 auto; width: 100%; box-sizing: border-box; margin: 0; max-width
 }
 .picker-row .picker-cost.over { color: #d9605d; }
 .knob input[type="text"] { text-align: left; font-family: inherit; }
-.song-group { margin-bottom: 1rem; }
-#mixer .live { grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); }
+/*
+ * The Mixer & engine settings panel: two sections, each a title, a line on what
+ * it keeps and a "?", with the groups under it as cards in a grid. Scoped to
+ * the panel: the same groups and knobs are the keyboard's and the export's,
+ * which keep their own look.
+ */
+.form-panel section.mx-section { background: none; border: 0; border-radius: 0; padding: 0; margin: 0 0 1.3rem; }
+/* The channel strips: one upright fader each, as a mixing desk has them. */
+/* The strips on the left, the song's timing over its effects on their right,
+   which leaves the strips room for all six channels; on a narrow screen the
+   two groups go under the strips. */
+.mx { display: flex; flex-wrap: wrap; align-items: stretch; gap: .9rem; }
+/* The strips' room is kept for all six channels, across and down: the area is
+   six strips and the + and − wide whatever the count, those two stay at its
+   right edge, and the strips run as tall as the groups beside them, so adding
+   or taking a channel away never moves anything else. */
+.mx-strips {
+  --mx-strip: 4.6rem; --mx-strip-gap: .5rem;
+  flex: 0 0 auto; width: calc(6 * var(--mx-strip) + 6 * var(--mx-strip-gap) + 3.2rem); max-width: 100%;
+  display: flex; align-items: stretch; gap: var(--mx-strip-gap); overflow-x: auto; padding-bottom: .2rem;
+}
+.mx-strip {
+  flex: 0 0 var(--mx-strip); display: flex; flex-direction: column; align-items: center; gap: .4rem;
+  padding: .65rem .3rem .6rem; background: var(--panel); border: 1px solid var(--line-soft); border-radius: 8px;
+}
+.mx-ch { font-size: .74rem; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+.mx-fader { writing-mode: vertical-lr; direction: rtl; width: 1.6rem; flex: 1 1 auto; height: auto; min-height: 8.5rem; margin: .1rem 0; }
+.mx-strip output { font: .8rem/1 ui-monospace, Consolas, monospace; color: var(--ink); }
+.mx-strip .mx-count { margin: 0; }
+.mx-strip-add {
+  flex: 0 0 auto; margin-left: auto; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: .4rem; padding: 0 .5rem;
+}
+.mx-strip-add button { width: 2.2rem; padding: .25rem 0; font-size: 1rem; line-height: 1.2; }
+.mx-columns { flex: 1 1 18rem; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: .9rem; }
+/* The engine: a section that opens on its title, under a line. */
+.mx-engine { border-top: 1px solid var(--line); padding-top: 1rem; margin: 0 0 1.2rem; }
+.mx-engine > summary {
+  display: flex; align-items: baseline; gap: .7rem; cursor: pointer; list-style: none; user-select: none;
+}
+.mx-engine > summary::-webkit-details-marker { display: none; }
+.mx-engine > summary::before {
+  content: "\25B8"; color: var(--dim); display: inline-block; width: .8rem; transition: transform .15s;
+}
+.mx-engine[open] > summary::before { transform: rotate(90deg); }
+.mx-engine > summary .mx-sub { margin: 0; }
+.mx-engine > summary .help-btn { margin-left: auto; align-self: center; }
+.mx-engine > summary:hover .mx-title { color: var(--accent); }
+.mx-engine > #engine { margin-top: .9rem; }
+.mx-head { display: flex; align-items: flex-start; gap: .6rem; margin: 0 0 .85rem; }
+.mx-head .help-btn { margin-left: auto; margin-top: .1rem; }
+.mx-title { margin: 0; font-size: .98rem; font-weight: 600; color: var(--ink); letter-spacing: 0; text-transform: none; }
+.mx-sub { margin: .15rem 0 0; color: var(--dimmer); font-size: .82rem; }
+.form-panel .live { grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: .9rem; }
+.form-panel .group { background: var(--panel); border-color: var(--line-soft); padding: .85rem 1rem 1rem; }
+.form-panel .group > h3 { margin-bottom: .8rem; color: var(--dim); }
+/*
+ * One grid for every row in a group -- label, control, value -- and one row
+ * height, whatever the control. Sliders, menus and checkboxes all start at the
+ * control column; a menu takes the value column too; the checkboxes (the
+ * output stage's switches) sit side by side from the control column. The master bus's "which" is a `.row` with a label and a
+ * menu from the shared control kit, laid on the same grid.
+ */
+.form-panel { --mx-label: 5.8rem; --mx-value: 4.8rem; --mx-row: 2rem; }
+.form-panel .knob,
+.form-panel .group .row:has(> select) {
+  display: grid; grid-template-columns: var(--mx-label) minmax(0, 1fr) var(--mx-value);
+  gap: .6rem; align-items: center; min-height: var(--mx-row); margin: 0;
+}
+.form-panel .knob + .knob,
+.form-panel .group > * + .knob,
+.form-panel .group > * + .row { margin-top: .25rem !important; }
+.form-panel .knob select,
+.form-panel .group .row > select { grid-column: 2 / 4; width: 100%; min-width: 0; }
+.form-panel .group .row:has(> select) > label { font-size: .84rem; }
+.form-panel select { height: var(--mx-row); padding: 0 .5rem; font-size: .84rem; }
+.form-panel .group .row:not(:has(> select)) {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .2rem 1.1rem;
+  min-height: var(--mx-row); padding-left: calc(var(--mx-label) + .6rem);
+}
+/* The switches side by side on one row, at the control column, wrapping only if they must;
+   with a label of their own (`checksLabel`) it takes the label column instead of the indent. */
+/* A labelled row keeps its indent and puts the label in the label column
+   beside it, so switches that wrap line up under the first one. */
+.form-panel .group .row:has(> .row-label) { position: relative; }
+.form-panel .row-label {
+  position: absolute; left: 0; top: 0; height: var(--mx-row); display: flex; align-items: center;
+  font-size: .84rem; color: var(--dim);
+}
+/* A group of switches alone has no label column to line up with: no indent. */
+.form-panel .group:not(:has(.knob, .row > select)) .row { padding-left: 0; }
+/* `hidden` wins over the grid the rows are laid out on. */
+.form-panel .knob[hidden] { display: none; }
+.form-panel .group .row > .check { display: flex; align-items: center; min-height: var(--mx-row); font-size: .84rem; }
+.mx-count { color: var(--dimmer); font-size: .74rem; }
+/* The live readings: a row of small tiles under the engine's groups. */
+#meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: .6rem; margin-top: .9rem; }
+.mx-meter {
+  display: flex; flex-direction: column; gap: .2rem; padding: .55rem .75rem;
+  border: 1px solid var(--line-soft); border-radius: 8px;
+}
+.mx-meter span { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; color: var(--dimmer); }
+.mx-meter b { font: 500 1rem/1.2 ui-monospace, Consolas, monospace; color: var(--ink); }
 .knob output { font: .78rem/1 ui-monospace, Consolas, monospace; color: var(--dim); text-align: right; }
 /* The chip's tint: a swatch the width of a slider, and a button back to the
    instrument's own colour where the readout would be. */
@@ -354,10 +668,27 @@ kbd {
 }
 
 /* ----------------------------------------------------------------- render */
-#rd-rangeFields { display: inline-flex; gap: .5rem; align-items: center; }
+/*
+ * The Render panel: two cards of settings on the mixer's grid (`.form-panel`)
+ * -- the output (format, quality, range) and the engine -- then the action
+ * row: Render, its progress and status, and the download of the format chosen.
+ * Under the player, what the render did as five equal cards on one row.
+ */
+.rd-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: .9rem; }
+.rd-span { grid-column: 2 / 4; display: flex; align-items: center; gap: .5rem; font-size: .84rem; }
+.rd-span input { width: 5rem; min-width: 0; }
 #rd-rangeFields.off label { opacity: .4; }
-.rd-switches { margin-top: .7rem; gap: .5rem 1.2rem; }
-.rd-switches .sep { color: var(--line); }
+#rd-voices { width: 100%; min-width: 0; }
+.panel-action {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .6rem 1rem; margin-top: .9rem; padding: .8rem 1rem;
+  background: var(--panel); border: 1px solid var(--line-soft); border-radius: 8px;
+}
+.panel-action > button { flex: 0 0 auto; min-width: 7.5rem; }
+.panel-action > label { font-size: .84rem; color: var(--dim); }
+.panel-action #cv-status { margin: 0; }
+.rd-progress { flex: 1 1 auto; min-width: 0; }
+.rd-progress #rd-bar { margin-top: 0; }
+.rd-progress #rd-status { margin-top: .35rem; font-size: .84rem; }
 #rd-bar {
   height: 5px; background: var(--panel-2); border-radius: 3px; overflow: hidden;
   border: 1px solid var(--line); margin-top: .45rem;
@@ -374,20 +705,20 @@ kbd {
 #rd-transport button { padding: .3rem .7rem; line-height: 1.2; min-width: 2.4rem; }
 #rd-times { color: var(--dim); font-size: .9rem; }
 #rd-vol { width: 7rem; }
-#rd-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: .8rem; }
+#rd-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); gap: .9rem; }
 #rd-stats:empty { display: none; }
 .note-empty { display: none; color: var(--dimmer); font-size: .9rem; margin: 0; }
 #rd-stats:empty + .note-empty { display: block; }
 .stat-card {
-  background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
-  padding: .7rem .9rem; min-width: 0;
+  background: var(--panel); border: 1px solid var(--line-soft); border-radius: 8px;
+  padding: .85rem 1rem 1rem; min-width: 0;
 }
 .stat-card h3 {
-  margin: 0 0 .35rem; font-size: .72rem; font-weight: 600; letter-spacing: .06em;
-  text-transform: uppercase; color: var(--dimmer);
+  margin: 0 0 .5rem; font-size: .78rem; font-weight: 600; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--dim);
 }
 .stat-card .big { font-family: ui-monospace, Consolas, monospace; font-size: 1.35rem; line-height: 1.2; overflow-wrap: anywhere; }
-.stat-card .big small { font-size: .8rem; color: var(--dim); font-family: inherit; margin-left: .3rem; }
+.stat-card .big small { display: block; font-size: .76rem; color: var(--dimmer); font-family: inherit; margin: .15rem 0 0; }
 .stat-card dl { margin: .5rem 0 0; display: grid; grid-template-columns: auto 1fr; gap: .2rem .8rem; }
 .stat-card dt { color: var(--dim); font-size: .82rem; white-space: nowrap; }
 .stat-card dd { margin: 0; font-family: ui-monospace, Consolas, monospace; font-size: .82rem; text-align: right; overflow-wrap: anywhere; }
@@ -463,9 +794,30 @@ html[data-pointer] #kb-piano:focus-visible { outline: none; }
   font-family: ui-monospace, Consolas, monospace; font-size: .85rem; min-height: 1.4em;
 }
 #kb-meter { color: var(--dim); }
-.kb-setup { grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); }
-.kb-setup .knob { grid-template-columns: 5.6rem 1fr auto; }
-.kb-setup .knob output { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The keyboard's and the bench's cards, two side by side, on the panels' grid. */
+.kb-setup { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: .9rem; }
+.kb-setup .knob output { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The two cards, the same height: what each reports on a row of its own,
+   and the MPE settings folded under the input until they are wanted. */
+.kb-setup .group { display: flex; flex-direction: column; }
+.kb-setup output, .kb-setup #kb-status { font-size: .84rem; color: var(--dim); }
+.kb-setup output.kb-wide { text-align: left; font-family: inherit; }
+.kb-setup .kb-note { margin: auto 0 0; padding-top: .6rem; }
+.kb-mpe { margin-top: .25rem; }
+.kb-mpe > summary {
+  cursor: pointer; list-style: none; user-select: none; min-height: var(--mx-row);
+  display: flex; align-items: center; gap: .4rem; font-size: .84rem; color: var(--dim);
+}
+.kb-mpe > summary::-webkit-details-marker { display: none; }
+.kb-mpe > summary::before { content: "\25B8"; display: inline-block; width: .8rem; transition: transform .15s; }
+.kb-mpe[open] > summary::before { transform: rotate(90deg); }
+.kb-mpe > summary:hover { color: var(--ink); }
+.kb-mpe > .knob, .kb-mpe > .row { margin-top: .25rem; }
+.kb-label { font-size: .84rem; color: var(--dim); }
+.kb-wide { grid-column: 2 / 4; min-width: 0; }
+.kb-setup #kb-status { margin: 0; }
+.kb-setup .hintline { margin: .5rem 0 0; }
+.kb-bench-buttons { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .8rem; }
 #kb-meter.bad { color: var(--bad); font-weight: 600; }
 #kb-octave { color: var(--ink); }
 #kb-detail { color: var(--accent); }
@@ -475,9 +827,11 @@ html[data-pointer] #kb-piano:focus-visible { outline: none; }
 
 #errorCard { display: none; margin: .8rem 1rem; }
 #errorCard.show { display: block; }
-/* The text footer belongs to the home view only, centred under the presentation;
-   the working views end at the status bar. */
+/* The text footer belongs to the home panel only, centred under the presentation;
+   the board ends at the status bar. */
 .site-foot {
   display: none; margin: 2rem 0 0; padding: 1.1rem 1rem .9rem; max-width: none; text-align: center;
 }
-body[data-view="home"] .site-foot { display: block; }
+#view-home .site-foot { display: block; margin: var(--home-gap) 0 0; padding: 0 0 .8rem; border-top: 0; font-size: .76rem; line-height: 1.45; }
+#view-home .site-foot-links { margin-bottom: .35rem; }
+#view-home .site-foot-small { margin-top: .35rem; font-size: .72rem; }

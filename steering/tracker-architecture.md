@@ -175,6 +175,14 @@ extra steps. ⚠️ **The AudioWorklet needs `?worker&url`, not a path**:
 bundle that graph ahead of time; a bare specifier inside the worklet realm fails to load and the
 page goes silent with no error on the main thread.
 
+⚠️ **Workers are built as ES modules since 0.3.0** (`worker: { format: 'es' }` in `vite.config.ts`),
+so the render worker can load the MP3 and Ogg encoders (`wasm-media-encoders`, 783 kB with its
+WebAssembly inline) as a chunk of their own, only when a download asks for one; the default IIFE
+format folded them into the worker and made it 850 kB. The same setting builds the worklet, which
+**must stay one chunk**: a worklet cannot load another file, so nothing it imports may be shared
+with a chunk the page splits out. Checked on the build of 2026-10-31: `mixer-worklet-*.js` has no
+`import` at all, and `render-worker-*.js` has one, the encoders' `import()`.
+
 `?open=fixtures/levels/x.lvl` on any page fetches that file from the site and opens it as if
 dropped (`widgets/open-panel.ts`): a file input cannot be filled from a script, and it is how the
 pages are checked in an automated browser. The deployed site serves no levels, so there it 404s

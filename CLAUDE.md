@@ -97,7 +97,7 @@ parser, reader or writer, and before trusting a field's meaning:
 |---|---|---|
 | `../cwlib-ts` (github.com/LBPTracker/cwlib-ts) | `@lbptracker/cwlib` | reading **and writing** LBP's serialised resources: container, Thing graph, 50 part readers, saves, archives, and the `.plan` writer — **its own repository**, installed from git |
 | `packages/lbp-tracker-lib` | `@lbptracker/lib` | turning that into sound: sampler, DSP chain, render pipeline, MIDI — and `song.ts`, the editable song |
-| `packages/lbp-tracker-web` | `@lbptracker/web` | the app: one page, one song, five views — Vite, Vue for the panels, canvases for the grids |
+| `packages/lbp-tracker-web` | `@lbptracker/web` | the app: one page, one song, the board under menus and panels — Vite, Vue for the panels, canvases for the grids |
 
 Each has its own `src/`, `test/` and `dev/`: Node harnesses in the libraries, the typecheck entry
 point in the web package. `../cwlib-ts` is the sibling checkout of cwlib; a path written that way in

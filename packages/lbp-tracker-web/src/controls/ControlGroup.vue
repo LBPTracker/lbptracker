@@ -46,6 +46,7 @@ const off = computed(() => !!props.group.override && !controls.checked[props.gro
         class="row"
         style="margin-top:.5rem"
       >
+        <span v-if="group.checksLabel && i === 0" class="row-label">{{ group.checksLabel }}</span>
         <label v-for="check in row" :key="check.id" class="check" :title="check.title">
           <input
             :id="check.id"

@@ -1,7 +1,7 @@
 {
   "name": "LBP Tracker",
   "short_name": "LBP Tracker",
-  "description": "LittleBigPlanet 3's music sequencer, in the browser: open a level, compose on the game's own grid, and hear it played by the game's own instruments.",
+  "description": "LittleBigPlanet's music sequencer, in the browser: open a level, compose on the game's own grid, and hear it played by the game's own instruments.",
   "id": "/",
   "start_url": "./",
   "scope": "./",
