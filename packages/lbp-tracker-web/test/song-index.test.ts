@@ -12,6 +12,8 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
+  credited,
+  creditOf,
   detailFrom,
   fold,
   makerOf,
@@ -149,4 +151,21 @@ test('the real index, when this checkout has one', async (t) => {
     assert.equal(origin?.name, "Velvet--Audio's Music Gallery (V.2)");
     assert.deepEqual(openTarget(entry), { target: origin.target, original: true });
   }
+});
+
+test("the index's maker fills in only where the level names nobody", () => {
+  const sha1 = 'ad4f399cf2952d49878d56940e3c76cdc2ed0199';
+  const credit = creditOf(ROWS[0], { sha1, uid: 27943 });
+  assert.deepEqual(credit, { sha1, uid: 27943, author: 'Festerd_Jester' });
+  assert.equal(creditOf(ROWS[3], { sha1, uid: 1 }), undefined, 'a song out of the game names no person');
+  assert.equal(creditOf(ROWS[2], { sha1, uid: 1 }), undefined, 'nor does one with no maker');
+  assert.equal(creditOf({ ...ROWS[0], author: 'Velvet--Audio!' }, { sha1, uid: 1 })?.author, 'Velvet--Audio',
+    'only what a handle can hold');
+
+  const haze = { uid: 27943, author: '' };
+  assert.equal(credited(haze, sha1, credit).author, 'Festerd_Jester');
+  assert.equal(credited({ uid: 27187, author: '' }, sha1, credit).author, '', 'another sequencer of the level');
+  assert.equal(credited(haze, 'f'.repeat(40), credit).author, '', 'the same uid in a plan the walk fetched');
+  assert.equal(credited({ uid: 27943, author: 'sethe99' }, sha1, credit).author, 'sethe99', 'never over a name the file carries');
+  assert.equal(credited(haze, sha1, undefined), haze);
 });

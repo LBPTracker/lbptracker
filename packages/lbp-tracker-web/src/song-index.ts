@@ -19,6 +19,8 @@
  * The panel interpolates them as text and never as markup.
  */
 
+import { authorHandle } from '@lbptracker/cwlib/sequencer/project.ts';
+
 /** What `index.json` says: the only file read fresh every time. */
 export interface IndexHead {
   readonly format: number;
@@ -211,6 +213,41 @@ export function openTarget(detail: SongDetail): { readonly target: Target; reado
   if (origin) return { target: origin, original: true };
   const target = detail.variants.find((v) => v.target)?.target;
   return target && { target, original: false };
+}
+
+/**
+ * Who the index says made the song a copy plays, for that copy alone: the
+ * sequencer `uid` in the resource `sha1`, which a walk names its file after.
+ */
+export interface Credit extends Target {
+  readonly author: string;
+}
+
+/**
+ * The credit a song opened from the index carries: its maker as a handle, or
+ * nothing for a song out of the game (no person to name) or one with no maker.
+ */
+export function creditOf(row: SongRow, target: Target): Credit | undefined {
+  const author = row.game ? '' : authorHandle(row.author);
+  return author ? { ...target, author } : undefined;
+}
+
+/**
+ * A sequencer with the index's maker where the level names nobody.
+ *
+ * ❗ **Only where the file is silent.** The author is read off the sequencer's
+ * group chain (`sequencerAuthor` in cwlib), and a sequencer nobody ever
+ * grouped has none: 7 of the 31 in Velvet--Audio's Music Gallery (V.2), Haze
+ * among them, carry only the gadget's `MM_Studio`. The index decided the maker
+ * over every copy of the song (steering/level-sources.md), so it can fill that
+ * gap; it never overrides a name the file does carry.
+ */
+export function credited<S extends { readonly uid: number; readonly author: string }>(
+  seq: S,
+  file: string,
+  credit: Credit | undefined,
+): S {
+  return credit && !seq.author && file === credit.sha1 && seq.uid === credit.uid ? { ...seq, author: credit.author } : seq;
 }
 
 /** The detail file a song is in, under the version's directory. */

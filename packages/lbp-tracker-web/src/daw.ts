@@ -27,6 +27,7 @@ import { saveSongFile } from './song-file.ts';
 import { mountOpen } from './widgets/open-panel.ts';
 import { loading, paint, type LoadingJob } from './widgets/loading.ts';
 import { demoDeck } from './demo-songs.ts';
+import { credited } from './song-index.ts';
 import {
   forgetLevel, linkable, pickWanted, rememberSequencer, rememberSong, songFromQuery, songLink,
 } from './link.ts';
@@ -601,8 +602,10 @@ async function openLevel(opened: Opened): Promise<void> {
     }
     const result: BackupResult = await readOpened(opened.files);
     songs = new Map();
+    // Opened from the song index, the copy it named takes the index's maker
+    // when the level names nobody (`credited` in `song-index.ts`).
     for (const p of result.projects) {
-      for (const sequencer of p.sequencers) songs.set(`${p.file}#${sequencer.uid}`, sequencer);
+      for (const sequencer of p.sequencers) songs.set(`${p.file}#${sequencer.uid}`, credited(sequencer, p.file, opened.credit));
     }
     // `found` keeps the uid the picker's rows do not carry: it is what a link
     // names a song by (`link.ts`).

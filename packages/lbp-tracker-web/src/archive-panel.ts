@@ -27,6 +27,7 @@ import { rememberLevel } from './link.ts';
 import { bodyBytes, loading, sizeText, type LoadingJob } from './widgets/loading.ts';
 import { mustWalk, walkNote, walkParts } from './resource-walk.ts';
 import { FETCH_SECONDS, OPEN_SECONDS, WALK_SECONDS, type Opened } from './open-level.ts';
+import type { Credit } from './song-index.ts';
 
 /**
  * How many resources one paste may pull in, and how many at a time.
@@ -49,8 +50,9 @@ export interface ArchiveOpen {
    * then stays where it was asked for: the song index shows it in its own
    * pane. Without it, a failure brings the archive's tab forward, or a hash
    * from a link that 404s reports itself into a tab nobody is looking at.
+   * `credit` goes on to the `Opened` as it came.
    */
-  open(sha1: string, opts?: { deep?: boolean; report?: Report }): Promise<void>;
+  open(sha1: string, opts?: { deep?: boolean; report?: Report; credit?: Credit }): Promise<void>;
   /** The tab has come into view: put the cursor in the field. */
   shown(): void;
 }
@@ -158,7 +160,7 @@ export function wireArchiveOpen(opts: {
    * song living only as a plan, is one tick away and `?deep=1` in a link.
    * ⚠️ Except when the root cannot be opened at all: see `mustWalk`.
    */
-  async function open_(sha1: string, deep = ui.deep): Promise<void> {
+  async function open_(sha1: string, deep = ui.deep, credit?: Credit): Promise<void> {
     if (busy) return;
     busy = true;
     ui.busy = true;
@@ -216,6 +218,7 @@ export function wireArchiveOpen(opts: {
         files: walked.files,
         many: walked.files.length > 1,
         link,
+        credit,
       });
     } catch (error) {
       say(error instanceof Error ? error.message : String(error), true);
@@ -249,7 +252,7 @@ export function wireArchiveOpen(opts: {
     open: (sha1, o) => {
       if (busy) return Promise.resolve();
       report = o?.report;
-      return open_(sha1.toLowerCase(), o?.deep ?? ui.deep);
+      return open_(sha1.toLowerCase(), o?.deep ?? ui.deep, o?.credit);
     },
     shown: () => focusField(),
   };

@@ -30,6 +30,7 @@ import { looksLikeSongJson, sequencerFromSong, songFromJson } from '@lbptracker/
 // A type and nothing else: the render worker imports this file (see the
 // header), and the address bar `link.ts` writes to is no business of a worker.
 import type { LinkedLevel } from './link.ts';
+import type { Credit } from './song-index.ts';
 
 /**
  * Files bigger than this are skipped without being read.
@@ -58,6 +59,8 @@ export interface Opened {
    * could open, and says so by leaving this out.
    */
   readonly link?: LinkedLevel;
+  /** Set when the song index opened it: its maker, for a sequencer the level names nobody for. */
+  readonly credit?: Credit;
 }
 
 /**

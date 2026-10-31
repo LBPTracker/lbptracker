@@ -24,11 +24,13 @@ import { asset } from './assets.ts';
 import { rememberSong } from './link.ts';
 import type { Report } from './archive-panel.ts';
 import {
+  creditOf,
   detailFrom,
   INDEX_FORMATS,
   rowsFrom,
   searchSongs,
   shardFile,
+  type Credit,
   type IndexHead,
   type SongColumns,
   type SongDetail,
@@ -44,7 +46,7 @@ const PAGE = 100;
 export function wireSongIndex(opts: {
   host: HTMLElement;
   /** Fetch a resource from the archive, as a `?level=` link does, telling `report` how it goes. */
-  openArchive: (sha1: string, report: Report) => Promise<void>;
+  openArchive: (sha1: string, report: Report, credit?: Credit) => Promise<void>;
 }): { shown(): void } {
   const { host, openArchive } = opts;
   host.classList.add('archive', 'songindex-host');
@@ -148,10 +150,11 @@ export function wireSongIndex(opts: {
       // ❗ The song first, then the level: `rememberLevel` keeps a `seq` that
       // came with the same hash, which is what makes this the link route.
       rememberSong(target.sha1, target.uid);
+      const credit = ui.chosen && creditOf(ui.chosen, target);
       await openArchive(target.sha1, (text, bad) => {
         ui.detailNote = text;
         ui.detailBad = bad;
-      });
+      }, credit);
       // What is left after a good open is a progress line; a complaint stays.
       if (!ui.detailBad) ui.detailNote = '';
     } finally {

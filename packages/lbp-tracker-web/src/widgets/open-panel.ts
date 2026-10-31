@@ -131,7 +131,7 @@ export function mountOpen(
   // pick another copy when one will not download.
   const songs = wireSongIndex({
     host: songsHost,
-    openArchive: (sha1, report) => archive.open(sha1, { deep: false, report }),
+    openArchive: (sha1, report, credit) => archive.open(sha1, { deep: false, report, credit }),
   });
   whenShown(archiveHost, archive.shown);
   whenShown(bonsaiHost, bonsai.shown);

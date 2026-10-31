@@ -89,6 +89,14 @@ format and the search, tested by `test/song-index.test.ts`), `song-index-panel.t
   "LittleBigCity 2" (1.2M plays) instead of *Velvet--Audio's Music Gallery (V.2)*, where it was
   first published. `openTarget` in `song-index.ts` takes the origin level's copy when it has one
   (the button then says "Open the original") and the main variant's otherwise.
+- ⚠️ **A copy the level names nobody for takes the index's maker.** The author is read off the
+  sequencer's group chain (cwlib's `sequencerAuthor`), and a sequencer never grouped has none:
+  measured 2026-10-31 on `ad4f399c…`, 7 of its 31 sequencers (Haze, uid 27943, among them) carry
+  only the gadget's `MM_Studio` `GROUP` and no `groupHead`, while the others' chains name
+  Velvet--Audio. Opened from the index, the copy it named (`Credit`: that resource's SHA-1 and that
+  uid) gets the song's maker where the file names nobody — `credited` in `song-index.ts`, never
+  over a name the file carries, never for a song out of the game. Opened any other way, a `?level=`
+  link included, it stays empty: that is an inference from the other copies, not the file.
 - ✔ **The SHA-1 may be a plan or a chunk, not only a level root**, and the archive route opens
   both: measured in the page on 2026-10-31 with a song that exists only in a plan ("Game Over",
   `1c870946…`, `seq=11`) and one only in an LBP3 chunk ("'Ghost von Frost'", `3ac0e254…`,
