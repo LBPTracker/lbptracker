@@ -147,18 +147,13 @@ main { flex: 1 0 auto; width: 100%; box-sizing: border-box; margin: 0; max-width
 .menu kbd { color: var(--dimmer); font: .72rem ui-monospace, Consolas, monospace; }
 .menu hr { border: 0; border-top: 1px solid var(--line); margin: .3rem .2rem; }
 
-/* The board's right-click menu (`daw/context-menu.ts`): the menu bar's look,
-   placed at the pointer rather than under a button. */
+/* The right-click menu of the board and the grid (`daw/context-menu.ts`): the
+   menu bar's look, placed at the pointer rather than under a button, and its
+   submenus beside the item they open from. */
 .ctx-menu { position: fixed; top: 0; z-index: 60; min-width: 13rem; }
 .ctx-menu button { white-space: nowrap; }
-.ctx-transpose { display: flex; flex-direction: column; gap: .3rem; padding: .25rem .3rem .35rem; }
-.ctx-title { font-size: .78rem; color: var(--dim); padding: 0 .3rem; }
-.ctx-quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: .25rem; }
-.ctx-quick button {
-  justify-content: center; border: 1px solid var(--line); background: var(--panel-2);
-  font-variant-numeric: tabular-nums; padding: .28rem 0;
-}
-.ctx-amount { display: flex; align-items: center; gap: .4rem; font-size: .8rem; color: var(--dim); }
+.ctx-menu button.ctx-open { background: var(--panel-2); }
+.ctx-amount { display: flex; align-items: center; gap: .4rem; font-size: .8rem; color: var(--dim); padding: .2rem .4rem .25rem; }
 .ctx-amount input { width: 4.2rem; font: inherit; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: .22rem .35rem; }
 .ctx-amount button[type="submit"] {
   margin-left: auto; justify-content: center; border: 1px solid var(--line); background: var(--panel-2); padding: .25rem .6rem;

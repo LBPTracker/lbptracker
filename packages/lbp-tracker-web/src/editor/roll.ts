@@ -22,9 +22,9 @@
  *
  * | on              | plain             | shift            | alt              | right click |
  * |-----------------|-------------------|------------------|------------------|-------------|
- * | empty           | draw a note; drag for its end | rectangle (ctrl too: add to the selection) | — | — |
- * | a point         | move it, or the whole selection when there is one | volume (up/down) | timbre (up/down) | delete it |
- * | a line          | move the note, or the whole selection | —          | —                | delete note |
+ * | empty           | draw a note; drag for its end | rectangle (ctrl too: add to the selection) | — | the grid's menu: paste here, select all |
+ * | a point         | move it, or the whole selection when there is one | volume (up/down) | timbre (up/down) | the selection's menu (the point joins it alone if it was not in it) |
+ * | a line          | move the note, or the whole selection | —          | —                | the same, the whole note joining it |
  * | double-click    | line: add a point; point: delete it                    |             |
  *
  * Ctrl on a point or a line adds that note to the selection, or takes it out.
@@ -91,6 +91,12 @@ export interface RollCallbacks {
   onHover(text: string): void;
   /** The clipboard was filled or emptied: nothing in the song changed, so no state change says so. */
   onClipboard?(): void;
+  /**
+   * A right-click: on a point or a line (`'notes'`), which is in the selection
+   * by then, or on the empty grid (`'grid'`), where the pointer is the paste's
+   * place. The page shows the menu at `clientX`, `clientY`.
+   */
+  onMenu?(on: 'notes' | 'grid', clientX: number, clientY: number): void;
 }
 
 /**
@@ -879,16 +885,21 @@ export class RollView {
     const state = this.state;
     const hitP = this.hitPoint(clip, x, y);
     if (event.button === 2) {
+      // The menu acts on the selection, so what was hit joins it first: a
+      // point already in it keeps the selection whole, as a chip keeps the
+      // board's block; otherwise the point alone, or the line's whole note.
+      // ⚠️ Until 2026-11-21 the right button deleted what it hit; Delete,
+      // double-click and the erase tool still do, and so does the menu.
+      const hitL = hitP ? null : this.hitLine(clip, x, y);
       if (hitP) {
-        state.edit('notes', () => removePoint(clip, hitP.note, hitP.point));
-        state.selectPoints([]);
-      } else {
-        const hitL = this.hitLine(clip, x, y);
-        if (hitL) {
-          state.edit('notes', () => removeNote(clip, hitL.note.id));
-          state.selectPoints([]);
+        if (!state.isSelected(hitP.note.id, hitP.index)) {
+          state.selectPoints([[hitP.note.id, hitP.index]], { noteId: hitP.note.id, index: hitP.index });
         }
+      } else if (hitL) {
+        if (!state.isNoteSelected(hitL.note)) state.selectNotes([hitL.note.id]);
       }
+      this.trackCursor(clip, x, y, cx, cy);
+      this.cb.onMenu?.(hitP || hitL ? 'notes' : 'grid', event.clientX, event.clientY);
       return;
     }
     if (event.button !== 0) return;
@@ -1239,6 +1250,28 @@ export class RollView {
     state.edit('notes', () => {
       for (const { note, indices } of chosen) movePoints(clip, note, indices, dtOk, dpOk);
     }, 'nudge');
+  }
+
+  /**
+   * The selected points up or down by `semitones`, as one block: the whole
+   * selection stops where its highest or lowest point meets the range, so it
+   * keeps its shape. Returns the shift applied.
+   */
+  transposeSelection(semitones: number): number {
+    const state = this.state;
+    const clip = state.clip();
+    if (!clip || state.selectedCount === 0) return 0;
+    const chosen = state.selectedPoints();
+    let dp = semitones;
+    for (const { note, indices } of chosen) {
+      const limits = pointShiftLimits(clip, note, indices);
+      dp = Math.max(limits.minPitch, Math.min(limits.maxPitch, dp));
+    }
+    if (dp === 0) return 0;
+    state.edit('notes', () => {
+      for (const { note, indices } of chosen) movePoints(clip, note, indices, 0, dp);
+    });
+    return dp;
   }
 
   /** Volume or timbre of every selected point. */

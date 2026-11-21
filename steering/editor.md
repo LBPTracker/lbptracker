@@ -590,21 +590,40 @@ they are kept on `EditorState` and never written to the song file or the MIDI; t
 rows reach the player's plan and the render (`audibleSequencer` in `daw/session.ts`), a solo
 anywhere outranking every mute. The boxes sit in the board's gutter beside the row number.
 
-**The board has a right-click menu** (`daw/context-menu.ts`: one at a time, at the pointer, the
-menu bar's look, not a `<dialog>`, so nothing under it goes inert; Esc, a press outside, a scroll
-or any item closes it). On a chip it acts on the board's selection, which a right-click on a chip
-of the block keeps: **transpose the notes** by −12, −1, +1, +12 or any number typed, every point
-of every selected chip by the same amount, across rows, one undo entry (`transposeClips` in
-`song.ts`, `test/song.test.ts`). The shift is clamped so the block's lowest and highest points stay
-in 0..127, so it keeps its intervals rather than squashing against the edge, and the status line
-says when it went less far than asked. It moves the record's note field: on a chip with a `Scale`
-the engine snaps that field afterwards, so only an octave is sure to keep every note on its
-degree. It exists because a MIDI file imported onto some instruments sounds an octave above the
-original: the import carries the note number unchanged, and some instruments sound an octave above
-their note numbers (`basenote` in [sequencer-engine-inputs.md](sequencer-engine-inputs.md)). On a
-row's number it offers **select all the instruments on the row** (`selectRowClips`), the way to
-take a whole row into the block for the menu above. ⚠️ The gutter answers the right button before
-the left button's rules, because a left press on the selected row's number removes the row.
+**Both grids have a right-click menu** (`daw/context-menu.ts`: one at a time, at the pointer, the
+menu bar's look, not a `<dialog>`, so nothing under it goes inert; submenus open beside their item
+on hover, a click or →; Esc, a press outside, a scroll or any item closes it). Each menu is the
+commands the keys already reach, with the key beside them, plus what has no key; **transpose is
+one entry among them, a submenu** (`transposeMenu`: ±1, ±12 and any amount typed), the same on the
+board and on the grid. Where they are built is `daw/arrange.ts` (`showChipMenu`, `showCellMenu`,
+`showRowMenu`, `showGridMenu`).
+
+- **A chip**: the block, which a right-click on a chip of it keeps and a chip outside it replaces
+  -- open the notes, cut, copy, paste, duplicate, delete, transpose, select the row or everything,
+  mute and solo the row. ⚠️ A right-click does not open the note panel: opening it resizes and
+  scrolls the board, and the menu closes on a scroll, so it never showed.
+- **An empty cell**: it becomes the cursor, so "paste here" lands there; add an instrument there
+  (the picker, four bars), select, mute, solo.
+- **A row number**: select every chip on the row (`selectRowClips`), transpose the row (which
+  selects it first), mute, solo, add a row, remove this one (asked first when it holds chips).
+  ⚠️ The gutter answers the right button before the left button's rules, because a left press on
+  the selected row's number removes the row.
+- **On the grid, a point or a line**: what was hit joins the selection first (a point alone, a
+  line's whole note; a point already selected keeps the selection), then cut, copy, paste after,
+  duplicate, delete, transpose (`transposeSelection`, the whole selection stopped by its highest
+  or lowest point), volume and timbre in the keys' steps, select all or none. **The empty grid**:
+  paste where the pointer was, select all or none. ⚠️ Until 2026-11-21 the right button deleted
+  the point or the note it hit; Delete, double-click and the erase tool still do.
+
+The transpose on the board moves every point of every selected chip by the same amount, across
+rows, one undo entry (`transposeClips` in `song.ts`, `test/song.test.ts`). The shift is clamped so
+the block's lowest and highest points stay in 0..127, so it keeps its intervals rather than
+squashing against the edge, and the status line says when it went less far than asked. It moves
+the record's note field: on a chip with a `Scale` the engine snaps that field afterwards, so only
+an octave is sure to keep every note on its degree. It exists because a MIDI file imported onto
+some instruments sounds an octave above the original: the import carries the note number
+unchanged, and some instruments sound an octave above their note numbers (`basenote` in
+[sequencer-engine-inputs.md](sequencer-engine-inputs.md)).
 
 **The row is the unit the roll follows.** `selection.row` — on opening, the row of the chip nearest the start of the song, with that chip selected — is lit across the
 board; clicking a chip, a cell or a row number selects its row. As the song plays, the roll moves

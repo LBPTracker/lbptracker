@@ -11,11 +11,11 @@
 import { createApp, h } from 'vue';
 import { STEPS_PER_CELL } from '@lbptracker/cwlib/sequencer/project.ts';
 import {
-  MAX_BOARD_ROWS, STOCK_BOARD_ROWS, addClip, clampClipShift, clipsAnchor, clipsEndCell, duplicateClips, freeClipShift,
+  DEFAULT_CLIP_STEPS, MAX_BOARD_ROWS, STOCK_BOARD_ROWS, addClip, clampClipShift, clipsAnchor, clipsEndCell, duplicateClips, freeClipShift,
   moveClips, removeClip, setSongEnd, type Clip, type ClipShift,
 } from '@lbptracker/lib/song.ts';
 import { confirmDialog, noticeDialog } from '../confirm.ts';
-import { showContextMenu } from './context-menu.ts';
+import { showContextMenu, transposeMenu, type ContextEntry, type ContextItem } from './context-menu.ts';
 import { focusOwnsKeys, hasTextSelection } from '../keys.ts';
 import { BoardView } from '../editor/board.ts';
 import { RollView, type RollTool } from '../editor/roll.ts';
@@ -123,63 +123,128 @@ export function mountArrange(opts: { isActive: () => boolean; ownsKeys: () => bo
     onPick: () => openPanel(),
     onEnd: (step) => state.edit('notes', (s) => setSongEnd(s, step), 'end'),
     onAddRow: () => state.addRow(),
-    onRemoveRow: async (row) => {
-      const held = state.song.clips.filter((c) => c.row === row).length;
-      if (held > 0) {
-        const ok = await confirmDialog(
-          `Remove row ${row} and the ${held} instrument${held === 1 ? '' : 's'} on it?`, 'remove the row',
-        );
-        if (!ok) return;
-      }
-      state.removeRow(row);
-    },
+    onRemoveRow: (row) => void removeRowAsked(row),
     onChipMenu: (x, y) => showChipMenu(x, y),
     onRowMenu: (row, x, y) => showRowMenu(row, x, y),
+    onCellMenu: (at, x, y) => showCellMenu(at, x, y),
   });
+
+  /** Take a row out, asking first when it holds chips. */
+  async function removeRowAsked(row: number): Promise<void> {
+    const held = state.song.clips.filter((c) => c.row === row).length;
+    if (held > 0) {
+      const ok = await confirmDialog(
+        `Remove row ${row} and the ${held} instrument${held === 1 ? '' : 's'} on it?`, 'remove the row',
+      );
+      if (!ok) return;
+    }
+    state.removeRow(row);
+  }
 
   const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 
+  /** What a transpose did, on the status line: less than asked when the notes reach 0 or 127. */
+  function reportTranspose(what: string, asked: number, applied: number): void {
+    const signed = `${applied > 0 ? '+' : ''}${applied}`;
+    if (applied === 0) setStatus(`${what}: already at the ${asked > 0 ? 'top' : 'bottom'} of the range, nothing moved`, true);
+    else if (applied !== asked) setStatus(`${what} transposed ${signed} semitones, as far as the range allows`);
+    else setStatus(`${what} transposed ${signed} ${Math.abs(applied) === 1 ? 'semitone' : 'semitones'}`);
+  }
+
+  /** The row's mute and solo, as the boxes in the gutter toggle them. */
+  function rowSwitches(row: number): ContextEntry[] {
+    return [
+      { label: state.mutedRows.has(row) ? `Unmute row ${row}` : `Mute row ${row}`, hint: 'M', run: () => state.toggleMute(row) },
+      { label: state.soloRows.has(row) ? `Unsolo row ${row}` : `Solo row ${row}`, hint: 'S', run: () => state.toggleSolo(row) },
+    ];
+  }
+
+  function selectRowEntry(row: number): ContextItem {
+    const held = state.song.clips.filter((c) => c.row === row).length;
+    return {
+      label: `Select all on row ${row}`,
+      hint: held > 0 ? String(held) : 'none',
+      disabled: held === 0,
+      run: () => {
+        state.selectRowClips(row);
+        setStatus(`${plural(held, 'instrument')} selected on row ${row}`);
+      },
+    };
+  }
+
   /**
-   * The selected chips' menu: their notes up or down by any number of
-   * semitones, as one block and one undo entry (`transposeClips`). The status
-   * line says how far they went, which is less than asked when they reach 0 or 127.
+   * The selected chips' menu, the block the board's keys act on: open the
+   * notes, the clipboard, transpose (`transposeClips`: every point of the
+   * block by one amount, one undo entry), the row.
    */
   function showChipMenu(x: number, y: number): void {
     const chosen = chosenChips();
     if (chosen.length === 0) return;
-    const what = chosen.length === 1 ? 'this instrument' : `${chosen.length} instruments`;
+    const lead = state.clip() ?? chosen[0];
+    const many = chosen.length > 1;
+    const withNotes = chosen.filter((c) => c.notes.length > 0).length;
+    showContextMenu(x, y, [
+      { label: many ? 'Open the notes of this one' : 'Open the notes', run: () => openPanel() },
+      'separator',
+      { label: 'Cut', hint: 'Ctrl+X', run: cutChips },
+      { label: 'Copy', hint: 'Ctrl+C', run: copyChips },
+      { label: 'Paste after', hint: 'Ctrl+V', disabled: !chipClipboard, run: pasteChips },
+      { label: 'Duplicate', hint: 'Ctrl+D', run: () => duplicateChips(chosenChips()) },
+      { label: many ? `Delete ${chosen.length}` : 'Delete', hint: 'Del', run: () => removeChips(chosenChips()) },
+      'separator',
+      {
+        label: many ? `Transpose ${chosen.length}` : 'Transpose',
+        disabled: withNotes === 0,
+        children: transposeMenu((semitones) => {
+          reportTranspose(plural(withNotes, 'instrument'), semitones, state.transposeSelectedClips(semitones));
+        }),
+      },
+      'separator',
+      selectRowEntry(lead.row),
+      { label: 'Select everything', hint: 'Ctrl+A', run: selectAllChips },
+      'separator',
+      ...rowSwitches(lead.row),
+    ]);
+  }
+
+  /** An empty cell's menu: it is the cursor by now, where a paste or a new chip lands. */
+  function showCellMenu(at: { cell: number; row: number }, x: number, y: number): void {
     showContextMenu(x, y, [
       {
-        transpose: true,
-        label: `Transpose the notes of ${what}`,
-        run: (semitones) => {
-          const sounding = chosen.filter((c) => c.notes.length > 0).length;
-          if (sounding === 0) {
-            setStatus(`${chosen.length === 1 ? 'this instrument has' : 'these instruments have'} no notes to transpose`, true);
-            return;
-          }
-          const applied = state.transposeSelectedClips(semitones);
-          const signed = `${applied > 0 ? '+' : ''}${applied}`;
-          if (applied === 0) setStatus(`already at the ${semitones > 0 ? 'top' : 'bottom'} of the range; nothing moved`, true);
-          else if (applied !== semitones) setStatus(`${plural(sounding, 'instrument')} transposed ${signed} semitones, as far as the range allows`);
-          else setStatus(`${plural(sounding, 'instrument')} transposed ${signed} ${Math.abs(applied) === 1 ? 'semitone' : 'semitones'}`);
-        },
+        label: 'Add an instrument here',
+        run: () => void createChip({ ...at, steps: DEFAULT_CLIP_STEPS }),
       },
+      { label: 'Paste here', hint: 'Ctrl+V', disabled: !chipClipboard, run: pasteChips },
+      'separator',
+      selectRowEntry(at.row),
+      { label: 'Select everything', hint: 'Ctrl+A', run: selectAllChips },
+      'separator',
+      ...rowSwitches(at.row),
     ]);
   }
 
   /** A row number's menu. */
   function showRowMenu(row: number, x: number, y: number): void {
     const held = state.song.clips.filter((c) => c.row === row).length;
+    const withNotes = state.song.clips.filter((c) => c.row === row && c.notes.length > 0).length;
     showContextMenu(x, y, [
+      selectRowEntry(row),
       {
-        label: `Select all instruments on row ${row}`,
-        hint: held > 0 ? String(held) : 'none',
-        disabled: held === 0,
-        run: () => {
+        label: `Transpose row ${row}`,
+        disabled: withNotes === 0,
+        children: transposeMenu((semitones) => {
           state.selectRowClips(row);
-          setStatus(`${plural(held, 'instrument')} selected on row ${row}`);
-        },
+          reportTranspose(`row ${row}`, semitones, state.transposeSelectedClips(semitones));
+        }),
+      },
+      'separator',
+      ...rowSwitches(row),
+      'separator',
+      { label: 'Add a row at the bottom', disabled: state.song.boardRows >= MAX_BOARD_ROWS, run: () => state.addRow() },
+      {
+        label: held > 0 ? `Remove row ${row} and its ${plural(held, 'instrument')}` : `Remove row ${row}`,
+        disabled: state.song.boardRows <= 1,
+        run: () => void removeRowAsked(row),
       },
     ]);
   }
@@ -198,8 +263,58 @@ export function mountArrange(opts: { isActive: () => boolean; ownsKeys: () => bo
       onHover: (text) => {
         hoverLine.textContent = text;
       },
+      onMenu: (on, x, y) => showGridMenu(on, x, y),
     },
   );
+
+  /**
+   * The note grid's menu. On notes it acts on the selected points, which the
+   * right-click has made sure hold what it hit: the clipboard, transpose,
+   * volume and timbre -- the same commands the keys reach. On the empty grid
+   * it pastes where the pointer was.
+   */
+  function showGridMenu(on: 'notes' | 'grid', x: number, y: number): void {
+    const select = { label: 'Select all', hint: 'Ctrl+A', run: () => roll.selectAll() };
+    if (on === 'grid') {
+      showContextMenu(x, y, [
+        { label: 'Paste here', hint: 'Ctrl+V', disabled: !roll.hasClipboard, run: () => { if (!roll.pasteAtCursor()) roll.paste(); } },
+        'separator',
+        select,
+        { label: 'Select none', hint: 'Esc', disabled: state.selectedCount === 0, run: () => state.selectNotes([]) },
+      ]);
+      return;
+    }
+    const count = state.selectedCount;
+    const what = plural(count, 'point');
+    const step = (field: 'volume' | 'timbre', by: number, label: string, hint: string): ContextItem =>
+      ({ label, hint, run: () => roll.adjust(field, by) });
+    showContextMenu(x, y, [
+      { label: 'Cut', hint: 'Ctrl+X', run: () => roll.cut() },
+      { label: 'Copy', hint: 'Ctrl+C', run: () => roll.copy() },
+      { label: 'Paste after', hint: 'Ctrl+V', disabled: !roll.hasClipboard, run: () => roll.paste() },
+      { label: 'Duplicate', hint: 'Ctrl+D', run: () => roll.duplicateSelection() },
+      { label: count > 1 ? `Delete ${what}` : 'Delete', hint: 'Del', run: () => roll.deleteSelection() },
+      'separator',
+      {
+        label: 'Transpose',
+        children: transposeMenu((semitones) => reportTranspose(what, semitones, roll.transposeSelection(semitones))),
+      },
+      {
+        label: 'Volume',
+        children: [
+          step('volume', 8, 'Louder', 'Shift+'), step('volume', 1, 'A little louder', '+'),
+          step('volume', -1, 'A little quieter', '−'), step('volume', -8, 'Quieter', 'Shift−'),
+        ],
+      },
+      {
+        label: 'Timbre',
+        children: [step('timbre', 1, 'Towards orange', ']'), step('timbre', -1, 'Towards blue', '[')],
+      },
+      'separator',
+      select,
+      { label: 'Select none', hint: 'Esc', run: () => state.selectNotes([]) },
+    ]);
+  }
 
   /**
    * A chip drawn on the board wants an instrument: ask, then add it with the

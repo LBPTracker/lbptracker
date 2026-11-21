@@ -19,8 +19,9 @@
  *
  * | on           | plain                                   | shift                                      | ctrl                   | right click |
  * |--------------|-----------------------------------------|--------------------------------------------|------------------------|-------------|
- * | empty        | the cursor; drag to draw a chip         | rectangle: the chips it touches (with ctrl: added to the block) | — | — |
- * | a chip       | select it alone and open it; drag it -- and the block it is in -- to move | rectangle; a click: in or out of the block | in or out of the block | open it |
+ * | empty        | the cursor; drag to draw a chip         | rectangle: the chips it touches (with ctrl: added to the block) | — | the cursor, and the cell's menu |
+ * | a chip       | select it alone and open it; drag it -- and the block it is in -- to move | rectangle; a click: in or out of the block | in or out of the block | the block's menu (the chip joins it alone if it was not in it) |
+ * | a row number | select the row; on the selected row, remove it | | | the row's menu |
  * | double-click | a four-bar chip where none is anchored  |                                            |                        |             |
  * | the ruler    | a click seeks, and ends a loop region it lands outside; a drag marks one, whole cells; a click on it removes it | | | |
  *
@@ -89,6 +90,8 @@ export interface BoardCallbacks {
   onChipMenu?(clientX: number, clientY: number): void;
   /** A right-click on a row's number: the page shows the row's menu at the pointer. */
   onRowMenu?(row: number, clientX: number, clientY: number): void;
+  /** A right-click on an empty cell, which is the cursor by then: the page shows its menu. */
+  onCellMenu?(at: { cell: number; row: number }, clientX: number, clientY: number): void;
 }
 
 const CELL_W = 44;
@@ -1064,7 +1067,13 @@ export class BoardView {
         // and the menu closes on a scroll -- measured, it never showed.
         this.pickChip(clip);
         this.cb.onChipMenu?.(event.clientX, event.clientY);
+      } else {
+        // An empty cell: it becomes the cursor, which is where a paste lands.
+        this.state.selection.cursor = at;
+        this.state.selectRow(at.row);
+        this.cb.onCellMenu?.(at, event.clientX, event.clientY);
       }
+      this.schedule();
       return;
     }
     if (clip) {

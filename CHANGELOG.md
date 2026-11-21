@@ -4,6 +4,25 @@ What changed for the person using LBP Tracker, newest first. The site shows this
 version number in its status bar, so it is written for them: what they can do now that they could
 not before, never how it was done. No `--` or em dash in here; the site's text does without them.
 
+## 0.3.2 (2026-11-21)
+
+- New: right-click menus everywhere on the board and in the note grid, each with the keys beside
+  its commands. Transpose is now one entry among them, with its own submenu: an octave or a
+  semitone up or down, or any number of semitones.
+- On an instrument: open its notes, cut, copy, paste, duplicate, delete, transpose, select its
+  row or everything, and mute or solo its row.
+- On an empty cell: add an instrument there or paste there, select, mute or solo the row.
+- On a row's number: select the whole row, transpose it, mute or solo it, add a row at the
+  bottom or remove this one.
+- In the note grid, on a point or a line: cut, copy, paste, duplicate, delete, transpose, volume
+  and timbre for the selection, which takes in the point or the whole note you clicked first. On
+  empty space: paste right there, select all or none.
+- The menus work from the keyboard too: the arrows move along them and into a submenu, Enter
+  picks, Esc closes.
+- Changed: a right-click in the note grid no longer deletes the point or note under it; it opens
+  the menu, where Delete is. Delete, a double-click on a point and the eraser still remove notes
+  directly.
+
 ## 0.3.1 (2026-11-21)
 
 - New: transpose. Select one or more instruments on the board, right-click one of them, and move

@@ -169,6 +169,12 @@ export const HELP: Readonly<Record<HelpTopic, Topic>> = {
         'selects every instrument. A paste that would land on a taken cell moves right to the first free one, ' +
         'and the board grows to hold rows pasted below its last. These keys reach the board when it has the ' +
         'focus or the note panel is closed; otherwise they work on the notes in the panel.') +
+      h('The right-click menu') +
+      p('<strong>Right-click</strong> an instrument for what you can do with the selection: open its notes, cut, ' +
+        'copy, paste, duplicate, delete, and <strong>transpose</strong> all its notes by an octave, a semitone or ' +
+        'any number of semitones, keeping their intervals. An instrument outside the selection becomes the ' +
+        'selection first. Right-click an empty cell to add an instrument or paste there, and a row\'s number to ' +
+        'select, transpose, mute or solo the whole row, or to add or remove a row.') +
       h('The thermometer') +
       p('The blue bar down the left side is the game\'s budget of sample memory for one sequencer. ' +
         'Click it to read how it counts.') +
@@ -198,7 +204,8 @@ export const HELP: Readonly<Record<HelpTopic, Topic>> = {
       h('Points') +
       p('The size of a point is its volume, its colour its timbre, from blue to orange. Drag a point to move it; ' +
         '<kbd>Shift</kbd>+drag up or down changes its volume, <kbd>Alt</kbd>+drag its timbre. Double-click a line to ' +
-        'add a point, double-click a point to remove it; right-click removes a point or, on the line, the whole note. ' +
+        'add a point, double-click a point to remove it. Right-click a point or a line for a menu: cut, copy, ' +
+        'duplicate, delete, transpose, volume and timbre, acting on the selection; on empty space it pastes there. ' +
         'The point card on the right edits the selected point with sliders.') +
       h('Selection and keys') +
       p('<kbd>Shift</kbd>+drag on empty space draws a rectangle, and what it catches is the <strong>points</strong> ' +
