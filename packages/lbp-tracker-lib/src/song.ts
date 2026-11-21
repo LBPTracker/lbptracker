@@ -672,6 +672,39 @@ export function moveNote(clip: Clip, note: SongNote, dThirds: number, dPitch: nu
   }
 }
 
+/**
+ * Shift every point of the chips `ids` by `semitones`, as one block.
+ *
+ * The block keeps its shape: the shift is clamped so that its lowest and
+ * highest points both stay inside 0..`MAX_PITCH`, as `moveNote` clamps a note,
+ * rather than each point being clamped alone and a chord collapsing against
+ * the edge. Returns the shift applied, 0 when there was nothing to move or no
+ * room.
+ *
+ * ⚠️ This moves the record's note field, not the sounding pitch: on a chip
+ * with a `Scale` the engine snaps the field afterwards (`quantise`), so only a
+ * whole octave is sure to keep every note on the same degree.
+ */
+export function transposeClips(song: Song, ids: Iterable<number>, semitones: number): number {
+  const wanted = new Set(ids);
+  const clips = song.clips.filter((c) => wanted.has(c.id));
+  let lowest = Infinity;
+  let highest = -Infinity;
+  for (const clip of clips) {
+    for (const note of clip.notes) {
+      for (const p of note.points) {
+        lowest = Math.min(lowest, p.pitch);
+        highest = Math.max(highest, p.pitch);
+      }
+    }
+  }
+  if (lowest === Infinity) return 0;
+  const shift = clampInt(semitones, -lowest, MAX_PITCH - highest);
+  if (shift === 0) return 0;
+  for (const clip of clips) for (const note of clip.notes) for (const p of note.points) p.pitch += shift;
+  return shift;
+}
+
 /** The clip's highest step in use, or -1 when it is empty. */
 export function highestStep(clip: Clip): number {
   let top = -1;

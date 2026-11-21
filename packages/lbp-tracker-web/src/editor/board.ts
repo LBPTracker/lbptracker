@@ -82,6 +82,13 @@ export interface BoardCallbacks {
   onAddRow(): void;
   /** The "x" on the selected row's number. The page asks when the row holds chips. */
   onRemoveRow(row: number): void;
+  /**
+   * A right-click on a chip, which is already in the selection by then: the
+   * page shows the block's menu at the pointer (`clientX`, `clientY`).
+   */
+  onChipMenu?(clientX: number, clientY: number): void;
+  /** A right-click on a row's number: the page shows the row's menu at the pointer. */
+  onRowMenu?(row: number, clientX: number, clientY: number): void;
 }
 
 const CELL_W = 44;
@@ -1011,6 +1018,13 @@ export class BoardView {
         return;
       }
       if (row < 0 || row >= this.layout.rows) return;
+      if (event.button === 2) {
+        // ⚠️ Before the left button's rules: on the selected row's number those
+        // remove the row, and a right-click must never do that.
+        if (cx < MUTE_X) this.cb.onRowMenu?.(row, event.clientX, event.clientY);
+        return;
+      }
+      if (event.button !== 0) return;
       if (cx >= MUTE_X && cx < MUTE_X + BUTTON_W) this.state.toggleMute(row);
       else if (cx >= SOLO_X && cx < SOLO_X + BUTTON_W) this.state.toggleSolo(row);
       else if (row === this.state.selection.row && this.layout.rows > 1) this.cb.onRemoveRow(row);
@@ -1045,8 +1059,11 @@ export class BoardView {
     }
     if (event.button === 2) {
       if (clip) {
+        // A chip of the block keeps the block, so the menu acts on all of it.
+        // ⚠️ No `onPick`: opening the note panel resizes and scrolls the board,
+        // and the menu closes on a scroll -- measured, it never showed.
         this.pickChip(clip);
-        this.cb.onPick?.(clip);
+        this.cb.onChipMenu?.(event.clientX, event.clientY);
       }
       return;
     }

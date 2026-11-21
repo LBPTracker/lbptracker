@@ -48,6 +48,7 @@ import {
   songFromSequencer,
   songToJson,
   trackFromClip,
+  transposeClips,
 } from '../src/song.ts';
 
 const LEVELS =
@@ -259,6 +260,28 @@ test('rows: one more at the bottom; a removed row takes its chips and closes the
   assert.equal(song.boardRows, 1);
   assert.equal(removeRow(song, 0), -1, 'the last row stays');
   void b;
+});
+
+test('chosen chips transpose as one block, the shape kept against the edge', () => {
+  const song = newSong();
+  song.boardRows = 2;
+  const a = addClip(song, { cell: 0, row: 0 }, 1);
+  const b = addClip(song, { cell: 2, row: 1 }, 1);
+  const other = addClip(song, { cell: 4, row: 0 }, 1);
+  const glide = addNote(song, a, { thirds: 0, pitch: 60 });
+  addPoint(a, glide, 12);
+  movePoint(a, glide, glide.points[1], { pitch: 67 });
+  addNote(song, b, { thirds: 3, pitch: 100 });
+  addNote(song, other, { thirds: 0, pitch: 50 });
+  const pitches = () => song.clips.map((c) => c.notes.flatMap((n) => n.points.map((p) => p.pitch)));
+
+  assert.equal(transposeClips(song, [a.id, b.id], -12), -12);
+  assert.deepEqual(pitches(), [[48, 55], [88], [50]], 'every point of the chosen chips moves, across rows; the rest does not');
+  assert.equal(transposeClips(song, [a.id, b.id], 100), 127 - 88, 'clamped so the highest point lands on 127');
+  assert.deepEqual(pitches(), [[87, 94], [127], [50]], 'and the block keeps its intervals');
+  assert.equal(transposeClips(song, [a.id, b.id], 1), 0, 'no room left');
+  assert.equal(transposeClips(song, [other.id], -100), -50);
+  assert.equal(transposeClips(song, [], 12), 0, 'nothing chosen moves nothing');
 });
 
 test('a new chip wears the colour its instrument comes with, and a copy the chip has', () => {

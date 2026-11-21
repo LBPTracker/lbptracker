@@ -16,7 +16,7 @@
  */
 
 import { ref } from 'vue';
-import { addRow, removeRow, type Clip, type Song, type SongNote, type SongPoint } from '@lbptracker/lib/song.ts';
+import { addRow, removeRow, transposeClips, type Clip, type Song, type SongNote, type SongPoint } from '@lbptracker/lib/song.ts';
 
 /**
  * What an edit touched, so the page knows what to do about it: the plan has
@@ -132,6 +132,28 @@ export class EditorState {
     if (next?.start === was?.start && next?.end === was?.end) return;
     this.loopRegion = next;
     this.notify('selection');
+  }
+
+  /**
+   * Transpose the board's selected chips by `semitones`, one undo entry.
+   * Returns the shift applied, which is less when their notes reach 0 or 127.
+   */
+  transposeSelectedClips(semitones: number): number {
+    const ids = [...this.selection.clips];
+    let applied = 0;
+    this.edit('notes', (song) => { applied = transposeClips(song, ids, semitones); });
+    return applied;
+  }
+
+  /** Every chip on `row` becomes the board's selection, led by the row's first. */
+  selectRowClips(row: number): void {
+    const first = this.firstClipOnRow(row);
+    if (!first) {
+      this.selectRow(row);
+      return;
+    }
+    this.selectClip(first.id);
+    this.selectClips(this.song.clips.filter((c) => c.row === row).map((c) => c.id), first.id);
   }
 
   /** One more row under the last. */

@@ -70,6 +70,17 @@ one parses exactly in cwlib-ts's `test/instrument.test.ts`):
   the shift, and the median of (note played − base note of the slot it resolves to) over 953,221
   notes is **0**, with per-instrument medians scattering from −18 to +28 — a numbering mismatch
   would be one constant on every instrument (`packages/lbp-tracker-lib/dev/pitch-probe.ts`).
+- ⚠️ **A `basenote` is not always the sample's own pitch, so one note number does not sound the
+  same on every instrument.** `sine_wave` and `saw_wave` play one single-cycle sample each,
+  `kenny_sine_a4` and `kenny_saw_a4`: 109 frames at 48 kHz, so 440.4 Hz, under `basenote` 57
+  (220 Hz in MIDI numbering), and so they sound an octave above the note written. The three
+  `strings_ensemble` samples read about +12 too, while `doublebass` (`db_c3_dsp1`, 131.1 Hz under
+  48) and `bass_guitar_c2` (65.2 Hz under 36) sit at their note. Measured 2026-11-21 with YIN, a
+  throwaway probe over `fixtures/smp`; the single-cycle readings are exact, the rest an estimator's
+  and only as good as its octave choice (it locks onto harmonics on the piano, unmeasured here,
+  whose `piano_C3` is 132.8 Hz in [game-assets.md](game-assets.md)). That is the data, not our
+  reading of it: a MIDI file imported onto these instruments plays an octave above the original,
+  which is what the board's transpose is for ([editor.md](editor.md)).
 - 68 instruments, 47 multisampled, 274 pitched slots against 4 unpitched, and **not one** with
   `fitbpm` set.
 

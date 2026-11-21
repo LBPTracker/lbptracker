@@ -4,6 +4,25 @@ What changed for the person using LBP Tracker, newest first. The site shows this
 version number in its status bar, so it is written for them: what they can do now that they could
 not before, never how it was done. No `--` or em dash in here; the site's text does without them.
 
+## 0.3.1 (2026-11-21)
+
+- New: transpose. Select one or more instruments on the board, right-click one of them, and move
+  all their notes up or down: an octave or a semitone with one click, or any number of semitones
+  typed in. The notes move together and keep their intervals, and the status line tells you if
+  the top or the bottom of the range stopped them short. One undo takes it back.
+- New: right-click a row's number to select every instrument on that row, ready to transpose or
+  copy as one block.
+- Why transpose matters for MIDI files: the game's own sine, saw and string ensemble instruments
+  sound an octave above the note they are given, so a MIDI file brought in on one of them plays an
+  octave high. The notes come in exactly as written; select the part and take it down an octave.
+- A right-click on an instrument now opens this menu instead of the note grid. A left click still
+  opens the grid.
+- The song index opens a song in the level it was first published in, rather than wherever it is
+  played most, and the button says "Open the original" when it does.
+- A song opened from the song index whose level names nobody now shows its maker.
+- Render: the voice pool is one slider, 1 to 128 and then unlimited at its far end, as in the
+  mixer & engine settings.
+
 ## 0.3.0 (2026-10-31)
 
 - New: a menu bar. File, Edit, Tools and Help sit at the top left, like a desktop application's,

@@ -590,6 +590,22 @@ they are kept on `EditorState` and never written to the song file or the MIDI; t
 rows reach the player's plan and the render (`audibleSequencer` in `daw/session.ts`), a solo
 anywhere outranking every mute. The boxes sit in the board's gutter beside the row number.
 
+**The board has a right-click menu** (`daw/context-menu.ts`: one at a time, at the pointer, the
+menu bar's look, not a `<dialog>`, so nothing under it goes inert; Esc, a press outside, a scroll
+or any item closes it). On a chip it acts on the board's selection, which a right-click on a chip
+of the block keeps: **transpose the notes** by −12, −1, +1, +12 or any number typed, every point
+of every selected chip by the same amount, across rows, one undo entry (`transposeClips` in
+`song.ts`, `test/song.test.ts`). The shift is clamped so the block's lowest and highest points stay
+in 0..127, so it keeps its intervals rather than squashing against the edge, and the status line
+says when it went less far than asked. It moves the record's note field: on a chip with a `Scale`
+the engine snaps that field afterwards, so only an octave is sure to keep every note on its
+degree. It exists because a MIDI file imported onto some instruments sounds an octave above the
+original: the import carries the note number unchanged, and some instruments sound an octave above
+their note numbers (`basenote` in [sequencer-engine-inputs.md](sequencer-engine-inputs.md)). On a
+row's number it offers **select all the instruments on the row** (`selectRowClips`), the way to
+take a whole row into the block for the menu above. ⚠️ The gutter answers the right button before
+the left button's rules, because a left press on the selected row's number removes the row.
+
 **The row is the unit the roll follows.** `selection.row` — on opening, the row of the chip nearest the start of the song, with that chip selected — is lit across the
 board; clicking a chip, a cell or a row number selects its row. As the song plays, the roll moves
 to the chip the playhead *enters* on that row (`chipUnder` in `daw/arrange.ts`): by transition, not

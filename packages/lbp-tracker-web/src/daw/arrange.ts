@@ -15,6 +15,7 @@ import {
   moveClips, removeClip, setSongEnd, type Clip, type ClipShift,
 } from '@lbptracker/lib/song.ts';
 import { confirmDialog, noticeDialog } from '../confirm.ts';
+import { showContextMenu } from './context-menu.ts';
 import { focusOwnsKeys, hasTextSelection } from '../keys.ts';
 import { BoardView } from '../editor/board.ts';
 import { RollView, type RollTool } from '../editor/roll.ts';
@@ -132,7 +133,56 @@ export function mountArrange(opts: { isActive: () => boolean; ownsKeys: () => bo
       }
       state.removeRow(row);
     },
+    onChipMenu: (x, y) => showChipMenu(x, y),
+    onRowMenu: (row, x, y) => showRowMenu(row, x, y),
   });
+
+  const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
+
+  /**
+   * The selected chips' menu: their notes up or down by any number of
+   * semitones, as one block and one undo entry (`transposeClips`). The status
+   * line says how far they went, which is less than asked when they reach 0 or 127.
+   */
+  function showChipMenu(x: number, y: number): void {
+    const chosen = chosenChips();
+    if (chosen.length === 0) return;
+    const what = chosen.length === 1 ? 'this instrument' : `${chosen.length} instruments`;
+    showContextMenu(x, y, [
+      {
+        transpose: true,
+        label: `Transpose the notes of ${what}`,
+        run: (semitones) => {
+          const sounding = chosen.filter((c) => c.notes.length > 0).length;
+          if (sounding === 0) {
+            setStatus(`${chosen.length === 1 ? 'this instrument has' : 'these instruments have'} no notes to transpose`, true);
+            return;
+          }
+          const applied = state.transposeSelectedClips(semitones);
+          const signed = `${applied > 0 ? '+' : ''}${applied}`;
+          if (applied === 0) setStatus(`already at the ${semitones > 0 ? 'top' : 'bottom'} of the range; nothing moved`, true);
+          else if (applied !== semitones) setStatus(`${plural(sounding, 'instrument')} transposed ${signed} semitones, as far as the range allows`);
+          else setStatus(`${plural(sounding, 'instrument')} transposed ${signed} ${Math.abs(applied) === 1 ? 'semitone' : 'semitones'}`);
+        },
+      },
+    ]);
+  }
+
+  /** A row number's menu. */
+  function showRowMenu(row: number, x: number, y: number): void {
+    const held = state.song.clips.filter((c) => c.row === row).length;
+    showContextMenu(x, y, [
+      {
+        label: `Select all instruments on row ${row}`,
+        hint: held > 0 ? String(held) : 'none',
+        disabled: held === 0,
+        run: () => {
+          state.selectRowClips(row);
+          setStatus(`${plural(held, 'instrument')} selected on row ${row}`);
+        },
+      },
+    ]);
+  }
   new ResizeObserver(insetBoard).observe(panel);
 
   const roll = new RollView(
